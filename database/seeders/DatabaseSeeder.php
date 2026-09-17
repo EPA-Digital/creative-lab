@@ -23,5 +23,6 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call(PaisSeeder::class);
+        $this->call(AppsflyerAppSeeder::class);
     }
 }

@@ -1,18 +1,38 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { Head, Link, router } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import PodiumTop3 from '@/Components/Creativo/PodiumTop3.vue';
 import CreativeCarousel from '@/Components/Creativo/CreativeCarousel.vue';
+import CreativeTable from '@/Components/Creativo/CreativeTable.vue';
+import CreativeBars from '@/Components/Creativo/CreativeBars.vue';
+import VistaSwitch from '@/Components/Creativo/VistaSwitch.vue';
 import CreativeModal from '@/Components/Creativo/CreativeModal.vue';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
-import { formatNumeroExacto, formatMoneyExacto, FUNNEL_ORDER, FUNNEL_LABELS, TIPO_CUENTA_OPCIONES } from '@/motor';
+import { formatNumeroExacto, formatMoneyExacto, FUNNEL_ORDER, FUNNEL_LABELS, TIPO_CUENTA_OPCIONES, promediosDeGrupo } from '@/motor';
 
 const props = defineProps({
     pais: String,
     plataforma: String,
     creativos: Array,
+    mes: String,
+    mesesDisponibles: Array,
 });
+
+// A diferencia de Plataforma/Tipo de cuenta/Formato (que filtran EN CLIENTE
+// sobre los creativos ya cargados), Mes recarga el servidor -- desde
+// 2026-08-12 el controller acota `resultados` a un único mes por consulta
+// (con 8 meses de backfill, traer todos a la vez ya no tiene sentido: un
+// creativo tiene un resultado por mes, no uno solo).
+const MESES_LABEL = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+function formatMesLabel(mesIso) {
+    const [anio, mes] = mesIso.split('-').map(Number);
+    return `${MESES_LABEL[mes - 1]} ${anio}`;
+}
+const mesOptions = computed(() => (props.mesesDisponibles || []).map((m) => ({ key: m, label: formatMesLabel(m) })));
+function cambiarMes(nuevoMes) {
+    router.get(window.location.pathname, { mes: nuevoMes }, { preserveState: true, preserveScroll: true, replace: true });
+}
 
 // Puerto literal de METRICAS_RANKING + calcularRanking + ETIQUETA_CORTA_POR_
 // CAMPO + formatearValorMetrica + estrellaActual (motor.js:1654-1689,
@@ -45,6 +65,12 @@ const METRICAS_RANKING = {
     nc: { label: 'Más nuevos clientes', campo: 'newCustomers', tipo: 'conteo', orden: 'desc' },
     orders: { label: 'Más órdenes', campo: 'orders', tipo: 'conteo', orden: 'desc' },
     impresiones: { label: 'Más impresiones', campo: 'impressions', tipo: 'conteo', orden: 'desc' },
+    // installs (agregado 2026-08-21) -- CAMPO_A_RESULTADO ya lo mapeaba desde
+    // antes, pero faltaba como opción propia de ranking. Necesario para que
+    // el KPI de la card en la pestaña Consideración pueda ser "Installs" (su
+    // métrica natural, ver METRICA_POR_FUNNEL_DEFAULT) y no quede sin ningún
+    // campo de conteo al que sincronizarse.
+    installs: { label: 'Más instalaciones', campo: 'installs', tipo: 'conteo', orden: 'desc' },
     cpo: { label: 'Mejor CPO', campo: 'cpo', tipo: 'ratio', orden: 'asc', campoVolumen: 'orders', labelVolumen: 'órdenes', umbralDefault: 10 },
     cac: { label: 'Mejor CAC', campo: 'cac', tipo: 'ratio', orden: 'asc', campoVolumen: 'newCustomers', labelVolumen: 'nuevos clientes', umbralDefault: 10 },
     cpi: { label: 'Mejor CPI', campo: 'cpi', tipo: 'ratio', orden: 'asc', campoVolumen: 'installs', labelVolumen: 'instalaciones', umbralDefault: 30 },
@@ -55,7 +81,7 @@ const METRICAS_RANKING = {
 const METRICAS_RANKING_OPCIONES = Object.entries(METRICAS_RANKING).map(([key, m]) => ({ key, label: m.label }));
 
 const ETIQUETA_CORTA_POR_CAMPO = {
-    newCustomers: 'NC', orders: 'Orders', impressions: 'Impresiones',
+    newCustomers: 'NC', orders: 'Orders', impressions: 'Impresiones', installs: 'Installs',
     cpo: 'CPO', cac: 'CAC', cpi: 'CPI', ctr: 'CTR',
 };
 
@@ -71,7 +97,7 @@ function formatearValorMetrica(campo, valor) {
 // Eloquent llegan como string, de ahí el Number().
 const CAMPO_A_RESULTADO = {
     newCustomers: 'nc', orders: 'orders', impressions: 'impressions',
-    cpo: 'cpo', cac: 'cac', cpi: 'cpi', ctr: 'ctr', installs: 'installs',
+    cpo: 'cpo', cac: 'cac', cpi: 'cpi', ctr: 'ctr', installs: 'installs', cpm: 'cpm',
 };
 function valorCampo(creativo, campo) {
     const r = creativo.resultados?.[0];
@@ -177,6 +203,23 @@ const creativosPorFormato = computed(() =>
 const metricaKey = ref('nc');
 const metricaActual = computed(() => METRICAS_RANKING[metricaKey.value]);
 const funnelSeleccionado = ref('TODOS');
+
+// Al entrar a una pestaña de funnel específica, "Rankear por" se sincroniza
+// a la métrica natural de esa etapa -- pedido explícito (2026-08-21): antes
+// "Rankear por" se quedaba en lo último elegido manualmente (default "Más
+// nuevos clientes"), así que entrar a Awareness o Consideración seguía
+// mostrando NC en la card aunque casi nunca aplica ahí. El usuario sigue
+// pudiendo cambiar "Rankear por" a mano DESPUÉS de entrar a la pestaña (esto
+// solo fija un default sensato al cambiar de pestaña, no lo bloquea). Al
+// volver a "TODOS" se deja la selección tal cual quedó -- ahí sí tiene
+// sentido rankear por una sola métrica elegida a propósito entre funnels
+// mezclados.
+const METRICA_POR_FUNNEL_DEFAULT = { AWA: 'impresiones', CON: 'installs', CONS: 'installs', CNV: 'nc', LOY: 'orders' };
+watch(funnelSeleccionado, (nuevo) => {
+    if (METRICA_POR_FUNNEL_DEFAULT[nuevo]) {
+        metricaKey.value = METRICA_POR_FUNNEL_DEFAULT[nuevo];
+    }
+});
 
 const CAMPO_VOLUMEN_LABEL = {
     impressions: 'impresiones', installs: 'installs', newCustomers: 'nuevos clientes', orders: 'órdenes',
@@ -308,6 +351,11 @@ const todasOrdenadas = computed(() => {
     }), ...sinMetrica];
 });
 
+// Tipos de gráfica para "Todos los creativos" (2026-08-27, ver plan del
+// rediseño) -- Cards/Tabla/Barras sobre el MISMO dataset (todasOrdenadas),
+// solo cambia el componente que lo pinta.
+const vistaActiva = ref('cards');
+
 // Click en card -> modal (wireCardClicks real, ver CreativeCard.vue) --
 // guarda el creativo completo, no solo lo que ya mostraba la card.
 const creativoAbierto = ref(null);
@@ -317,6 +365,16 @@ function abrirDetalle(creativo) {
 function cerrarModal() {
     creativoAbierto.value = null;
 }
+
+// promediosParaCreativo -- 2026-08-21, pedido explícito del negocio;
+// extraído a motor.js (promediosDeGrupo) el 2026-08-27 para compartirlo
+// con Inteligencia -- ver el comentario de esa función para el criterio
+// completo. País/mes ya están implícitos acá (la página completa está
+// acotada a uno).
+function promediosParaCreativo(creativo) {
+    return promediosDeGrupo(creativo, props.creativos, props.mes);
+}
+const promediosDelAbierto = computed(() => promediosParaCreativo(creativoAbierto.value));
 function onKeydownGlobal(e) {
     if (e.key === 'Escape') cerrarModal();
 }
@@ -340,6 +398,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
             </header>
 
             <div class="resumen-filtros">
+                <FiltroDropdown label="Mes" :modelValue="mes" :options="mesOptions" @update:modelValue="cambiarMes" />
                 <FiltroDropdown label="Plataforma" v-model="plataformaSeleccionada" :options="PLATAFORMA_OPCIONES" :counts="plataformaCounts" />
                 <FiltroDropdown label="Tipo de cuenta" v-model="tipoCuentaSeleccionado" :options="TIPO_CUENTA_OPCIONES" :counts="tipoCuentaCounts" />
                 <FiltroDropdown label="Formato" v-model="formatoSeleccionado" :options="FORMATO_OPCIONES" :counts="formatoCounts" />
@@ -395,7 +454,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                         ‹
                     </button>
                     <div class="podio">
-                        <PodiumTop3 v-if="top3.length" :top3="top3" :estrella-override="estrellaActual" @abrir="abrirDetalle" />
+                        <PodiumTop3 v-if="top3.length" :top3="top3" :estrella-override="estrellaActual" :mes="mes" @abrir="abrirDetalle" />
                         <p v-else class="empty-note">Ningún anuncio cumple el umbral actual para esta métrica.</p>
                     </div>
                     <button
@@ -412,15 +471,33 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
 
             <section class="section">
                 <div class="section-header">
-                    <h2 class="section-title">Todos los creativos</h2>
-                    <span class="section-count mono">{{ todasOrdenadas.length }} anuncio{{ todasOrdenadas.length === 1 ? '' : 's' }}</span>
+                    <div class="section-header-titulo">
+                        <h2 class="section-title">Todos los creativos</h2>
+                        <span class="section-count mono">{{ todasOrdenadas.length }} anuncio{{ todasOrdenadas.length === 1 ? '' : 's' }}</span>
+                    </div>
+                    <VistaSwitch v-model="vistaActiva" />
                 </div>
-                <CreativeCarousel :creativos="todasOrdenadas" :estrella-override="estrellaActual" @abrir="abrirDetalle" />
+                <CreativeCarousel v-if="vistaActiva === 'cards'" :creativos="todasOrdenadas" :estrella-override="estrellaActual" :mes="mes" @abrir="abrirDetalle" />
+                <CreativeTable v-else-if="vistaActiva === 'tabla'" :creativos="todasOrdenadas" :estrella-override="estrellaActual" @abrir="abrirDetalle" />
+                <CreativeBars
+                    v-else
+                    :creativos="todasOrdenadas"
+                    :estrella-override="estrellaActual"
+                    :valor-numerico="(c) => valorCampo(c, metricaActual.campo)"
+                    @abrir="abrirDetalle"
+                />
             </section>
         </div>
     </div>
 
-    <CreativeModal v-if="creativoAbierto" :creativo="creativoAbierto" @cerrar="cerrarModal" />
+    <CreativeModal
+        v-if="creativoAbierto"
+        :creativo="creativoAbierto"
+        :pais="pais"
+        :promedios="promediosDelAbierto"
+        :mes="mes"
+        @cerrar="cerrarModal"
+    />
     </DashboardLayout>
 </template>
 
@@ -544,7 +621,17 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
     margin-bottom: 8px;
+}
+.section-header-titulo {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+.section-header-titulo .section-title {
+    margin: 0;
 }
 .section-title {
     font-family: 'Space Grotesk', 'Inter', sans-serif;

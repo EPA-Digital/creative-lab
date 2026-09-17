@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { cardDesdeCreativo, statsParaCard, placeholderPorTipo, FUNNEL_COLOR_VAR } from '@/motor';
+import { cardDesdeCreativo, statsParaCard, placeholderPorTipo, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, FUNNEL_LABELS, rangoActividadEnMes, formatearRangoFecha } from '@/motor';
 
 // Puerto literal de renderCardPulida + renderAreaImagen + placeholderPorTipo
 // + statsParaCard (dashboard/shared/motor.js, líneas 1079-1253 del proyecto
@@ -12,11 +12,18 @@ const props = defineProps({
     creativo: { type: Object, required: true },
     rank: { type: Number, required: true },
     estrellaOverride: { type: Object, default: null },
+    mes: { type: String, default: null },
 });
 
 const emit = defineEmits(['abrir']);
 
 const card = computed(() => cardDesdeCreativo(props.creativo));
+// rango de actividad -- 2026-08-28, pedido explícito ("el tiempo que
+// estuvieron activos" en la card). APROXIMADO a partir de entrega real,
+// ver rangoActividadEnMes/formatearRangoFecha en motor.js -- null cuando
+// el país no tiene resultados_diarios (Ecuador/México) o el creativo no
+// tuvo entrega real ese mes, la card simplemente no muestra nada extra.
+const rangoActividad = computed(() => rangoActividadEnMes(card.value, props.mes));
 
 const stats = computed(() => statsParaCard(card.value));
 const estrella = computed(() => props.estrellaOverride || stats.value[0] || { label: '—', value: '—' });
@@ -27,6 +34,7 @@ const esTikTok = computed(() => card.value.plataforma === 'tiktok');
 const activo = computed(() => card.value.status && /ACTIVE/i.test(card.value.status));
 const stageColor = computed(() => FUNNEL_COLOR_VAR[card.value.etapaFunnel] || 'var(--violet)');
 const ph = computed(() => placeholderPorTipo(card.value.tipoCreativo));
+const nombre = computed(() => nombrePrincipalYTecnico(card.value.nombreAmigable, card.value.adNameShort || card.value.adId));
 
 // onerror real: oculta la <img> y muestra el .no-image que la precede
 // (this.previousElementSibling). Acá se resuelve con estado reactivo en vez
@@ -102,12 +110,16 @@ function onKeydown(e) {
             </span>
         </div>
         <div class="resumen-card-body">
-            <p class="resumen-card-titulo">{{ card.adNameShort || card.adId }}</p>
+            <p class="resumen-card-titulo">{{ nombre.principal }}</p>
+            <p v-if="nombre.tecnico" class="resumen-card-tecnico mono">{{ nombre.tecnico }}</p>
             <p class="resumen-card-meta">
                 {{ esTikTok ? 'TikTok Ads' : 'Meta Ads' }}
                 <span v-if="card.etapaFunnel" class="resumen-card-funnel" :style="{ '--stage-color': stageColor }">
-                    {{ card.etapaFunnel }}
+                    {{ FUNNEL_LABELS[card.etapaFunnel] || card.etapaFunnel }}
                 </span>
+            </p>
+            <p v-if="rangoActividad" class="resumen-card-vigencia" title="Aproximado: primer día con impresiones o costo real hasta el último -- no es el registro exacto de Meta">
+                Activo {{ formatearRangoFecha(rangoActividad) }}
             </p>
             <div class="resumen-card-estrella">
                 <span class="k">{{ estrella.label }}</span>

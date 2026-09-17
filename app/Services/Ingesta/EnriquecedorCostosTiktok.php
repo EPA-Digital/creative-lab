@@ -58,6 +58,82 @@ class EnriquecedorCostosTiktok
     }
 
     /**
+     * Reparación dirigida por Ad ID (2026-08-12, comando
+     * `reparar:creativos-incompletos`) -- a diferencia de
+     * traerNombreYVideoId (que pagina la cuenta COMPLETA), esto solo pide
+     * los ad_id puntuales que ya están en la base con imagen_url/copy
+     * faltante: mucho más chico y rápido, usa `filtering.ad_ids` sobre
+     * /ad/get/ (mismo patrón ya probado en detectarEliminados) en tandas de
+     * 100, en vez de re-paginar toda la cuenta para reparar unos cientos de
+     * ads.
+     *
+     * @param  list<string>  $adIds
+     * @return array<string, array{imagenUrl: ?string, campaignName: ?string, copy: ?array{titulo: ?string, texto: ?string}}>
+     */
+    public function reintentarNombreImagenYCopy(string $advertiserId, array $adIds): array
+    {
+        if ($adIds === []) {
+            return [];
+        }
+
+        $videoIdPorAdId = [];
+        $campaignNombrePorAdId = [];
+        $copyPorAdId = [];
+
+        foreach (array_chunk($adIds, 100) as $chunk) {
+            try {
+                $data = $this->tiktok->get('/ad/get/', [
+                    'advertiser_id' => $advertiserId,
+                    'filtering' => ['ad_ids' => array_map('strval', $chunk)],
+                    'page_size' => 100,
+                ]);
+                foreach ($data['list'] ?? [] as $ad) {
+                    if (! empty($ad['video_id'])) {
+                        $videoIdPorAdId[$ad['ad_id']] = $ad['video_id'];
+                    }
+                    if (! empty($ad['campaign_name'])) {
+                        $campaignNombrePorAdId[$ad['ad_id']] = $ad['campaign_name'];
+                    }
+                    if (! empty($ad['ad_text'])) {
+                        $copyPorAdId[$ad['ad_id']] = ['titulo' => null, 'texto' => $ad['ad_text']];
+                    }
+                }
+            } catch (Throwable $e) {
+                Log::warning('No se pudo reparar nombre/video para una tanda de '.count($chunk)." ad(s) (rate limit u otro error de la API): {$e->getMessage()}");
+            }
+        }
+
+        $imagenRemotaPorVideoId = $this->traerThumbnailsDeVideo($advertiserId, array_values(array_unique($videoIdPorAdId)));
+        $urlPorAdId = [];
+        foreach ($videoIdPorAdId as $adId => $videoId) {
+            $remota = $imagenRemotaPorVideoId[$videoId] ?? null;
+            if ($remota) {
+                $urlPorAdId[$adId] = $remota;
+            }
+        }
+        $imagenLocalPorAdId = $this->imagenes->cachearVarias($urlPorAdId, fn (string $adId) => "tiktok-costo-{$adId}");
+
+        $resultado = [];
+        foreach ($adIds as $adId) {
+            $resultado[$adId] = [
+                'imagenUrl' => $imagenLocalPorAdId[$adId] ?? null,
+                'campaignName' => $campaignNombrePorAdId[$adId] ?? null,
+                'copy' => $copyPorAdId[$adId] ?? null,
+            ];
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * data_level=AUCTION_AD sin filtrar por campaign_automation_type SÍ
+     * cubre el spend de ads Smart+/UPGRADED_SMART_PLUS_CREATIVE -- verificado
+     * 2026-08-11 contra la cuenta real de Ecuador (5 ad_ids Smart+ conocidos
+     * de una campaña activa, todos con spend/impressions/clicks reales y no
+     * nulos en esta misma llamada). El único gap real de Smart+ es el texto
+     * (ver comentario de traerNombreYVideoId más abajo), no el costo -- no
+     * hace falta ningún endpoint distinto para Smart+.
+     *
      * @return list<array{adId: string, cost: float, impressions: int, clicks: int}>
      */
     private function traerCostos(string $advertiserId, string $desde, string $hasta): array
@@ -98,8 +174,18 @@ class EnriquecedorCostosTiktok
     }
 
     /**
-     * Envuelto en try/catch: si pega rate limit, degrada a sin nombre/video
-     * para todos en vez de tumbar el costo que ya se trajo arriba.
+     * Cada PÁGINA en su propio try/catch (2026-08-12, fix real: antes el
+     * try/catch envolvía el loop de paginación COMPLETO -- para una cuenta
+     * grande con 10-20+ páginas, una sola página fallando de forma
+     * transitoria perdía nombre/video_id/campaña/copy de la cuenta ENTERA,
+     * no solo esa página. Confirmado con datos reales: México, con muchas
+     * más páginas que Ecuador, tenía 464 ads con formato=null contra 18 de
+     * Ecuador -- desproporción que solo se explica por este blast radius).
+     * Si falla la PRIMERA página, no se conoce `total_page` todavía y no hay
+     * forma segura de seguir paginando -- ahí sí se corta. Una vez conocido
+     * `total_page` de una página exitosa, una falla posterior solo pierde
+     * esa página, nunca corta el loop.
+     *
      * campaign_name y ad_text viajan GRATIS en esta misma respuesta (sin
      * `fields` explícito, /ad/get/ ya devuelve el objeto completo por
      * defecto) -- ad_text viene vacío para los ads "Smart+ automatizados"
@@ -116,9 +202,10 @@ class EnriquecedorCostosTiktok
         $campaignNombrePorAdId = [];
         $copyPorAdId = [];
 
-        try {
-            $page = 1;
-            for (;;) {
+        $page = 1;
+        $totalPage = null;
+        for (;;) {
+            try {
                 $data = $this->tiktok->get('/ad/get/', [
                     'advertiser_id' => $advertiserId,
                     'page' => $page,
@@ -141,13 +228,17 @@ class EnriquecedorCostosTiktok
                 }
 
                 $totalPage = $data['page_info']['total_page'] ?? 1;
-                if ($page >= $totalPage) {
+            } catch (Throwable $e) {
+                Log::warning("No se pudo traer nombre/video de la página {$page} de ads (de ".($totalPage ?? '?').") -- el costo se guarda igual, esta página queda sin nombre/imagen, las demás siguen: {$e->getMessage()}");
+                if ($totalPage === null) {
                     break;
                 }
-                $page++;
             }
-        } catch (Throwable $e) {
-            Log::warning("No se pudo traer nombre/video de los ads (rate limit u otro error de la API) -- el costo se guarda igual, solo sin nombre ni imagen: {$e->getMessage()}");
+
+            if ($totalPage !== null && $page >= $totalPage) {
+                break;
+            }
+            $page++;
         }
 
         return [$nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId];

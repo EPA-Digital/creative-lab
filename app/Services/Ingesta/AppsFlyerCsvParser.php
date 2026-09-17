@@ -62,10 +62,8 @@ class AppsFlyerCsvParser
         [$columnaNC, $extraerNC] = self::resolverExtractorMetrica($headers, self::ALIAS_NC);
         [$columnaOrders, $extraerOrders] = self::resolverExtractorMetrica($headers, self::ALIAS_ORDERS);
 
-        $porAdId = [];
-        $filasVistas = [];
+        $filasNormalizadas = [];
         $problemas = [];
-        $organico = [];
         $subtotales = 0;
 
         foreach ($filas as $row) {
@@ -110,11 +108,16 @@ class AppsFlyerCsvParser
 
                     continue;
                 }
-                $organico[] = [
+                $filasNormalizadas[] = [
+                    'adId' => null,
+                    'esOrganico' => true,
+                    'campaign' => '',
+                    'adRaw' => '',
                     'fecha' => $fecha,
                     'installs' => self::normalizarNumero($row['Installs (sum)'] ?? null),
                     'orders' => $orders,
                     'newCustomers' => $newCustomers,
+                    'filaOriginal' => $row,
                 ];
 
                 continue;
@@ -132,42 +135,131 @@ class AppsFlyerCsvParser
 
                 continue;
             }
-            $installs = self::normalizarNumero($row['Installs (sum)'] ?? null);
-
-            $key = $adId.'__'.$fecha;
-            if (isset($filasVistas[$key])) {
-                $yaVista = $filasVistas[$key];
-                $mismosValores = $yaVista['installs'] === $installs
-                    && $yaVista['orders'] === $orders
-                    && $yaVista['newCustomers'] === $newCustomers;
-                if (! $mismosValores) {
-                    $problemas[] = [
-                        'fuente' => 'AppsFlyer ad ID',
-                        'motivo' => "Fila duplicada para Ad ID {$adId} en {$fecha} con valores distintos, se conserva la primera",
-                        'fila' => $row,
-                    ];
-                }
-
-                continue;
-            }
-            $filasVistas[$key] = ['installs' => $installs, 'orders' => $orders, 'newCustomers' => $newCustomers];
 
             // campaign/adRaw se guardan de la PRIMERA fila vista de este Ad
             // ID (un Ad ID pertenece a una sola campaña/nombre de ad -- no
             // cambia entre filas del mismo Ad ID, solo Install Day cambia).
+            $filasNormalizadas[] = [
+                'adId' => $adId,
+                'esOrganico' => false,
+                'campaign' => trim($row['Campaign'] ?? ''),
+                'adRaw' => $row['Ad'] ?? '',
+                'fecha' => $fecha,
+                'installs' => self::normalizarNumero($row['Installs (sum)'] ?? null),
+                'orders' => $orders,
+                'newCustomers' => $newCustomers,
+                'filaOriginal' => $row,
+            ];
+        }
+
+        $agregado = self::agregarPorAdId($filasNormalizadas);
+
+        return [
+            'limpias' => $agregado['limpias'],
+            'problemas' => [...$problemas, ...$agregado['problemasDuplicado']],
+            'subtotales' => $subtotales,
+            'organico' => $agregado['organico'],
+            'columnaNC' => $columnaNC,
+            'columnaOrders' => $columnaOrders,
+        ];
+    }
+
+    /**
+     * Agrega filas YA normalizadas (adId/fecha/installs/orders/newCustomers
+     * ya validados por el llamador) por Ad ID, sumando la serie diaria --
+     * agnóstico de si el dato vino de un CSV subido a mano (único llamador
+     * hoy, ver parse() arriba) o de un pull en vivo a la API de AppsFlyer
+     * (llamador futuro: un enriquecedor que arme su propia lista de filas
+     * normalizadas desde el JSON de la API y llame a este mismo método).
+     *
+     * $sumarDuplicados=false (default, comportamiento CSV actual sin
+     * cambios): una segunda fila con el mismo Ad ID+fecha pero valores
+     * distintos se descarta y se flaggea como problema, se conserva la
+     * primera vista. $sumarDuplicados=true: en vez de descartar, SUMA los
+     * valores -- pensado para el caso en que la fuente legítimamente reporta
+     * el mismo Ad ID+fecha más de una vez (ej. AppsFlyer con apps iOS+Android
+     * combinadas en un mismo pull, cada una aportando installs/NC/orders
+     * reales y distintos para el mismo Ad ID+fecha).
+     *
+     * @param  list<array{adId: ?string, esOrganico: bool, campaign: string, adRaw: string, fecha: string, installs: int|float, orders: int|float, newCustomers: int|float, filaOriginal: mixed}>  $filasNormalizadas
+     * @return array{
+     *     limpias: list<array{adId: string, campaign: string, adRaw: string, serie: list<array{fecha: string, installs: int|float, orders: int|float, newCustomers: int|float}>}>,
+     *     organico: list<array{fecha: string, installs: int|float, orders: int|float, newCustomers: int|float}>,
+     *     problemasDuplicado: list<array{fuente: string, motivo: string, fila: mixed}>,
+     * }
+     */
+    public static function agregarPorAdId(array $filasNormalizadas, bool $sumarDuplicados = false): array
+    {
+        $porAdId = [];
+        $filasVistas = [];
+        $organico = [];
+        $problemasDuplicado = [];
+
+        foreach ($filasNormalizadas as $fila) {
+            if ($fila['esOrganico']) {
+                $organico[] = [
+                    'fecha' => $fila['fecha'],
+                    'installs' => $fila['installs'],
+                    'orders' => $fila['orders'],
+                    'newCustomers' => $fila['newCustomers'],
+                ];
+
+                continue;
+            }
+
+            $adId = $fila['adId'];
+            $key = $adId.'__'.$fila['fecha'];
+            if (isset($filasVistas[$key])) {
+                $yaVista = $filasVistas[$key];
+                $mismosValores = $yaVista['installs'] === $fila['installs']
+                    && $yaVista['orders'] === $fila['orders']
+                    && $yaVista['newCustomers'] === $fila['newCustomers'];
+                if (! $mismosValores) {
+                    if ($sumarDuplicados) {
+                        $filasVistas[$key] = [
+                            'installs' => $yaVista['installs'] + $fila['installs'],
+                            'orders' => $yaVista['orders'] + $fila['orders'],
+                            'newCustomers' => $yaVista['newCustomers'] + $fila['newCustomers'],
+                        ];
+                        foreach ($porAdId[$adId]['serie'] as &$punto) {
+                            if ($punto['fecha'] === $fila['fecha']) {
+                                $punto['installs'] += $fila['installs'];
+                                $punto['orders'] += $fila['orders'];
+                                $punto['newCustomers'] += $fila['newCustomers'];
+                                break;
+                            }
+                        }
+                        unset($punto);
+                    } else {
+                        $problemasDuplicado[] = [
+                            'fuente' => 'AppsFlyer ad ID',
+                            'motivo' => "Fila duplicada para Ad ID {$adId} en {$fila['fecha']} con valores distintos, se conserva la primera",
+                            'fila' => $fila['filaOriginal'],
+                        ];
+                    }
+                }
+
+                continue;
+            }
+            $filasVistas[$key] = [
+                'installs' => $fila['installs'],
+                'orders' => $fila['orders'],
+                'newCustomers' => $fila['newCustomers'],
+            ];
+
             if (! isset($porAdId[$adId])) {
                 $porAdId[$adId] = [
                     'adId' => $adId,
-                    'campaign' => trim($row['Campaign'] ?? ''),
-                    'adRaw' => $row['Ad'] ?? '',
+                    'campaign' => $fila['campaign'],
+                    'adRaw' => $fila['adRaw'],
                     'serie' => [],
                 ];
             }
             $porAdId[$adId]['serie'][] = [
-                'fecha' => $fecha,
-                'installs' => $installs,
-                'orders' => $orders,
-                'newCustomers' => $newCustomers,
+                'fecha' => $fila['fecha'],
+                'installs' => $fila['installs'],
+                'orders' => $fila['orders'],
+                'newCustomers' => $fila['newCustomers'],
             ];
         }
 
@@ -181,11 +273,8 @@ class AppsFlyerCsvParser
 
         return [
             'limpias' => array_values($porAdId),
-            'problemas' => $problemas,
-            'subtotales' => $subtotales,
             'organico' => $organico,
-            'columnaNC' => $columnaNC,
-            'columnaOrders' => $columnaOrders,
+            'problemasDuplicado' => $problemasDuplicado,
         ];
     }
 
@@ -206,9 +295,34 @@ class AppsFlyerCsvParser
      * del header quedaba con el BOM pegado y esa columna entera (acá,
      * "Campaign") nunca hacía match por nombre en ninguna fila.
      *
+     * public (2026-08-27, ver plan del selector de fecha) -- mismo parser
+     * reutilizado por SnowflakeCsvParser, para no duplicar esta máquina de
+     * estados (BOM/CRLF/comillas con comas embebidas) en el pipeline diario.
+     * Asume la fila 1 como header -- para el export de Snowflake (que trae
+     * filas de resumen/título ANTES del header real), usar partirFilas()
+     * directo y ubicar el header a mano, ver SnowflakeCsvParser.
+     *
      * @return list<array<string, string>>
      */
-    private static function parseCsvComillas(string $texto): array
+    public static function parseCsvComillas(string $texto): array
+    {
+        $rows = self::partirFilas($texto);
+        $headers = array_map('trim', array_shift($rows) ?? []);
+        $rows = self::filasKeyed($rows, $headers);
+
+        return $rows;
+    }
+
+    /**
+     * Solo la máquina de estados -- filas crudas (list<list<string>>, sin
+     * asociar a ningún header), BOM/CRLF ya descartados. Público para que
+     * SnowflakeCsvParser pueda ubicar su propio header (no está en la fila
+     * 1 en ese export, ver docblock de parseCsvComillas) antes de asociar
+     * columnas.
+     *
+     * @return list<list<string>>
+     */
+    public static function partirFilas(string $texto): array
     {
         $texto = str_replace("\r", '', $texto);
         $texto = preg_replace('/^\xEF\xBB\xBF/', '', $texto);
@@ -251,7 +365,20 @@ class AppsFlyerCsvParser
             $rows[] = $row;
         }
 
-        $headers = array_map('trim', array_shift($rows) ?? []);
+        return $rows;
+    }
+
+    /**
+     * Asocia filas crudas (partirFilas()) a un header ya elegido -- extraído
+     * de parseCsvComillas para que SnowflakeCsvParser lo reuse con SU propio
+     * header (no necesariamente la fila 1).
+     *
+     * @param  list<list<string>>  $rows
+     * @param  list<string>  $headers
+     * @return list<array<string, string>>
+     */
+    public static function filasKeyed(array $rows, array $headers): array
+    {
 
         $out = [];
         foreach ($rows as $r) {

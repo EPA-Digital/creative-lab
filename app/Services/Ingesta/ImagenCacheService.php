@@ -42,6 +42,21 @@ class ImagenCacheService
     private const TANDA_DESCARGAS = 25;
 
     /**
+     * Prefijo de archivo que marca una imagen curada a mano (matcheada
+     * manualmente contra el Drive real de creativos, ver
+     * scratchpad/panama-images -- 2026-08-27) -- nunca debe pisarse con el
+     * thumbnail borroso que trae una corrida de rutina del importador. Sin
+     * esto, reimportar el mismo mes revierte silenciosamente la imagen
+     * buena a la de Meta/AppsFlyer otra vez.
+     */
+    private const PREFIJO_IMAGEN_CURADA = '/creative-images/drive-';
+
+    public static function esImagenCurada(?string $imagenUrl): bool
+    {
+        return $imagenUrl !== null && str_starts_with($imagenUrl, self::PREFIJO_IMAGEN_CURADA);
+    }
+
+    /**
      * Descarga y cachea EN PARALELO por tandas (Http::pool, equivalente a
      * Promise.all de Node pero acotado -- ver TANDA_DESCARGAS) -- no es la
      * API de Graph/TikTok, es el CDN de la imagen, no cuenta contra el rate
@@ -61,9 +76,15 @@ class ImagenCacheService
 
         $resultado = [];
         foreach (array_chunk($urlPorClave, self::TANDA_DESCARGAS, preserve_keys: true) as $tanda) {
+            // timeout+retry agregados 2026-08-12 -- confirmado en logs
+            // reales 44 timeouts (`cURL error 28`, 10-30s) descargando
+            // thumbnails de video de TikTok, sin ningún retry hasta ahora.
+            // Mismo criterio que MetaApiClient/TiktokApiClient/
+            // AppsFlyerApiClient (timeout más largo que el default + 2
+            // reintentos cortos para lo transitorio).
             $respuestas = Http::pool(function ($pool) use ($tanda) {
                 foreach ($tanda as $clave => $url) {
-                    $pool->as($clave)->get($url);
+                    $pool->as($clave)->timeout(45)->retry(2, 1000)->get($url);
                 }
             });
 

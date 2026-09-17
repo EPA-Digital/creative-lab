@@ -154,19 +154,36 @@ class CruceCostosAppsFlyer
             $cpm = ($impressions && $cost !== null && $impressions > 0) ? ($cost / $impressions) * 1000 : null;
             $cpi = (! $esRangoParcial && $cost !== null && $installs) ? $cost / $installs : null;
 
-            // Ads con gasto real pero SIN fila en el CSV de AppsFlyer (gasto
-            // sin conversión atribuida todavía) no tienen $af -- su única
-            // fuente de nombre/campaña es lo que trajo el enriquecedor de
-            // costos (Ad Name/Campaign Name de la API).
-            $soloApiInfo = (! $af && $costos && ! empty($costos['adName']))
+            // apiInfo se calcula SIEMPRE que haya adName de la API (ya no
+            // solo cuando falta $af) -- pedido explícito del negocio
+            // (2026-08-12): AppsFlyer a veces trae el TEXTO/copy del video
+            // en el campo de Ad name de TikTok en vez del nombre real del
+            // ad (bug conocido de AppsFlyer, no del pipeline). El Ad Name
+            // que devuelve la API de la plataforma (Meta/TikTok, vía Ad ID
+            // directo) es la fuente confiable siempre -- se usa como
+            // respaldo para arte/nombre cuando el de AppsFlyer no sirve, y
+            // como única fuente para funnel/tipoCuenta/formato cuando no
+            // hay fila de AppsFlyer en absoluto (caso "solo API" original).
+            $apiInfo = ($costos && ! empty($costos['adName']))
                 ? ClasificadorNombres::parsearNombre($costos['campaignName'] ?? null, $costos['adName'])
                 : null;
 
-            $afArte = $af['arte'] ?? null;
-            $afAdRaw = $af['adRaw'] ?? null;
-            $soloApiArte = $soloApiInfo['arte'] ?? null;
+            // arte: se prioriza el de AppsFlyer (campaign+ad name del CSV/
+            // reporte), pero si ahí no se pudo extraer nada, se reintenta
+            // con el Ad Name REAL de la API -- confirmado con datos reales
+            // que cuando AppsFlyer trae copy/caption en vez del nombre
+            // estructurado, el Ad Name de la API SÍ trae el nombre
+            // correcto y arte se puede extraer de ahí.
+            $arte = ($af && $af['arte']) ? $af['arte'] : ($apiInfo['arte'] ?? null);
+
             $costosAdName = $costos['adName'] ?? null;
-            $adNameShort = $afArte ?: ($afAdRaw ?: ($soloApiArte ?: ($costosAdName ?: "Ad {$adId}")));
+            $afAdRaw = $af['adRaw'] ?? null;
+            // adNameShort: si no hay arte limpio, se prioriza el Ad Name
+            // REAL de la API sobre el crudo de AppsFlyer -- el de AppsFlyer
+            // puede ser el copy/caption del video (el bug que motiva este
+            // cambio), mientras que el de la API siempre es el nombre real
+            // del ad tal como está en Meta/TikTok.
+            $adNameShort = $arte ?: ($costosAdName ?: ($afAdRaw ?: "Ad {$adId}"));
 
             $cards[] = [
                 'adId' => $adId,
@@ -176,14 +193,15 @@ class CruceCostosAppsFlyer
                 // $costos de arriba, ANTES de que cost/impressions/clicks se
                 // pisen con `?? 0` al persistir.
                 'tieneMeta' => $costos !== null,
-                'etapaFunnel' => $af ? $af['etapaFunnel'] : ($soloApiInfo ? ($soloApiInfo['funnel'] ?? 'Sin clasificar') : 'Sin clasificar'),
-                'tipoCuenta' => $af ? $af['tipoCuenta'] : ($soloApiInfo['tipoCuenta'] ?? null),
-                'arte' => $af ? $af['arte'] : ($soloApiInfo['arte'] ?? null),
+                'etapaFunnel' => $af ? $af['etapaFunnel'] : ($apiInfo['funnel'] ?? 'Sin clasificar'),
+                'tipoCuenta' => $af ? $af['tipoCuenta'] : ($apiInfo['tipoCuenta'] ?? null),
+                'arte' => $arte,
                 // Formato busca en el Ad crudo -- $af ya trae 'formato'
                 // resuelto por ClasificadorNombres::parsearNombre() en
-                // clasificarPorPlataforma(); soloApiInfo lo resuelve igual
-                // cuando no hay match de AppsFlyer.
-                'formato' => $af ? $af['formato'] : ($soloApiInfo['formato'] ?? null),
+                // clasificarPorPlataforma(); apiInfo lo resuelve igual
+                // cuando no hay match de AppsFlyer o cuando arte solo se
+                // pudo extraer del Ad Name de la API.
+                'formato' => $af && $af['formato'] ? $af['formato'] : ($apiInfo['formato'] ?? null),
                 // campaignName: el Campaign del CSV de AppsFlyer coincide
                 // EXACTO con el campaign_name real de Meta/TikTok
                 // (verificado 2026-08-04) -- se prioriza por ser el dato ya

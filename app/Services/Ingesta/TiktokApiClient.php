@@ -2,6 +2,8 @@
 
 namespace App\Services\Ingesta;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -11,6 +13,14 @@ use RuntimeException;
  * como query param, y la respuesta siempre viene envuelta en
  * {code, message, request_id, data} -- code 0 es éxito, cualquier otro
  * código es error (el mensaje real de TikTok se preserva tal cual).
+ *
+ * Reintenta (intento inicial + 3 reintentos, backoff 1s/3s/8s) solo fallas transitorias --
+ * timeout/conexión o status 429/5xx. TikTok envuelve sus propios errores de
+ * negocio (incluido rate limit) en el body con HTTP 200 -- ese caso NO
+ * dispara retry acá porque no hay evidencia confirmada en este proyecto de
+ * cuál es el código exacto de rate limit de TikTok; agregarlo requiere
+ * verificarlo primero contra logs reales o la documentación de TikTok, no
+ * adivinarlo.
  */
 class TiktokApiClient
 {
@@ -42,7 +52,10 @@ class TiktokApiClient
         $respuesta = Http::withHeaders([
             'Access-Token' => $this->accessToken,
             'Content-Type' => 'application/json',
-        ])->get(self::BASE_URL.$pathAndSlash, $query);
+        ])->retry(4, fn (int $intento) => [1000, 3000, 8000][$intento - 1] ?? 8000, function ($exception) {
+            return $exception instanceof ConnectionException
+                || ($exception instanceof RequestException && in_array($exception->response->status(), [429, 500, 502, 503, 504], true));
+        }, throw: false)->get(self::BASE_URL.$pathAndSlash, $query);
 
         $data = $respuesta->json() ?? [];
 

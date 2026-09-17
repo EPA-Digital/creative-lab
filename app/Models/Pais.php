@@ -27,6 +27,11 @@ class Pais extends Model
         return $this->hasMany(VentaReal::class);
     }
 
+    public function appsflyerApps(): HasMany
+    {
+        return $this->hasMany(AppsflyerApp::class);
+    }
+
     public function usuarios(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'usuario_pais', 'pais_id', 'usuario_id');

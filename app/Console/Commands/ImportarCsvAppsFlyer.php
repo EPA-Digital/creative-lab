@@ -35,6 +35,11 @@ class ImportarCsvAppsFlyer extends Command
 
     public function handle(): int
     {
+        // Ver nota en ImportarAppsFlyerApi::handle() -- mismo pipeline de
+        // caché de imágenes, mismo riesgo de memory_limit real con cuentas
+        // grandes.
+        ini_set('memory_limit', '512M');
+
         $archivo = $this->argument('archivo');
         if (! is_file($archivo)) {
             $this->error("No se encontró el archivo: {$archivo}");
@@ -72,6 +77,9 @@ class ImportarCsvAppsFlyer extends Command
         }
         if ($resumen['excluidos'] > 0) {
             $this->line("{$resumen['excluidos']} ad(s) excluido(s) (sin bloque FB-/TKT- reconocible).");
+        }
+        if ($resumen['sinActividadDescartados'] > 0) {
+            $this->line("{$resumen['sinActividadDescartados']} ad(s) descartado(s) por no tener actividad real (cost/impressions/clicks/installs = 0).");
         }
 
         $this->info("Listo: {$resumen['creativosTocados']} creativo(s) creados/actualizados, {$resumen['resultadosTocados']} resultado(s) del mes guardados, {$resumen['tieneMetaTrue']} con match real de costo (tiene_meta=true).");

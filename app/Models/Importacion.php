@@ -15,6 +15,7 @@ class Importacion extends Model
 
     protected $fillable = [
         'pais_id',
+        'origen',
         'nombre_archivo',
         'desde',
         'hasta',
@@ -27,6 +28,10 @@ class Importacion extends Model
         'resultados_tocados',
         'tiene_meta_true',
         'problemas',
+        'nc_preservados',
+        'nc_recalculados',
+        'orders_preservados',
+        'orders_recalculados',
     ];
 
     protected function casts(): array

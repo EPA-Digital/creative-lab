@@ -44,4 +44,23 @@ return [
         'access_token' => env('TIKTOK_ACCESS_TOKEN'),
     ],
 
+    // Para el futuro importar:appsflyer-api (ver plan de 2026-08-11) --
+    // buffer_atribucion_dias es cuántos días recientes se excluyen del
+    // cálculo automático de "hasta" porque AppsFlyer todavía no terminó de
+    // recibir las conversiones postback de esos días (lag de atribución
+    // conocido, confirmado con el negocio: 5 días por defecto, ajustable).
+    'appsflyer' => [
+        'api_token' => env('APPSFLYER_API_TOKEN'),
+        'buffer_atribucion_dias' => (int) env('APPSFLYER_BUFFER_ATRIBUCION_DIAS', 5),
+    ],
+
+    // Evaluación IA de creativos (2026-08-26, ver plan) -- "Evaluar por
+    // métricas"/"Evaluar por arte" en el modal de detalle. Sin esta key el
+    // resto del dashboard (Lectura/Score, 100% rule-based) sigue funcionando
+    // normal -- solo esos dos botones fallan.
+    'anthropic' => [
+        'api_key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5'),
+    ],
+
 ];

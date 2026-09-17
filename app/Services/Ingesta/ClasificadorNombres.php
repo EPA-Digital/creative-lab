@@ -55,6 +55,25 @@ class ClasificadorNombres
     private const TIPO_CUENTA_CODES_FALLBACK = ['DTC', 'BRD'];
 
     /**
+     * Último recurso, DESPUÉS del segmento explícito Y de MAPA_CAMPANIA_META/
+     * TIKTOK (que siguen siendo la fuente de verdad principal, sin cambios).
+     * Réplica del regex de la pestaña "#1 Meta Ads" del sheet de referencia
+     * de Panamá (confirmado 2026-09-17 contra 9 creativos reales que
+     * quedaban "Sin clasificar" -- segmentos _API_/_ENG_/_PRS_ que ningún
+     * patrón anterior reconoce). Orden de prioridad IMPORTA, es el del
+     * sheet: un bloque con "INSTALL" y "EVENT" a la vez (ej.
+     * "FB-INSTALL-AND-EVENT") resuelve Conversions por "EVENT", NUNCA
+     * Consideration por "INSTALL" -- la regla 3 se evalúa antes que la 4.
+     * Primer match gana, igual que el mapa de patrones.
+     */
+    private const REGEX_FUNNEL_SHEET = [
+        ['patron' => '/REACH|REPVIDEO|AWARENESS/i', 'funnel' => 'AWA'],
+        ['patron' => '/PURCHASE/i', 'funnel' => 'LOY'],
+        ['patron' => '/CONV|EVENT|SHOPPING|ENGAGEMENT|SALES/i', 'funnel' => 'CNV'],
+        ['patron' => '/INSTALL|VOLUME|MESSAGES|TRAFICO/i', 'funnel' => 'CONS'],
+    ];
+
+    /**
      * El segmento "_CON_" NO es el nombre del funnel -- toda campaña real
      * con ese segmento es Install-and-Volume/Advantage-Install, la misma
      * etapa BRD que el mapa de patrones llama "CONS". Sin esta traducción,
@@ -66,12 +85,45 @@ class ClasificadorNombres
     private const FUNNEL_SEGMENTO_A_FUNNEL = ['AWA' => 'AWA', 'CNV' => 'CNV', 'CON' => 'CONS', 'LOY' => 'LOY'];
 
     /**
-     * El "arte" es la parte de la nomenclatura DESPUÉS del rango de fechas
-     * de campaña (ej. "...-VID-03JUL-31JUL-ACER-TADAS" -> arte
-     * "ACER-TADAS"). El separador antes de las fechas varía (VID/MP/SP),
-     * igual que el primer token de fecha.
+     * El "arte" es el marcador de formato + fecha(s) + el resto de la
+     * nomenclatura (ej. "...-VID-03JUL-31JUL-ACER-TADAS" -> arte
+     * "VID-03JUL-31JUL-ACER-TADAS") -- INCLUYE el marcador y la fecha,
+     * confirmado explícitamente por el negocio (2026-08-12) contra las
+     * tablas reales de referencia de julio México, donde el NOMBRE COMÚN
+     * esperado trae el prefijo de formato+fecha (ej.
+     * "SP-01JUL-19JUL-PROMO-AON-CORONA-MEDIA-24X20OFF"). Como arte también
+     * es la clave de agrupación de venta_real ("funnel::arte"), esto es a
+     * propósito: dos publicaciones del MISMO concepto creativo en fechas o
+     * formatos distintos se agrupan por separado (una fila por tanda de
+     * fechas), no coalescidas en una sola -- decisión explícita del
+     * negocio, no un efecto secundario.
+     *
+     * El separador antes de las fechas varía (VID/MP/SP/CARO), igual que el
+     * primer token de fecha. Confirmado con datos reales de México
+     * (2026-08-12, 1,740 de 5,350 creativos con arte NULL, re-diagnosticado
+     * a mano contra la base): el regex original exigía SIEMPRE un rango de
+     * dos fechas y solo reconocía VID/MP/SP, pero:
+     *   - CARO es un marcador de formato válido desde 2026-08-04 (ver
+     *     FORMATO_CODES) que este regex nunca contempló -- se agrega acá.
+     *   - La mayoría de los nombres reales (561 del total NULL) traen una
+     *     sola fecha, no un rango -- la segunda fecha pasa a ser opcional.
+     *   - Algunos traen un token corto (ej. "AON") entre el marcador y la
+     *     fecha (ej. "MP-AON-03JUL-CATALOGO") -- se agrega como opcional.
+     *   - El separador antes del marcador puede ser "_" en vez de "-" (ej.
+     *     "...CHECKBOX_SP-23JUL-1AGO-CUPON-REFERIDOS").
+     *   - El separador antes del marcador también puede ser el INICIO de la
+     *     cadena -- confirmado con el fallback de parsearNombre() para ads
+     *     sin bloque FB-/TKT- (ej. "VID-01JUL-31JUL-CRISTIAN-ONTIVEROS", el
+     *     Ad name completo, sin prefijo de campaña): exigir "[_-]" literal
+     *     antes del marcador hacía fallar el match porque no hay ningún
+     *     carácter antes de "VID" en absoluto.
+     * Todos los agregados de fecha/marcador son estrictamente más
+     * permisivos (grupos opcionales, ningún token requerido se quita): un
+     * nombre que ya matcheaba con rango de dos fechas se sigue resolviendo
+     * con el mismo marcador+fecha+resto, esto solo convierte no-matches
+     * previos en matches.
      */
-    private const ARTE_RE = '/-(?:VID|MP|SP)-\d{1,2}[A-Z]{0,4}-\d{1,2}[A-Z]{3,4}-(.+)$/i';
+    private const ARTE_RE = '/(?:^|[_-])((?:VID|MP|SP|CARO)-(?:[A-Z]{2,6}-)?\d{1,2}[A-Z]{0,4}(?:-\d{1,2}[A-Z]{3,4})?-.+)$/i';
 
     private const EXT_VIDEO_RE = '/\.(mp4|mov)/i';
 
@@ -99,8 +151,17 @@ class ClasificadorNombres
         // El código de bloque se busca "<PREFIJO>-<CODIGO>" en cualquier
         // parte de la cadena (precedido por inicio de cadena, "_" o "-"),
         // sin asumir dónde cae la extensión. Mismo criterio para FB- (Meta)
-        // y TKT- (TikTok).
-        return '/(?:^|[_-])'.$prefijo.'-([A-Za-z0-9-]+)/i';
+        // y TKT- (TikTok). La clase de caracteres capturada incluye "_"
+        // (agregado 2026-08-12) -- confirmado con datos reales de México:
+        // nombres como "...CHECKBOX_SP-23JUL-1AGO-CUPON-REFERIDOS" tienen
+        // un guion bajo justo antes del marcador de fecha, y la clase
+        // original (sin "_") cortaba la captura ahí, perdiendo todo el
+        // segmento fecha+arte que venía después. El separador ENTRE el
+        // prefijo y lo que sigue también puede ser "_" (ej.
+        // "FB_AWARENESS-MONTERREY..." en vez de "FB-AWARENESS-..."),
+        // confirmado en el mismo re-diagnóstico -- se acepta "[_-]" ahí
+        // también, no solo "-".
+        return '/(?:^|[_-])'.$prefijo.'[_-]([A-Za-z0-9_-]+)/i';
     }
 
     /**
@@ -159,9 +220,13 @@ class ClasificadorNombres
     /**
      * Busca el bloque de campaña contra el mapa de patrones de texto libre
      * de la plataforma (primer match gana, por eso el orden de los mapas
-     * importa). Cualquier campaña que no calce con ningún patrón queda SIN
-     * CLASIFICAR (funnel y tipoCuenta null) -- nunca se asigna un funnel al
-     * azar.
+     * importa). Si nada matchea ahí, intenta el regex genérico del sheet
+     * (REGEX_FUNNEL_SHEET) como último recurso -- solo aporta `funnel`,
+     * nunca `tipoCuenta` (ese sigue saliendo únicamente del segmento
+     * explícito _DTC_/_BRD_ en parsearNombre(), este fallback no tiene forma
+     * de inferirlo). Cualquier campaña que no calce con NADA de lo anterior
+     * queda SIN CLASIFICAR (funnel y tipoCuenta null) -- nunca se asigna un
+     * funnel al azar.
      *
      * @return array{funnel: ?string, tipoCuenta: ?string, patron: ?string}
      */
@@ -184,6 +249,16 @@ class ClasificadorNombres
                         'patron' => $entrada['patron'],
                     ];
                 }
+            }
+        }
+
+        foreach (self::REGEX_FUNNEL_SHEET as $regla) {
+            if (preg_match($regla['patron'], $bloque) === 1) {
+                return [
+                    'funnel' => $regla['funnel'],
+                    'tipoCuenta' => null,
+                    'patron' => 'REGEX_SHEET:'.$regla['patron'],
+                ];
             }
         }
 
@@ -279,14 +354,25 @@ class ClasificadorNombres
     {
         $plataforma = self::clasificarPlataforma($campaignRaw, $adRaw);
         if ($plataforma === null) {
+            // Sin bloque FB-/TKT- reconocible en Campaign ni en Ad, pero el
+            // Ad name puede YA SER el bloque completo (confirmado con datos
+            // reales de México, 2026-08-12: ads de TikTok con nombre corto
+            // tipo "VID-01JUL-31JUL-CRISTIAN-ONTIVEROS", sin envoltorio de
+            // campaña). El caller que ya conoce la plataforma por otra vía
+            // (ver CruceCostosAppsFlyer::cruzar(), caso "solo API": el campo
+            // plataforma de la card sale de qué API de costo matcheó, no de
+            // este chequeo) puede seguir aprovechando el arte aunque acá no
+            // se pueda inferir meta/tiktok del texto solo -- nunca se
+            // inventa plataforma, pero tampoco hay razón para tirar el arte
+            // a la basura junto con ella.
             return [
                 'plataforma' => null,
                 'funnel' => null,
                 'tipoCuenta' => null,
                 'patron' => null,
-                'arte' => null,
-                'videoFilename' => null,
-                'formato' => null,
+                'arte' => self::extraerArte($adRaw),
+                'videoFilename' => self::extraerVideoFilename($adRaw),
+                'formato' => self::buscarFormato($adRaw),
             ];
         }
 
@@ -324,7 +410,12 @@ class ClasificadorNombres
             'funnel' => $funnel,
             'tipoCuenta' => $tipoCuenta,
             'patron' => $patron,
-            'arte' => self::extraerArte($bloques['paraArte']),
+            // Respaldo contra $adRaw completo (agregado 2026-08-12) si el
+            // bloque aislado no matcheó -- cubre casos donde el bloque
+            // FB-/TKT- se encontró pero por algún patrón no anticipado
+            // ARTE_RE no calzó ahí; nunca hace peor que antes, solo agrega
+            // una segunda oportunidad antes de rendirse con null.
+            'arte' => self::extraerArte($bloques['paraArte']) ?? self::extraerArte($adRaw),
             'videoFilename' => self::extraerVideoFilename($adRaw),
             // Formato busca en el Ad crudo completo, NO en $bloques['paraArte']
             // (que ya viene recortado por extraerBloques) -- el token de

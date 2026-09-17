@@ -42,6 +42,11 @@
     --violet: #8b6bff;
     --coral: #ff6b5e;
     --sky: #4fb6ff;
+    /* --yellow (2026-08-21, pedido explícito): dedicado a Awareness en el
+       semáforo de funnel -- --amber ya no es literalmente ámbar (ver nota
+       arriba, es el morado de marca desde la paleta Nocturne), así que no
+       sirve para "amarillo" sin romper su otro uso. */
+    --yellow: #d8a94a;
     --amber-ink: #161826;
     --mint-ink: #06231b;
     --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
@@ -65,6 +70,7 @@
     --violet: #6b46e8;
     --coral: #d9432f;
     --sky: #1c7ed6;
+    --yellow: #b8790a;
     --amber-ink: #fff8ec;
     --mint-ink: #f0fffa;
     --shadow: 0 20px 50px rgba(20, 15, 10, 0.12);
@@ -172,6 +178,32 @@ h1, h2, .num, .kpi-value {
     outline: 2px solid var(--amber);
     outline-offset: 2px;
 }
+/* Inteligencia -- carrito de selección (2026-08-27, ver plan). */
+.seleccion-card--elegida {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 20%, transparent);
+}
+.seleccion-card--deshabilitada {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+.seleccion-card--deshabilitada:hover {
+    border-color: var(--border);
+    transform: none;
+}
+.seleccion-card-check {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--amber);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 .resumen-card-imagen {
     position: relative;
     aspect-ratio: 3 / 4;
@@ -195,25 +227,51 @@ h1, h2, .num, .kpi-value {
     margin: 0 0 6px;
     line-height: 1.3;
 }
+/* Taxonomía legible (2026-08-27, ver plan) -- subtexto con el nombre
+   técnico original cuando la card muestra un nombre amigable arriba. Solo
+   se pinta cuando existe (ver nombrePrincipalYTecnico en motor.js) -- sin
+   corrección, .resumen-card-titulo se queda como único texto, igual que
+   antes. */
+.resumen-card-tecnico {
+    font-size: 0.66rem;
+    color: var(--text-faint);
+    margin: -3px 0 6px;
+    word-break: break-all;
+}
 .resumen-card-meta {
     display: flex;
     align-items: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 6px 8px;
     margin: 0 0 12px;
     font-size: 0.74rem;
     color: var(--text-faint);
     padding-bottom: 12px;
     border-bottom: 1px solid var(--border);
 }
+/* resumen-card-vigencia -- 2026-08-28, pedido explícito: "el tiempo que
+   estuvieron activos". Vive debajo del divisor de resumen-card-meta a
+   propósito (no lo reemplaza) -- es un dato aparte, aproximado, no una
+   propiedad fija del creativo como plataforma/etapa. */
+.resumen-card-vigencia {
+    margin: -6px 0 12px;
+    font-size: 0.7rem;
+    color: var(--text-faint);
+}
 .resumen-card-funnel {
-    font-family: 'JetBrains Mono', monospace;
+    /* 2026-08-21: nombre completo del funnel en vez de código abreviado
+       (CNV/CONS/etc.) -- se quita el monospace (más ancho por caracter,
+       pensado para códigos cortos) por la fuente base, y el contenedor
+       ahora envuelve (flex-wrap arriba) para que "Consideración"/"Awareness"
+       nunca fuercen overflow horizontal de la card. */
     font-size: 0.65rem;
     font-weight: 600;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
     background: color-mix(in srgb, var(--stage-color, var(--violet)) 20%, transparent);
     color: var(--stage-color, var(--violet));
     border-radius: 5px;
     padding: 2px 6px;
+    white-space: nowrap;
 }
 .resumen-card-estrella {
     margin-bottom: 10px;
@@ -318,9 +376,16 @@ h1, h2, .num, .kpi-value {
 .podio {
     display: flex;
     align-items: flex-end;
-    justify-content: center;
+    /* nowrap + overflow-x (2026-08-27, corrección visual: con flex-wrap:wrap
+       la card #3 se caía a una segunda fila en ventanas angostas -- fuera
+       de vista, "top3 incompleto". Las 3 quedan siempre en una sola fila;
+       si no entran, se puede hacer scroll horizontal. justify-content:
+       "safe center" evita el bug conocido de Flexbox donde center+overflow
+       deja el extremo inicial inalcanzable con scroll. */
+    justify-content: safe center;
     gap: 20px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     padding-top: 16px;
 }
 .podio-col {
@@ -852,7 +917,10 @@ h1, h2, .num, .kpi-value {
    layout de TikTok, sin importar la plataforma. */
 .modal {
     width: 100%;
-    max-width: 880px;
+    /* 1040px (2026-08-21, hasta 880px antes) -- el modal v2 (grid de 3 KPIs
+       + filas de Etapas) necesita más ancho que la tabla de 2 columnas
+       anterior para no apretarse. */
+    max-width: 1040px;
     max-height: 88vh;
     overflow: hidden;
     background: var(--surface);
@@ -881,12 +949,19 @@ h1, h2, .num, .kpi-value {
     justify-content: center;
 }
 .modal-image-wrap {
+    /* 2026-08-21: ancho fijo + contain (como el boceto) en vez de
+       aspect-ratio 9/16 -- ese ratio asumía video vertical de TikTok
+       únicamente; para imagen/catálogo (aspect ratios muy variados)
+       recortaba o dejaba franjas raras. Ancho fijo + object-fit:contain
+       centra cualquier proporción sobre el fondo oscuro sin recortar. */
     position: relative;
-    width: 38%;
+    width: 400px;
     flex: 0 0 auto;
-    aspect-ratio: 9 / 16;
     max-height: 88vh;
-    background: var(--surface-2);
+    background: #0c0d17;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
 }
 .modal-image-wrap img {
@@ -958,11 +1033,6 @@ h1, h2, .num, .kpi-value {
     font-size: 1.15rem;
     margin: 0 0 4px;
 }
-.modal-meta {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    margin: 0 0 14px;
-}
 .modal-copy-note {
     font-size: 0.78rem;
     color: var(--text-faint);
@@ -971,43 +1041,6 @@ h1, h2, .num, .kpi-value {
     padding: 10px 12px;
     border: 1px dashed var(--border);
     border-radius: 8px;
-}
-.modal-highlight-stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin: 0 0 18px;
-    padding: 14px;
-    background: var(--surface-2);
-    border-radius: 10px;
-}
-.modal-highlight-stats .stat-label {
-    font-size: 0.68rem;
-    color: var(--text-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-}
-.modal-highlight-stats .stat-value {
-    font-size: 1rem;
-    font-weight: 700;
-    margin-top: 2px;
-}
-.copy-section {
-    margin: 0 0 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-.copy-block {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-.copy-label {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--text-faint);
 }
 .copy-body {
     font-size: 0.95rem;
@@ -1021,95 +1054,1164 @@ h1, h2, .num, .kpi-value {
     margin: 0;
     color: var(--text);
 }
-.copy-desc {
-    font-size: 0.8rem;
+
+/* =========================================================================
+   Modal v2 (2026-08-21) -- rediseño del detalle de creativo, portado del
+   boceto del usuario (bocetos-modals.html, 4A/4B). Reemplaza
+   .modal-highlight-stats, .modal-metrics-grid, .fatiga-*, .sparkline-block
+   (arriba/abajo de este bloque en el archivo original -- ver historial):
+   dos vistas (Resumen/Etapas) dentro del mismo modal, comparación contra
+   el promedio de grupo en vez de la tabla plana de todas las métricas.
+   ========================================================================= */
+.modal-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding-bottom: 18px;
+    /* 26px (18px antes, 2026-08-21) -- pedido explícito: se veía muy
+       pegado el título/tag contra el grid de KPIs de abajo. */
+    margin-bottom: 26px;
+    border-bottom: 1px solid var(--border);
+}
+.modal-header-info {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+/* modal-scores: contenedor de los anillos de score (rendimiento + arte,
+   2026-08-26) -- vive a la derecha del header, separado del bloque de
+   título/tag que ahora puede crecer libremente (flex:1 arriba). */
+.modal-scores {
+    display: flex;
+    gap: 20px;
+    flex: none;
+}
+.modal-score-ring-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+.modal-score-ring-caption {
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    white-space: nowrap;
+}
+.modal-eyebrow {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+/* 2026-08-21, pedido explícito (boceto anotado a mano): el tag de funnel
+   pasa a vivir en la MISMA fila que el título, no debajo -- title-row
+   envuelve los dos, con wrap por si el nombre es muy largo y no entran
+   ambos en una sola línea. */
+.modal-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.modal-title-row h2 {
     margin: 0;
+}
+/* Taxonomía legible (2026-08-27, ver plan) -- lápiz + edición inline del
+   nombre amigable, y el subtexto con el nombre técnico original cuando
+   hay uno asignado (ver CreativeModal.vue). */
+.modal-nombre-editar {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-faint);
+    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    font-size: 0.78rem;
+    line-height: 1;
+    flex: none;
+}
+.modal-nombre-editar:hover {
+    color: var(--violet);
+    border-color: var(--violet);
+}
+.modal-nombre-edicion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.modal-nombre-input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 0.95rem;
+    min-width: 220px;
+}
+.modal-nombre-input:focus {
+    outline: 2px solid var(--violet);
+    outline-offset: 1px;
+}
+.modal-nombre-tecnico {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    word-break: break-all;
+}
+.modal-funnel-tag {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--stage-color, var(--violet)) 18%, transparent);
+    color: var(--stage-color, var(--violet));
+    border: 1px solid color-mix(in srgb, var(--stage-color, var(--violet)) 45%, transparent);
+}
+/* Score de rendimiento/arte -- anillo SVG + tooltip de desglose (2026-08-26,
+   rediseño vía Claude Design: "Detalle de anuncio.dc.html"). Reemplaza el
+   badge plano anterior. r=22 -> circunferencia ~138.2 (calculada en JS,
+   CIRCUNFERENCIA en CreativeModal.vue) -- stroke-dashoffset se anima con
+   transition acá, el valor lo calcula el componente. Sin librería de
+   tooltip -- este proyecto no usa ninguna, todo es CSS puro. */
+.modal-score-ring-wrap {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+}
+.modal-score-ring {
+    position: absolute;
+    inset: 0;
+    transform: rotate(-90deg);
+}
+.modal-score-ring-track {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 3;
+}
+.modal-score-ring-fill {
+    fill: none;
+    stroke: var(--score-color, var(--text-faint));
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 200ms ease-out;
+}
+.modal-score-ring-value {
+    font-size: 1.05rem;
+    color: var(--text);
+}
+.modal-score-ring-value-max {
+    font-size: 0.7rem;
+    color: var(--text-faint);
+}
+.modal-score-ring-help {
+    position: absolute;
+    right: -6px;
+    bottom: -4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-score-ring-wrap:hover .modal-score-ring-help,
+.modal-score-ring-wrap:focus-within .modal-score-ring-help {
+    border-color: var(--violet);
+    color: var(--violet);
+}
+.modal-score-tooltip {
+    display: block;
+    position: absolute;
+    top: 62px;
+    right: -12px;
+    width: 300px;
+    z-index: 30;
+    background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--violet) 35%, transparent);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+    text-align: left;
+    cursor: auto;
+}
+.modal-score-tooltip-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+}
+.modal-score-tooltip p {
+    margin: 0 0 10px;
+    font-size: 0.72rem;
+    line-height: 1.5;
     color: var(--text-muted);
 }
-.fatiga-section {
-    margin: 0 0 18px;
-    padding: 14px;
-    background: var(--surface-2);
-    border-radius: 10px;
+.modal-score-tooltip-kicker {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--violet);
+    margin-bottom: 4px;
 }
-.fatiga-header {
+.modal-score-tooltip-explicacion {
+    color: var(--text) !important;
+}
+.modal-score-tooltip-grid {
+    display: grid;
+    grid-template-columns: 84px 1fr 42px;
+    align-items: center;
+    row-gap: 8px;
+    column-gap: 10px;
+    font-size: 0.72rem;
+}
+.modal-score-tooltip-grid > span:first-child {
+    color: var(--text-muted);
+}
+.modal-score-tooltip-bar {
+    height: 5px;
+    border-radius: 999px;
+    background: var(--border);
+    display: block;
+}
+.modal-score-tooltip-bar > span {
+    display: block;
+    height: 5px;
+    border-radius: 999px;
+}
+.modal-score-tooltip-foot {
+    margin: 10px 0 0 !important;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 0.68rem !important;
+    color: var(--text-faint) !important;
+}
+.modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.modal-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.modal-kpi {
+    background: var(--surface-2);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.modal-kpi.accent {
+    background: color-mix(in srgb, var(--violet) 14%, var(--surface-2));
+}
+.modal-kpi-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.modal-kpi.accent .modal-kpi-label {
+    color: var(--violet);
+}
+.modal-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1;
+}
+.modal-kpi-sub {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+}
+/* modal-view-dots (2026-08-21) -- botones directos "Resumen"/"Etapas". Se
+   probaron flechas grandes en los bordes del modal para pasar de vista,
+   pero el usuario pidió sacarlas ("se ve fea") -- vuelve a quedar solo
+   este par de botones. */
+.modal-view-dots {
+    display: inline-flex;
+    align-self: flex-start;
+    gap: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 3px;
+}
+.modal-view-dot {
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.modal-view-dot:hover {
+    color: var(--text);
+}
+.modal-view-dot.active {
+    background: var(--violet);
+    color: #fff;
+}
+.modal-anuncio-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 20px;
+    row-gap: 12px;
+    align-items: baseline;
+    font-size: 0.85rem;
+}
+.modal-anuncio-grid .k {
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.modal-anuncio-grid .v {
+    min-width: 0;
+    color: var(--text);
+}
+.modal-copy-empty {
+    color: var(--text-faint);
+}
+/* modal-vigencia -- 2026-08-28, pedido explícito: "el tiempo que
+   estuvieron activos", detalle completo (todos los tramos, no solo el mes
+   que se está viendo -- eso lo tiene la card, compacto). */
+.modal-vigencia {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.modal-vigencia-tramo {
+    display: inline-block;
+    margin-right: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+}
+.modal-vigencia-tramo:not(:last-of-type)::after {
+    content: ',';
+    color: var(--text-faint);
+}
+.modal-vigencia-nota {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--text-faint);
+    margin-top: 2px;
+}
+.modal-adid {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+.modal-copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    font-size: 0.7rem;
+    padding: 3px 8px;
+}
+.modal-copy-btn:hover {
+    color: var(--text);
+    border-color: var(--text-muted);
+}
+.modal-copy-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.modal-lectura {
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.modal-lectura-kicker {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--violet);
+}
+.modal-lectura p {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-muted);
+}
+/* Evaluación IA on-demand (2026-08-26) -- acento --sky y borde dashed a
+   propósito, para que se lea como "generado por IA bajo demanda", distinto
+   del bloque determinístico de Lectura (acento --violet, sólido). */
+.modal-ia-acciones {
+    display: flex;
+    gap: 10px;
+}
+.modal-ia-acciones button {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.modal-ia-acciones button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+.modal-ia-resultado {
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px dashed color-mix(in srgb, var(--sky) 45%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.modal-ia-kicker {
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sky);
+}
+.modal-ia-resultado p {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: var(--text-muted);
+}
+.modal-etapas {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.modal-etapas-leyenda {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    flex-wrap: wrap;
+}
+.modal-etapas-leyenda span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.modal-etapa-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+}
+/* 2026-08-26, rediseño vía Claude Design: la fila pasa de grid plano a
+   tarjeta con una barra de progreso debajo -- modal-etapa-row-datos
+   conserva el grid original (dot/label | valor | métrica | tag), la barra
+   vive en su propio elemento hijo para no romper esas columnas. */
+.modal-etapa-row {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    padding: 15px 18px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-2);
+}
+.modal-etapa-row-datos {
+    display: grid;
+    grid-template-columns: 1.4fr max-content 1fr max-content;
+    gap: 14px;
+    align-items: center;
+}
+.modal-etapa-progreso {
+    position: relative;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border);
+    display: block;
+}
+.modal-etapa-progreso > span:first-child {
+    display: block;
+    height: 4px;
+    border-radius: 999px;
+    opacity: 0.85;
+    transition: width 200ms ease-out;
+}
+/* modal-etapa-media-marca -- 2026-08-28, pedido explícito: progresoPct es
+   un score de desviación normalizado (12.5/25 = "en la media" siempre,
+   ver subScoreMetrica en motor.js), así que el 50% de esta barra ES
+   literalmente la media del grupo por construcción -- no hace falta
+   calcular nada, solo marcar ese punto fijo para que la barra se explique
+   sola en vez de depender de leer el tag de texto al lado. */
+.modal-etapa-media-marca {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 2px;
+    height: 10px;
+    background: var(--text-faint);
+    border-radius: 1px;
+    pointer-events: none;
+}
+.modal-etapa-media-marca--leyenda {
+    position: static;
+    display: inline-block;
+    width: 2px;
+    height: 8px;
+    transform: none;
+}
+
+/* ---------- modal funnel/waterfall (Etapas) ---------- */
+.modal-funnel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 0 6px;
+}
+.modal-funnel-paso {
+    display: grid;
+    grid-template-columns: 1fr 200px;
+    align-items: center;
+    gap: 14px;
+}
+.modal-funnel-barra-wrap {
+    height: 22px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    overflow: hidden;
+}
+.modal-funnel-barra {
+    height: 100%;
+    min-width: 4%;
+    border-radius: 6px;
+    background: linear-gradient(to right, var(--violet), color-mix(in srgb, var(--violet) 55%, transparent));
+    transition: width 200ms ease-out;
+}
+.modal-funnel-info {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    font-size: 0.78rem;
+}
+.modal-funnel-label {
+    font-weight: 600;
+    white-space: nowrap;
+}
+.modal-funnel-valor {
+    color: var(--text-muted);
+}
+.modal-funnel-caida {
+    font-size: 0.68rem;
+    color: var(--text-faint);
+    white-space: nowrap;
+    margin-left: auto;
+}
+@media (max-width: 720px) {
+    .modal-funnel-paso {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+}
+.modal-etapa-nota {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    padding: 0 0 0 20px;
+}
+.modal-etapa-info {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+}
+.modal-etapa-labels {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+.modal-etapa-label {
+    font-size: 0.88rem;
     font-weight: 600;
-    font-size: 0.9rem;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
 }
-.fatiga-pill {
+.modal-etapa-categoria {
     font-size: 0.68rem;
-    font-weight: 700;
-    padding: 2px 9px;
-    border-radius: 999px;
-    color: #0a0a0a;
-    text-transform: uppercase;
-}
-.fatiga-dias {
-    font-size: 0.72rem;
     color: var(--text-faint);
-    font-weight: 400;
 }
-.fatiga-grid {
+.modal-etapa-valor {
+    text-align: right;
+    font-size: 1.05rem;
+}
+.modal-etapa-metrica {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    font-size: 0.85rem;
+}
+.modal-etapa-metrica-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--violet);
+}
+.modal-etapa-tag {
+    font-size: 0.68rem;
+    font-weight: 600;
+    white-space: nowrap;
+    padding: 3px 9px;
+    border-radius: 999px;
+    justify-self: end;
+}
+.modal-etapa-tag--positive {
+    background: color-mix(in srgb, var(--mint) 16%, transparent);
+    color: var(--mint);
+    border: 1px solid color-mix(in srgb, var(--mint) 45%, transparent);
+}
+.modal-etapa-tag--negative {
+    background: color-mix(in srgb, var(--coral) 16%, transparent);
+    color: var(--coral);
+    border: 1px solid color-mix(in srgb, var(--coral) 45%, transparent);
+}
+.modal-etapa-tag--neutral {
+    background: color-mix(in srgb, var(--yellow) 16%, transparent);
+    color: var(--yellow);
+    border: 1px solid color-mix(in srgb, var(--yellow) 45%, transparent);
+}
+.modal-etapas-footer {
+    display: flex;
+    gap: 18px;
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+}
+.modal-etapas-footer span:last-child {
+    margin-left: auto;
+}
+@media (max-width: 720px) {
+    .modal-kpis,
+    .modal-etapa-row-datos {
+        grid-template-columns: 1fr;
+    }
+    .modal-header {
+        flex-wrap: wrap;
+    }
+}
+
+/* =========================================================================
+   Inteligencia -- comparación head-to-head de creativos (2026-08-27, ver
+   plan). ComparacionCreativos.vue/SeleccionCard.vue son componentes (no
+   páginas) -- su CSS vive acá, mismo criterio que .modal-* / .resumen-card*
+   ya usado en el resto del archivo.
+   ========================================================================= */
+.comparacion {
+    display: flex;
+    flex-direction: column;
+}
+.comparacion-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 30px;
+}
+.comparacion-volver {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 0;
+}
+.comparacion-volver:hover {
+    color: var(--amber);
+}
+.comparacion-titulo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.comparacion-eyebrow {
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.comparacion-titulo-texto {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+.comparacion-header-spacer {
+    width: 140px;
+}
+
+/* comparacion-comparabilidad -- 2026-08-28, pedido explícito: marcar
+   claramente cuándo la comparación es o no válida según días activos
+   REALES (no taxonomía). Ámbar/coral (advertencia), nunca rojo de error
+   -- es una salvedad de lectura, no un fallo del sistema. */
+.comparacion-comparabilidad {
+    background: color-mix(in srgb, var(--amber) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+}
+.comparacion-comparabilidad--ok {
+    background: color-mix(in srgb, var(--mint) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--mint) 40%, transparent);
+}
+.comparacion-comparabilidad-titulo {
+    margin: 0;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+}
+.comparacion-comparabilidad-lista {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.comparacion-comparabilidad-lista li {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+
+/* Layout VS (2 creativos) */
+.comparacion-vs {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr 1fr;
+    position: relative;
+    gap: 56px;
+    padding-bottom: 8px;
+    margin-bottom: 30px;
+}
+.comparacion-vs-divisor {
+    position: absolute;
+    top: 0;
+    bottom: 8px;
+    left: 50%;
+    width: 1px;
+    background: var(--border);
+}
+.comparacion-vs-badge {
+    position: absolute;
+    top: 43%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    border: 1.5px solid var(--amber);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--amber);
+    letter-spacing: 0.02em;
+}
+.comparacion-vs-lado {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+.comparacion-vs-lado .comparacion-card {
+    width: 100%;
+    max-width: 320px;
+}
+
+/* Layout grilla (3-4 creativos) */
+.comparacion-grilla {
+    display: grid;
+    grid-template-columns: repeat(var(--n-cols, 4), 1fr);
+    gap: 18px;
+    margin-bottom: 30px;
+}
+.comparacion-grilla-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+/* 2026-08-28, fix real: a diferencia de .comparacion-vs-lado .comparacion-card
+   (que sí fija width:100%), esta regla faltaba acá -- sin un ancho
+   explícito, .resumen-card-imagen (aspect-ratio:3/4, sin width propio) se
+   termina dimensionando por el tamaño NATURAL de cada <img>, así que un
+   creativo con imagen de alta resolución (ej. la del match manual de
+   Drive) se veía más grande que uno con thumbnail de video borroso/chico
+   -- nada que ver con "falta de imagen", las 3 columnas del grid ya son
+   1fr iguales, solo faltaba que la card las llenara.
+*/
+.comparacion-grilla-col .comparacion-card {
+    width: 100%;
+}
+
+.comparacion-card {
+    border-width: 1.5px;
+    position: relative;
+}
+.comparacion-lider {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 3px 9px;
+}
+.comparacion-score {
+    display: flex;
+    align-items: center;
     gap: 10px;
 }
-.fatiga-metric {
-    text-align: center;
+.comparacion-score--centrado {
+    justify-content: center;
 }
-.fatiga-metric-label {
+.comparacion-score-label {
     font-size: 0.68rem;
-    color: var(--text-faint);
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    color: var(--text-faint);
 }
-.fatiga-metric-valor {
-    font-size: 0.95rem;
-    font-weight: 600;
-    margin-top: 2px;
+.comparacion-score-valor {
+    font-size: 1.05rem;
+    font-weight: 700;
 }
-.fatiga-metric-tendencia {
-    font-size: 0.8rem;
-    font-weight: 600;
-    margin-top: 2px;
-}
-.modal-metrics-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px 16px;
-    margin-bottom: 18px;
-}
-.metric-item {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 0.82rem;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border);
-}
-.metric-item .k {
-    color: var(--text-muted);
-}
-.metric-item .v {
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 600;
-}
-.sparkline-block {
-    margin-top: 4px;
-}
-.sparkline-block .k {
+.comparacion-score-etiqueta {
     font-size: 0.72rem;
     color: var(--text-muted);
-    margin-bottom: 6px;
-    display: block;
 }
-.sparkline-block svg {
-    width: 100%;
-    height: 56px;
+
+/* Barras "quién va ganando" */
+.comparacion-bloque {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin-bottom: 20px;
+}
+.comparacion-resumen {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin: 0 0 18px;
+}
+.comparacion-metrica {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-bottom: 18px;
+}
+.comparacion-metrica:last-child {
+    margin-bottom: 0;
+}
+.comparacion-metrica-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.comparacion-barra-fila {
+    display: grid;
+    grid-template-columns: 150px 1fr 74px;
+    align-items: center;
+    gap: 10px;
+}
+.comparacion-barra-nombre {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.comparacion-barra-track {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+}
+.comparacion-barra-fill {
     display: block;
+    height: 100%;
+}
+.comparacion-barra-valor {
+    font-size: 0.78rem;
+    text-align: right;
+}
+
+/* ---------- TendenciaChart (2026-08-28, selector de métrica + tipo) ---------- */
+.tendencia-panel-cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.tendencia-panel-titulo {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.tendencia-panel-controles {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.tendencia-selector-metrica {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.tendencia-chip {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-faint);
+    white-space: nowrap;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.tendencia-chip:hover {
+    color: var(--text-muted);
+    border-color: var(--text-faint);
+}
+.tendencia-chip.activo {
+    background: color-mix(in srgb, var(--violet) 18%, transparent);
+    border-color: var(--violet);
+    color: var(--violet);
+}
+.tendencia-selector-tipo {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    flex: none;
+}
+.tendencia-tipo-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 22px;
+    border-radius: 6px;
+    color: var(--text-faint);
+}
+.tendencia-tipo-btn.activo {
+    background: var(--surface);
+    color: var(--violet);
+}
+.tendencia-tipo-btn.deshabilitado {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.tendencia-leyenda {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 0.7rem;
+    margin-bottom: 8px;
+}
+.tendencia-leyenda-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.tendencia-leyenda-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+}
+.tendencia-grafica-wrap {
+    position: relative;
+}
+.tendencia-svg {
+    display: block;
+    touch-action: none;
+}
+.tendencia-gridline {
+    stroke: var(--border);
+    stroke-width: 1;
+}
+.tendencia-tick-label {
+    fill: var(--text-faint);
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+}
+.tendencia-barra {
+    opacity: 0.9;
+}
+.tendencia-crosshair {
+    stroke: var(--text-faint);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    pointer-events: none;
+}
+.tendencia-punto-hover {
+    stroke: var(--surface);
+    stroke-width: 2;
+    pointer-events: none;
+}
+.tendencia-panel-pie {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 0.66rem;
+    color: var(--text-faint);
+}
+.tendencia-tooltip {
+    position: absolute;
+    top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 150px;
+    padding: 9px 11px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    pointer-events: none;
+    z-index: 4;
+}
+.tendencia-tooltip--centro {
+    transform: translateX(-50%);
+}
+.tendencia-tooltip--izquierda {
+    transform: translateX(0);
+}
+.tendencia-tooltip--derecha {
+    transform: translateX(-100%);
+}
+.tendencia-tooltip-fecha {
+    font-size: 0.66rem;
+    font-weight: 600;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.tendencia-tooltip-fila {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.tendencia-tooltip-key {
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+    flex: none;
+}
+.tendencia-tooltip-nombre {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tendencia-tooltip-valor {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--text);
+    flex: none;
+}
+
+/* Selector de modo */
+.comparacion-modo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 22px 0 8px;
+}
+.comparacion-modo-toggle {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 11px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+.comparacion-modo-toggle button {
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 20px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-faint);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.comparacion-modo-toggle button.activo {
+    cursor: default;
+    background: var(--amber);
+    color: var(--amber-ink);
+}
+.comparacion-modo-toggle button:disabled {
+    cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+    .comparacion-vs,
+    .comparacion-grilla {
+        grid-template-columns: 1fr;
+    }
+    .comparacion-vs-divisor,
+    .comparacion-vs-badge {
+        display: none;
+    }
 }

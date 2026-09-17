@@ -10,6 +10,7 @@ import CreativeCard from '@/Components/Creativo/CreativeCard.vue';
 const props = defineProps({
     creativos: { type: Array, required: true }, // ya ordenados
     estrellaOverride: { type: Function, default: null }, // (creativo) => {label, value} | null
+    mes: { type: String, default: null }, // 'YYYY-MM' -- para el rango de actividad de la card (ver rangoActividadEnMes)
 });
 
 const emit = defineEmits(['abrir']);
@@ -65,6 +66,7 @@ onUnmounted(() => {
                 :creativo="c"
                 :rank="i + 1"
                 :estrella-override="estrellaOverride ? estrellaOverride(c) : null"
+                :mes="mes"
                 @abrir="emit('abrir', $event)"
             />
         </div>
