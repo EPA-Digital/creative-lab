@@ -29,7 +29,7 @@ RUN npm run build
 # --- Stage final: php-fpm + nginx, un solo contenedor, un solo puerto -----
 FROM php:8.4-fpm-alpine
 
-RUN apk add --no-cache nginx supervisor icu-dev libzip-dev \
+RUN apk add --no-cache nginx supervisor icu-dev libzip-dev oniguruma-dev \
     && docker-php-ext-install pdo_mysql mbstring bcmath opcache intl \
     && rm -rf /var/cache/apk/*
 
