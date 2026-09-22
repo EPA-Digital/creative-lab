@@ -1,0 +1,148 @@
+name: Deploy a Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: epa-turing
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev
+  REPOSITORY: epa-containers
+  SERVICE_NAME: zx-dashboard-vibe
+  IMAGE: zx-dashboard
+  RUNTIME_SA: zx-dashboard-runtime@epa-turing.iam.gserviceaccount.com
+  CLOUDSQL_INSTANCE: epa-turing:us-central1:zx-dashboard-mysql
+  JOB_MIGRATE: zx-dashboard-migrate
+  JOB_IMPORTAR_APPSFLYER: zx-dashboard-importar-appsflyer
+  JOB_SYNC_ADS: zx-dashboard-sincronizar-ads
+
+jobs:
+  deploy:
+    name: Build, Test y Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Instalar PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, bcmath, pdo_sqlite, pdo_mysql, intl
+          coverage: none
+
+      - name: Instalar dependencias PHP
+        run: composer install --prefer-dist --no-progress
+
+      - name: Instalar Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias Node
+        run: npm ci
+
+      # Gate de calidad -- si algo falla aquí, no se construye ni despliega nada
+      - name: Lint (Pint)
+        run: ./vendor/bin/pint --test
+
+      - name: Tests (Pest/PHPUnit, sqlite en memoria)
+        run: php artisan test
+
+      - name: Build de assets (Vite)
+        run: npm run build
+
+      - name: Autenticar en GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configurar Docker para Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      - name: Build y push de la imagen
+        run: |
+          IMAGE_URI="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE }}:${{ github.sha }}"
+          docker build -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      # Guard SIEMPRE activo -- si el servicio ya existe pero no es de este
+      # repo (label epa-managed-by distinto), un deploy lo sobreescribiría.
+      - name: Guard -- el servicio, si existe, es de este dashboard
+        run: |
+          existing_label=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(metadata.labels.epa-managed-by)' 2>/dev/null || true)
+          if [ -n "$existing_label" ] && [ "$existing_label" != "${{ env.SERVICE_NAME }}" ]; then
+            echo "El servicio '${{ env.SERVICE_NAME }}' existe con label"
+            echo "epa-managed-by='$existing_label' -- no es este repo. Abortando."
+            exit 1
+          fi
+
+      - name: Migraciones (Cloud Run Job, una sola vez por deploy)
+        run: |
+          gcloud run jobs deploy ${{ env.JOB_MIGRATE }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
+            --image="$IMAGE_URI" \
+            --service-account=${{ env.RUNTIME_SA }} \
+            --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --command=php --args="artisan,migrate,--force" \
+            --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest" \
+            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app"
+          gcloud run jobs execute ${{ env.JOB_MIGRATE }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} --wait
+
+      - name: Deploy a Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
+            --platform=managed \
+            --image="$IMAGE_URI" \
+            --no-allow-unauthenticated \
+            --service-account=${{ env.RUNTIME_SA }} \
+            --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --min-instances=0 --max-instances=10 \
+            --cpu=1 --memory=512Mi \
+            --labels=epa-managed-by=${{ env.SERVICE_NAME }} \
+            --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest,TIKTOK_ACCESS_TOKEN=ZxDashboardTiktokAccessToken:latest,APPSFLYER_API_TOKEN=ZxDashboardAppsflyerApiToken:latest,ANTHROPIC_API_KEY=ZxDashboardAnthropicApiKey:latest" \
+            --update-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,SESSION_DRIVER=database,CACHE_STORE=database,QUEUE_CONNECTION=database,META_GRAPH_API_VERSION=v21.0,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5,ANTHROPIC_MODEL=claude-sonnet-5"
+
+      - name: Fijar APP_URL a la URL real del servicio
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} \
+            --format='value(status.url)')
+          gcloud run services update ${{ env.SERVICE_NAME }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
+            --update-env-vars="APP_URL=$URL"
+          echo "Servicio disponible en: $URL"
+
+      - name: Actualizar imagen de los Cloud Run Jobs programados
+        run: |
+          gcloud run jobs deploy ${{ env.JOB_IMPORTAR_APPSFLYER }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
+            --image="$IMAGE_URI" \
+            --service-account=${{ env.RUNTIME_SA }} \
+            --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --command=php --args="artisan,importar:appsflyer-api" \
+            --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,APPSFLYER_API_TOKEN=ZxDashboardAppsflyerApiToken:latest" \
+            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5"
+
+          gcloud run jobs deploy ${{ env.JOB_SYNC_ADS }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
+            --image="$IMAGE_URI" \
+            --service-account=${{ env.RUNTIME_SA }} \
+            --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --command=php --args="artisan,meta:sincronizar-estado-ads" \
+            --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest" \
+            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,META_GRAPH_API_VERSION=v21.0"
