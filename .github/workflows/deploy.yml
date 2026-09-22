@@ -52,11 +52,11 @@ jobs:
       - name: Lint (Pint)
         run: ./vendor/bin/pint --test
 
-      - name: Tests (Pest/PHPUnit, sqlite en memoria)
-        run: php artisan test
-
       - name: Build de assets (Vite)
         run: npm run build
+
+      - name: Tests (Pest/PHPUnit, sqlite en memoria)
+        run: php artisan test
 
       - name: Autenticar en GCP
         uses: google-github-actions/auth@v2
