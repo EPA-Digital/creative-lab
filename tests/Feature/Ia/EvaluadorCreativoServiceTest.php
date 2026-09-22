@@ -9,6 +9,7 @@ use App\Services\Ia\EvaluadorCreativoService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * Cubre el contrato de caché de EvaluadorCreativoService (2026-08-26, ver
@@ -149,7 +150,7 @@ it('evaluarPorArte sin imagen no llama a Anthropic y devuelve 422', function () 
     $servicio = new EvaluadorCreativoService(new AnthropicApiClient('key-de-prueba', 'claude-sonnet-5'));
 
     expect(fn () => $servicio->evaluarPorArte($creativo, '2026-08'))
-        ->toThrow(Symfony\Component\HttpKernel\Exception\HttpException::class);
+        ->toThrow(HttpException::class);
 
     Http::assertNothingSent();
 });

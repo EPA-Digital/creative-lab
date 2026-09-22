@@ -78,7 +78,7 @@ class ImportadorDatosDiario
                 }
             }
         }
-        $thumbnailLocalPorAdId = (new ImagenCacheService())->cachearVarias(
+        $thumbnailLocalPorAdId = (new ImagenCacheService)->cachearVarias(
             $thumbnailPorAdId,
             fn (string $adId) => "snowflake-{$adId}"
         );

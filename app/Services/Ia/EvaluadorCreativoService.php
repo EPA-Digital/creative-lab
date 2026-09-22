@@ -168,11 +168,11 @@ class EvaluadorCreativoService
         $etapa = self::FUNNEL_LABEL[$creativo->funnel] ?? 'sin clasificar';
         $nombre = $creativo->nombre_comun ?: $creativo->nombre_completo;
 
-        return "Eres un director de arte evaluando creativos publicitarios. Mira la imagen adjunta del anuncio ".
+        return 'Eres un director de arte evaluando creativos publicitarios. Mira la imagen adjunta del anuncio '.
             "\"{$nombre}\" (etapa de funnel: {$etapa}) y califica sus elementos visuales en 4 categorías, cada ".
-            "una de 0 a 25 puntos: \"color\" (paleta, contraste, legibilidad), \"composicion\" (jerarquía visual, ".
-            "encuadre), \"texto\" (claridad y legibilidad del texto en pantalla, si lo hay) y \"gancho\" (qué tan ".
-            "fuerte es el gancho visual en los primeros segundos). Responde ÚNICAMENTE con un objeto JSON válido, ".
+            'una de 0 a 25 puntos: "color" (paleta, contraste, legibilidad), "composicion" (jerarquía visual, '.
+            'encuadre), "texto" (claridad y legibilidad del texto en pantalla, si lo hay) y "gancho" (qué tan '.
+            'fuerte es el gancho visual en los primeros segundos). Responde ÚNICAMENTE con un objeto JSON válido, '.
             "sin texto antes ni después, con esta forma exacta:\n".
             '{"categorias": {"color": <0-25>, "composicion": <0-25>, "texto": <0-25>, "gancho": <0-25>}, '.
             '"resultado": "<3-4 oraciones en español, tono consultivo, solo sobre lo que ves en la imagen, sin '.

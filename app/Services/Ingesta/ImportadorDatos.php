@@ -196,7 +196,7 @@ class ImportadorDatos
         $sinActividadDescartados = 0;
 
         if ($config['meta_ad_account_id'] && count($clasificados['meta']) > 0) {
-            $enriquecedorMeta = new EnriquecedorCostosMeta(MetaApiClient::fromConfig(), new ImagenCacheService());
+            $enriquecedorMeta = new EnriquecedorCostosMeta(MetaApiClient::fromConfig(), new ImagenCacheService);
             $costosMeta = $enriquecedorMeta->enriquecer($config['meta_ad_account_id'], $desde, $hasta);
 
             $r = self::procesarPlataforma(
@@ -219,7 +219,7 @@ class ImportadorDatos
         }
 
         if ($config['tiktok_advertiser_id'] && count($clasificados['tiktok']) > 0) {
-            $enriquecedorTiktok = new EnriquecedorCostosTiktok(TiktokApiClient::fromConfig(), new ImagenCacheService());
+            $enriquecedorTiktok = new EnriquecedorCostosTiktok(TiktokApiClient::fromConfig(), new ImagenCacheService);
             $costosTiktok = $enriquecedorTiktok->enriquecer($config['tiktok_advertiser_id'], $desde, $hasta);
 
             $r = self::procesarPlataforma(

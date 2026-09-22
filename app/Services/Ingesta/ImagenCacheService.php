@@ -66,7 +66,7 @@ class ImagenCacheService
      *
      * @param  array<string, string>  $urlPorClave
      * @param  callable(string): string  $nombreArchivoBase  arma el nombre de archivo a partir de la clave (ej. fn ($adId) => "meta-costo-{$adId}")
-     * @return array<string, string>  clave => URL pública local (o remota si falló la descarga)
+     * @return array<string, string> clave => URL pública local (o remota si falló la descarga)
      */
     public function cachearVarias(array $urlPorClave, callable $nombreArchivoBase): array
     {

@@ -59,7 +59,7 @@ class EnriquecedorCostosMeta
         $filas = [];
         $after = null;
 
-        for (;;) {
+        for (; ;) {
             $params = [
                 'level' => 'ad',
                 // ad_name/campaign_name -- hay ads con gasto real en el
@@ -102,7 +102,7 @@ class EnriquecedorCostosMeta
      * no tira las demás, y el costo (que ya se guardó) nunca se pierde.
      *
      * @param  list<array<string, mixed>>  $filas
-     * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, array{titulo: ?string, texto: ?string}>}  [statusPorAdId, imagenRemotaPorAdId, copyPorAdId]
+     * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, array{titulo: ?string, texto: ?string}>} [statusPorAdId, imagenRemotaPorAdId, copyPorAdId]
      */
     private function traerStatusEImagen(string $adAccountId, array $filas): array
     {
@@ -122,7 +122,7 @@ class EnriquecedorCostosMeta
      * el comando de reparación reciba directo la ruta local final.
      *
      * @param  list<string>  $adIds
-     * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, array{titulo: ?string, texto: ?string}>}  [statusPorAdId, imagenLocalPorAdId, copyPorAdId]
+     * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, array{titulo: ?string, texto: ?string}>} [statusPorAdId, imagenLocalPorAdId, copyPorAdId]
      */
     public function reintentarImagenYCopy(string $adAccountId, array $adIds): array
     {
@@ -281,7 +281,7 @@ class EnriquecedorCostosMeta
      * reclasificar mal por un error transitorio de la API).
      *
      * @param  list<string>  $adIds
-     * @return list<string>  subconjunto de $adIds SIN actividad en la ventana
+     * @return list<string> subconjunto de $adIds SIN actividad en la ventana
      */
     public function detectarSinActividadReciente(string $adAccountId, array $adIds, string $hasta, int $meses = 4): array
     {
@@ -326,7 +326,7 @@ class EnriquecedorCostosMeta
      * error, no por decisión. Cada trozo en su propio try/catch.
      *
      * @param  list<string>  $hashes
-     * @return array<string, string>  hash => url
+     * @return array<string, string> hash => url
      */
     private function resolverHashesAImagenes(string $adAccountId, array $hashes): array
     {

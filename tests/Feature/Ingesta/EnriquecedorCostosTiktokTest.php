@@ -31,7 +31,7 @@ it('preserva nombre/video de las páginas que sí funcionan aunque una página d
             ->push(['code' => 0, 'message' => 'OK', 'data' => ['list' => [adTiktok('3', 'Pagina Tres')], 'page_info' => ['total_page' => 3]]]),
     ]);
 
-    $enriquecedor = new EnriquecedorCostosTiktok(new TiktokApiClient('token'), new ImagenCacheService());
+    $enriquecedor = new EnriquecedorCostosTiktok(new TiktokApiClient('token'), new ImagenCacheService);
     $metodo = new ReflectionMethod(EnriquecedorCostosTiktok::class, 'traerNombreYVideoId');
     $metodo->setAccessible(true);
     [$nombrePorAdId] = $metodo->invoke($enriquecedor, 'adv-1');
@@ -44,7 +44,7 @@ it('corta el loop si la PRIMERA página falla (no se conoce total_page, no hay f
         'business-api.tiktok.com/open_api/v1.3/ad/get/*' => Http::response(['code' => 50002, 'message' => 'Internal error'], 500),
     ]);
 
-    $enriquecedor = new EnriquecedorCostosTiktok(new TiktokApiClient('token'), new ImagenCacheService());
+    $enriquecedor = new EnriquecedorCostosTiktok(new TiktokApiClient('token'), new ImagenCacheService);
     $metodo = new ReflectionMethod(EnriquecedorCostosTiktok::class, 'traerNombreYVideoId');
     $metodo->setAccessible(true);
     [$nombrePorAdId] = $metodo->invoke($enriquecedor, 'adv-1');

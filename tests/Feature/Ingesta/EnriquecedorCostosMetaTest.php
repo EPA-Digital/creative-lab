@@ -37,7 +37,7 @@ it('recupera la mitad liviana de una tanda cuando Meta rechaza la tanda completa
             ->push($body500, 500)->push($body500, 500)->push($body500, 500)->push($body500, 500),
     ]);
 
-    $enriquecedor = new EnriquecedorCostosMeta(new MetaApiClient('token'), new ImagenCacheService());
+    $enriquecedor = new EnriquecedorCostosMeta(new MetaApiClient('token'), new ImagenCacheService);
     [$status, $imagenRemota] = $enriquecedor->reintentarImagenYCopy('1', $adIds);
 
     expect($status)->toBe(['1' => 'ACTIVE', '2' => 'ACTIVE', '3' => 'ACTIVE']);
@@ -51,7 +51,7 @@ it('cuando la tanda completa funciona, no se parte en absoluto (comportamiento a
         ]),
     ]);
 
-    $enriquecedor = new EnriquecedorCostosMeta(new MetaApiClient('token'), new ImagenCacheService());
+    $enriquecedor = new EnriquecedorCostosMeta(new MetaApiClient('token'), new ImagenCacheService);
     [$status] = $enriquecedor->reintentarImagenYCopy('1', ['1', '2']);
 
     expect($status)->toBe(['1' => 'ACTIVE', '2' => 'PAUSED']);

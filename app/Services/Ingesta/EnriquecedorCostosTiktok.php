@@ -141,7 +141,7 @@ class EnriquecedorCostosTiktok
         $filas = [];
         $page = 1;
 
-        for (;;) {
+        for (; ;) {
             $data = $this->tiktok->get('/report/integrated/get/', [
                 'advertiser_id' => $advertiserId,
                 'report_type' => 'BASIC',
@@ -193,7 +193,7 @@ class EnriquecedorCostosTiktok
      * ads reales verificado 2026-08-04): TikTok no expone ahí el texto que
      * genera/rota automáticamente, solo lo tienen los ads MANUAL/SMART_PLUS.
      *
-     * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, string>, 3: array<string, array{titulo: ?string, texto: ?string}>}  [nombrePorAdId, videoIdPorAdId, campaignNombrePorAdId, copyPorAdId]
+     * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, string>, 3: array<string, array{titulo: ?string, texto: ?string}>} [nombrePorAdId, videoIdPorAdId, campaignNombrePorAdId, copyPorAdId]
      */
     private function traerNombreYVideoId(string $advertiserId): array
     {
@@ -204,7 +204,7 @@ class EnriquecedorCostosTiktok
 
         $page = 1;
         $totalPage = null;
-        for (;;) {
+        for (; ;) {
             try {
                 $data = $this->tiktok->get('/ad/get/', [
                     'advertiser_id' => $advertiserId,
@@ -252,7 +252,7 @@ class EnriquecedorCostosTiktok
      * guardan.
      *
      * @param  list<string>  $videoIds
-     * @return array<string, string>  video_id => video_cover_url
+     * @return array<string, string> video_id => video_cover_url
      */
     private function traerThumbnailsDeVideo(string $advertiserId, array $videoIds): array
     {
@@ -292,7 +292,7 @@ class EnriquecedorCostosTiktok
      * error transitorio de la API).
      *
      * @param  list<string>  $adIds
-     * @return list<string>  subconjunto de $adIds que /ad/get/ NO devolvió
+     * @return list<string> subconjunto de $adIds que /ad/get/ NO devolvió
      */
     public function detectarEliminados(string $advertiserId, array $adIds): array
     {

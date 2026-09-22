@@ -15,7 +15,7 @@ it('recupera una descarga que falla transitoriamente gracias al retry', function
             ->push('contenido-de-imagen', 200, ['Content-Type' => 'image/jpeg']),
     ]);
 
-    $servicio = new ImagenCacheService();
+    $servicio = new ImagenCacheService;
     $resultado = $servicio->cachearVarias(['ad1' => 'https://cdn.ejemplo.com/1.jpg'], fn ($id) => "test-{$id}");
 
     expect($resultado['ad1'])->toBe('/creative-images/test-ad1.jpg');
@@ -27,7 +27,7 @@ it('si la descarga falla del todo, conserva la URL remota (nunca queda vacío)',
         'cdn.ejemplo.com/2.jpg' => Http::response('', 500),
     ]);
 
-    $servicio = new ImagenCacheService();
+    $servicio = new ImagenCacheService;
     $resultado = $servicio->cachearVarias(['ad2' => 'https://cdn.ejemplo.com/2.jpg'], fn ($id) => "test-{$id}");
 
     expect($resultado['ad2'])->toBe('https://cdn.ejemplo.com/2.jpg');

@@ -65,7 +65,7 @@ class RepararCreativosIncompletos extends Command
         $meta = $incompletos->where('plataforma', 'meta');
         if ($meta->isNotEmpty() && $config['meta_ad_account_id']) {
             $this->line("Meta: reintentando {$meta->count()} ad(s)...");
-            $enriquecedor = new EnriquecedorCostosMeta(MetaApiClient::fromConfig(), new ImagenCacheService());
+            $enriquecedor = new EnriquecedorCostosMeta(MetaApiClient::fromConfig(), new ImagenCacheService);
             [, $imagenPorAdId, $copyPorAdId] = $enriquecedor->reintentarImagenYCopy(
                 $config['meta_ad_account_id'],
                 $meta->pluck('ad_id')->all(),
@@ -92,7 +92,7 @@ class RepararCreativosIncompletos extends Command
         $tiktok = $incompletos->where('plataforma', 'tiktok');
         if ($tiktok->isNotEmpty() && $config['tiktok_advertiser_id']) {
             $this->line("TikTok: reintentando {$tiktok->count()} ad(s)...");
-            $enriquecedor = new EnriquecedorCostosTiktok(TiktokApiClient::fromConfig(), new ImagenCacheService());
+            $enriquecedor = new EnriquecedorCostosTiktok(TiktokApiClient::fromConfig(), new ImagenCacheService);
             $resultado = $enriquecedor->reintentarNombreImagenYCopy(
                 $config['tiktok_advertiser_id'],
                 $tiktok->pluck('ad_id')->all(),
