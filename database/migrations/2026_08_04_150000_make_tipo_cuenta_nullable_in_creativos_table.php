@@ -14,15 +14,22 @@ use Illuminate\Support\Facades\DB;
 // agrega el caso NUEVO de "confirmado muerto/inactivo".
 // Raw SQL en vez de Schema::table()->change() -- evita depender de
 // doctrine/dbal (no instalado) solo para este ALTER puntual de un enum.
+// Guardado a driver=mysql -- producción siempre es MySQL; el test suite
+// corre sobre sqlite en memoria (phpunit.xml) y ese dialecto no entiende
+// "MODIFY COLUMN" -- sin el guard, cualquier test que migre la DB revienta.
 return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement("ALTER TABLE creativos MODIFY tipo_cuenta ENUM('DTC','BRD') NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE creativos MODIFY tipo_cuenta ENUM('DTC','BRD') NULL");
+        }
     }
 
     public function down(): void
     {
-        DB::statement("ALTER TABLE creativos MODIFY tipo_cuenta ENUM('DTC','BRD') NOT NULL DEFAULT 'DTC'");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE creativos MODIFY tipo_cuenta ENUM('DTC','BRD') NOT NULL DEFAULT 'DTC'");
+        }
     }
 };
