@@ -6,6 +6,7 @@ use App\Services\Ingesta\ImportadorDatosDiario;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Cubre el pedido explícito del usuario (2026-08-28): una imagen curada a
@@ -109,6 +110,7 @@ function csvSnowflakeParaAd(string $adId, string $fecha, string $thumbUrl): stri
 }
 
 it('NO pisa una imagen curada a mano (drive-*) al reimportar el mismo ad_id', function () {
+    Storage::fake('gcs');
     Http::fake([
         'cdn.ejemplo.com/*' => Http::response('contenido-de-imagen', 200, ['Content-Type' => 'image/jpeg']),
     ]);
@@ -120,11 +122,13 @@ it('NO pisa una imagen curada a mano (drive-*) al reimportar el mismo ad_id', fu
     // borroso de rutina.
     ImportadorDatosDiario::importar($archivo, 'panama');
     $creativo = Creativo::where('ad_id', '999888777')->firstOrFail();
-    expect($creativo->imagen_url)->toBe('/creative-images/snowflake-999888777.jpg');
+    expect($creativo->imagen_url)->toBe('https://storage.googleapis.com/test-bucket/creative-images/snowflake-999888777.jpg');
 
     // Simula el match manual contra el Drive real (mismo efecto que
     // update_imagenes.php): reemplaza la imagen borrosa por la curada, EN
-    // EL MISMO registro.
+    // EL MISMO registro. Formato viejo (ruta local) a propósito -- confirma
+    // que esImagenCurada() detecta la marca "/creative-images/drive-" sin
+    // importar si lo que la rodea es una ruta local o una URL de bucket.
     $creativo->update(['imagen_url' => '/creative-images/drive-abc123def456.png']);
     $idOriginal = $creativo->id;
 
@@ -133,7 +137,6 @@ it('NO pisa una imagen curada a mano (drive-*) al reimportar el mismo ad_id', fu
     ImportadorDatosDiario::importar($archivo, 'panama');
 
     @unlink($archivo);
-    @unlink(public_path('creative-images/snowflake-999888777.jpg'));
 
     expect(Creativo::count())->toBe(1); // nunca se crea un registro nuevo
     $creativo->refresh();
@@ -142,6 +145,7 @@ it('NO pisa una imagen curada a mano (drive-*) al reimportar el mismo ad_id', fu
 });
 
 it('SÍ cachea el thumbnail de rutina cuando todavía no hay ninguna imagen curada', function () {
+    Storage::fake('gcs');
     Http::fake([
         'cdn.ejemplo.com/*' => Http::response('contenido-de-imagen', 200, ['Content-Type' => 'image/jpeg']),
     ]);
@@ -153,8 +157,7 @@ it('SÍ cachea el thumbnail de rutina cuando todavía no hay ninguna imagen cura
     ImportadorDatosDiario::importar($archivo, 'panama'); // reimport sin curación de por medio
 
     @unlink($archivo);
-    @unlink(public_path('creative-images/snowflake-111222333.jpg'));
 
     $creativo = Creativo::where('ad_id', '111222333')->firstOrFail();
-    expect($creativo->imagen_url)->toBe('/creative-images/snowflake-111222333.jpg');
+    expect($creativo->imagen_url)->toBe('https://storage.googleapis.com/test-bucket/creative-images/snowflake-111222333.jpg');
 });

@@ -47,6 +47,22 @@ return [
             'report' => false,
         ],
 
+        // Solo para ImagenCacheService -- cachear thumbnails de Meta/TikTok
+        // en un bucket público en vez de public/creative-images (disco
+        // LOCAL del contenedor de Cloud Run, se pierde en cada deploy/
+        // reciclado de instancia -- ver incidente 2026-09-23). Autentica
+        // vía Application Default Credentials (la SA de runtime del
+        // servicio), sin key file -- Cloud Run ya la provee.
+        'gcs' => [
+            'driver' => 'gcs',
+            'project_id' => env('GOOGLE_CLOUD_PROJECT_ID'),
+            'bucket' => env('GOOGLE_CLOUD_STORAGE_BUCKET'),
+            'path_prefix' => env('GOOGLE_CLOUD_STORAGE_PATH_PREFIX', ''),
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

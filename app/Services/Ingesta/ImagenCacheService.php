@@ -5,19 +5,22 @@ namespace App\Services\Ingesta;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
  * Puerto de cachearImagenLocal + extensionDesdeContentType (pipeline.js,
  * proyecto Node, referencia). Descarga una imagen remota (CDN de Meta/
- * TikTok, con firma que expira en horas/días) y la cachea en disco público
- * -- si un thumbnail se rompe días después de resuelto, la firma expiró;
- * cachear localmente es justamente para no depender de esa URL viva.
+ * TikTok, con firma que expira en horas/días) y la cachea en un bucket de
+ * Google Cloud Storage -- si un thumbnail se rompe días después de
+ * resuelto, la firma expiró; cachear es justamente para no depender de esa
+ * URL viva.
  *
- * A diferencia de Node (./output/creative-images/, servido por el server a
- * medida de scripts/serve-dashboard.js), acá se escribe directo a
- * public/creative-images/ -- ya público sin symlink de storage:link, mismo
- * criterio de simplicidad que el server de Node.
+ * Bucket, no disco local público (2026-09-23) -- Cloud Run recicla
+ * instancias en cada deploy/idle, y public/creative-images vivía en el
+ * disco LOCAL de esa instancia: cualquier imagen cacheada quedaba
+ * huérfana (404) apenas el contenedor que la descargó dejaba de existir.
+ * El bucket persiste sin importar qué instancia/revisión esté sirviendo.
  */
 class ImagenCacheService
 {
@@ -42,18 +45,21 @@ class ImagenCacheService
     private const TANDA_DESCARGAS = 25;
 
     /**
-     * Prefijo de archivo que marca una imagen curada a mano (matcheada
-     * manualmente contra el Drive real de creativos, ver
+     * Marca de nombre de archivo que identifica una imagen curada a mano
+     * (matcheada manualmente contra el Drive real de creativos, ver
      * scratchpad/panama-images -- 2026-08-27) -- nunca debe pisarse con el
      * thumbnail borroso que trae una corrida de rutina del importador. Sin
      * esto, reimportar el mismo mes revierte silenciosamente la imagen
-     * buena a la de Meta/AppsFlyer otra vez.
+     * buena a la de Meta/AppsFlyer otra vez. str_contains (no
+     * str_starts_with) porque ahora imagen_url es la URL completa del
+     * bucket (https://storage.googleapis.com/{bucket}/creative-images/
+     * drive-*), no una ruta local que arranca con el prefijo.
      */
-    private const PREFIJO_IMAGEN_CURADA = '/creative-images/drive-';
+    private const MARCA_IMAGEN_CURADA = '/creative-images/drive-';
 
     public static function esImagenCurada(?string $imagenUrl): bool
     {
-        return $imagenUrl !== null && str_starts_with($imagenUrl, self::PREFIJO_IMAGEN_CURADA);
+        return $imagenUrl !== null && str_contains($imagenUrl, self::MARCA_IMAGEN_CURADA);
     }
 
     /**
@@ -108,14 +114,14 @@ class ImagenCacheService
 
         try {
             $ext = self::extensionDesdeContentType($respuesta->header('Content-Type'));
-            $dir = public_path('creative-images');
-            if (! is_dir($dir)) {
-                mkdir($dir, 0755, true);
-            }
             $nombreArchivo = "{$nombreBase}.{$ext}";
-            file_put_contents("{$dir}/{$nombreArchivo}", $respuesta->body());
+            $rutaObjeto = "creative-images/{$nombreArchivo}";
 
-            return "/creative-images/{$nombreArchivo}";
+            Storage::disk('gcs')->put($rutaObjeto, $respuesta->body());
+
+            $bucket = (string) config('filesystems.disks.gcs.bucket');
+
+            return "https://storage.googleapis.com/{$bucket}/{$rutaObjeto}";
         } catch (Throwable $e) {
             Log::warning("No se pudo cachear localmente la imagen ({$nombreBase}): {$e->getMessage()}");
 

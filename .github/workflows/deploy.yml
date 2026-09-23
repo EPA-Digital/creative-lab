@@ -117,7 +117,7 @@ jobs:
             --startup-probe="httpGet.path=/up,httpGet.port=8080,initialDelaySeconds=0,periodSeconds=2,timeoutSeconds=2,failureThreshold=15" \
             --labels=epa-managed-by=${{ env.SERVICE_NAME }} \
             --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest,TIKTOK_ACCESS_TOKEN=ZxDashboardTiktokAccessToken:latest,APPSFLYER_API_TOKEN=ZxDashboardAppsflyerApiToken:latest,ANTHROPIC_API_KEY=ZxDashboardAnthropicApiKey:latest" \
-            --update-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,SESSION_DRIVER=database,CACHE_STORE=database,QUEUE_CONNECTION=database,META_GRAPH_API_VERSION=v21.0,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5,ANTHROPIC_MODEL=claude-sonnet-5"
+            --update-env-vars="APP_ENV=production,APP_DEBUG=false,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,SESSION_DRIVER=database,CACHE_STORE=database,QUEUE_CONNECTION=database,META_GRAPH_API_VERSION=v21.0,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5,ANTHROPIC_MODEL=claude-sonnet-5,GOOGLE_CLOUD_PROJECT_ID=${{ env.PROJECT_ID }},GOOGLE_CLOUD_STORAGE_BUCKET=zx-dashboard-creative-images"
 
       - name: Fijar APP_URL a la URL real del servicio
         run: |
@@ -138,7 +138,7 @@ jobs:
             --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
             --command=php --args="artisan,importar:appsflyer-api" \
             --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,APPSFLYER_API_TOKEN=ZxDashboardAppsflyerApiToken:latest" \
-            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5"
+            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5,GOOGLE_CLOUD_PROJECT_ID=${{ env.PROJECT_ID }},GOOGLE_CLOUD_STORAGE_BUCKET=zx-dashboard-creative-images"
 
           gcloud run jobs deploy ${{ env.JOB_SYNC_ADS }} \
             --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
@@ -165,4 +165,4 @@ jobs:
             --task-timeout=1800 \
             --command=php --args="artisan,queue:work,--stop-when-empty,--max-time=1700,--tries=1" \
             --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest,TIKTOK_ACCESS_TOKEN=ZxDashboardTiktokAccessToken:latest,APPSFLYER_API_TOKEN=ZxDashboardAppsflyerApiToken:latest,ANTHROPIC_API_KEY=ZxDashboardAnthropicApiKey:latest" \
-            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,META_GRAPH_API_VERSION=v21.0,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5,ANTHROPIC_MODEL=claude-sonnet-5"
+            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,META_GRAPH_API_VERSION=v21.0,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5,ANTHROPIC_MODEL=claude-sonnet-5,GOOGLE_CLOUD_PROJECT_ID=${{ env.PROJECT_ID }},GOOGLE_CLOUD_STORAGE_BUCKET=zx-dashboard-creative-images"
