@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
 use League\Flysystem\Filesystem;
 use League\Flysystem\GoogleCloudStorage\GoogleCloudStorageAdapter;
+use League\Flysystem\GoogleCloudStorage\UniformBucketLevelAccessVisibility;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -23,10 +24,23 @@ class AppServiceProvider extends ServiceProvider
         // (StorageClient sin key file explícito) -- en Cloud Run eso es la
         // service account de runtime del servicio, ya con los permisos
         // sobre el bucket.
+        //
+        // UniformBucketLevelAccessVisibility (no el PortableVisibilityHandler
+        // default del paquete) -- el bucket tiene uniform bucket-level access
+        // (acceso público vía IAM a nivel bucket, no ACLs por objeto, ver
+        // epa-safe-vibe/epa-deploy). El handler default intenta setear un ACL
+        // legacy en cada write y GCS lo rechaza con 400 "Cannot insert legacy
+        // ACL for an object when uniform bucket-level access is enabled" --
+        // confirmado en un smoke test real contra el bucket
+        // zx-dashboard-creative-images (2026-09-23).
         Storage::extend('gcs', function ($app, array $config) {
             $client = new StorageClient(array_filter(['projectId' => $config['project_id'] ?? null]));
             $bucket = $client->bucket($config['bucket']);
-            $adapter = new GoogleCloudStorageAdapter($bucket, $config['path_prefix'] ?? '');
+            $adapter = new GoogleCloudStorageAdapter(
+                $bucket,
+                $config['path_prefix'] ?? '',
+                new UniformBucketLevelAccessVisibility,
+            );
 
             return new FilesystemAdapter(new Filesystem($adapter, $config), $adapter, $config);
         });
