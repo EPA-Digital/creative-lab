@@ -17,6 +17,13 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     /**
+     * Dominio de correo que entra vía Google con acceso completo (rol !==
+     * 'cliente') -- ver GoogleAuthController. Cualquier otro dominio queda
+     * rechazado en el callback de Google, nunca llega a crear sesión.
+     */
+    public const DOMINIO_EPA = 'epa.digital';
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -24,11 +31,13 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'google_id',
         'password',
         'rol',
         'creado_por',
         'invitacion_token',
         'activo',
+        'email_verified_at',
     ];
 
     /**
@@ -53,6 +62,17 @@ class User extends Authenticatable
             'password' => 'hashed',
             'activo' => 'boolean',
         ];
+    }
+
+    /**
+     * true = EPA, acceso completo (director/gerente/senior/junior). false =
+     * 'cliente', solo lectura -- ver Gate 'epa' en AppServiceProvider y su
+     * uso en routes/web.php. No diferencia entre los 4 roles EPA todavía
+     * (pedido explícito: "EPA puede todo de momento").
+     */
+    public function esEpa(): bool
+    {
+        return $this->rol !== 'cliente';
     }
 
     public function paises(): BelongsToMany

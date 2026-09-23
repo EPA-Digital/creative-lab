@@ -33,7 +33,10 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        // route('dashboard') es el placeholder de scaffold de Breeze, sin
+        // uso real acá -- la entrada real de la app es '/' (selector de
+        // país, ver LandingController).
+        return redirect()->intended(route('landing', absolute: false));
     }
 
     /**

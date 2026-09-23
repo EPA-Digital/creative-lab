@@ -42,7 +42,10 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        // 'activo' => true en las credenciales -- Auth::attempt lo suma como
+        // WHERE además de email/password (ver users.activo). Un usuario
+        // desactivado nunca entra por más que la contraseña sea correcta.
+        if (! Auth::attempt([...$this->only('email', 'password'), 'activo' => true], $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([

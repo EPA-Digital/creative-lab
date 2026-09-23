@@ -4,19 +4,29 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
-use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\InvitacionController;
 use Illuminate\Support\Facades\Route;
 
+// Login EPA (@epa.digital) -- ver GoogleAuthController. Sin middleware
+// 'guest': si ya hay sesión, simplemente redirige a landing igual (callback
+// hace login()), no hace falta bloquear el acceso a la ruta en sí.
+Route::get('auth/google', [GoogleAuthController::class, 'redirect'])->name('google.redirect');
+Route::get('auth/google/callback', [GoogleAuthController::class, 'callback'])->name('google.callback');
+
+// Único camino para que un 'cliente' (sin cuenta @epa.digital) obtenga
+// acceso -- reemplaza el /register abierto de scaffold de Breeze, ver
+// InvitacionController. El token lo genera UsuariosController (admin-only).
 Route::middleware('guest')->group(function () {
-    Route::get('register', [RegisteredUserController::class, 'create'])
-        ->name('register');
+    Route::get('invitaciones/{token}', [InvitacionController::class, 'show'])->name('invitaciones.show');
+    Route::post('invitaciones/{token}', [InvitacionController::class, 'store'])->name('invitaciones.store');
+});
 
-    Route::post('register', [RegisteredUserController::class, 'store']);
-
+Route::middleware('guest')->group(function () {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
         ->name('login');
 

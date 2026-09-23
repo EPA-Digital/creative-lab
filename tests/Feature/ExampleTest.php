@@ -8,12 +8,13 @@ use Tests\TestCase;
 class ExampleTest extends TestCase
 {
     /**
-     * A basic test example.
+     * '/' quedó detrás de login (2026-09-23, ver routes/web.php) -- un
+     * visitante sin sesión se redirige a /login, nunca ve la app.
      */
-    public function test_the_application_returns_a_successful_response(): void
+    public function test_un_visitante_sin_sesion_es_redirigido_a_login(): void
     {
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        $response->assertRedirect(route('login'));
     }
 }

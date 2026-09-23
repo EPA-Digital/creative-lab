@@ -63,4 +63,13 @@ return [
         'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-5'),
     ],
 
+    // Login EPA vía Google (Socialite) -- ver GoogleAuthController. redirect
+    // debe coincidir EXACTO con el redirect URI configurado en el OAuth
+    // Client ID de Google Cloud Console.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+    ],
+
 ];

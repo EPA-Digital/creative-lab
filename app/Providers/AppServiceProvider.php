@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\User;
 use Google\Cloud\Storage\StorageClient;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -62,5 +64,10 @@ class AppServiceProvider extends ServiceProvider
         // versión de Laravel) no trae Vite::useRelativeUrls() -- se logra lo
         // mismo con el resolver de paths.
         Vite::createAssetPathsUsing(fn (string $path, ?bool $secure = null) => '/'.ltrim($path, '/'));
+
+        // Rutas de escritura (importar, evaluar IA, ajustes, invitar
+        // usuarios) -- ver routes/web.php ->middleware('can:epa'). Un
+        // 'cliente' (correo/contraseña, solo lectura) nunca pasa esto.
+        Gate::define('epa', fn (User $user) => $user->esEpa());
     }
 }

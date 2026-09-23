@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { ref, onMounted, computed } from 'vue';
+import { Link, usePage, router } from '@inertiajs/vue3';
 
 // Puerto de NAV_PAIS_ITEMS + renderNavPais (motor.js:1905-1933) -- mismos 4
 // items, mismos íconos SVG reales, mismo criterio "Próximamente" (sin href,
@@ -19,13 +19,28 @@ const props = defineProps({
     vistaActiva: { type: String, default: null },
 });
 
-const NAV_ITEMS = [
+// esEpa -- rol !== 'cliente' (ver User::esEpa() en el backend, mismo
+// criterio). Un 'cliente' es solo lectura: nunca ve Cargar datos ni
+// Ajustes en el rail, aunque intentara entrar por URL directa el backend
+// igual lo rechaza (->middleware('can:epa'), ver routes/web.php) -- esto
+// es solo UX, la guardia real vive en el servidor.
+const usuario = computed(() => usePage().props.auth?.user ?? null);
+const esEpa = computed(() => usuario.value && usuario.value.rol !== 'cliente');
+
+const NAV_ITEMS = computed(() => [
     { vista: 'resumen', label: 'Resumen', icono: 'house', href: (id) => `/pais/${id}/analisis` },
     { vista: 'creativos', label: 'Creativos', icono: 'play', href: (id) => `/pais/${id}/analisis` },
     { vista: 'inteligencia', label: 'Inteligencia', icono: 'bulb', href: (id) => `/pais/${id}/inteligencia` },
     { vista: 'insights', label: 'Insights', icono: 'star', href: null },
-    { vista: 'ajustes', label: 'Ajustes', icono: 'gear', href: (id) => `/pais/${id}/ajustes` },
-];
+    ...(esEpa.value ? [
+        { vista: 'importar', label: 'Cargar datos', icono: 'upload', href: (id) => `/pais/${id}/importar` },
+        { vista: 'ajustes', label: 'Ajustes', icono: 'gear', href: (id) => `/pais/${id}/ajustes` },
+    ] : []),
+]);
+
+function cerrarSesion() {
+    router.post('/logout');
+}
 
 const ICONOS = {
     gear: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
@@ -33,6 +48,9 @@ const ICONOS = {
     play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M10 8.7v6.6l6-3.3z" fill="currentColor" stroke="none"/></svg>',
     bulb: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.45 1 1.15 1 1.9V16h5v-.2c0-.75.4-1.45 1-1.9A6 6 0 0 0 12 3z"/></svg>',
     star: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
+    upload: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M20 15v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4"/></svg>',
+    usuarios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    salir: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
 };
 
 // aplicarTemaGuardado/alternarTema reales -- sessionStorage (no localStorage),
@@ -83,6 +101,26 @@ onMounted(aplicarTemaGuardado);
                     </span>
                 </template>
             </nav>
+
+            <Link
+                v-if="esEpa"
+                href="/usuarios"
+                class="rail-nav-item rail-nav-item-secundario"
+                title="Usuarios"
+            >
+                <span class="rail-nav-icon" v-html="ICONOS.usuarios" />
+                <span class="rail-nav-label">Usuarios</span>
+            </Link>
+
+            <button
+                type="button"
+                class="rail-nav-item rail-nav-item-secundario"
+                title="Cerrar sesión"
+                @click="cerrarSesion"
+            >
+                <span class="rail-nav-icon" v-html="ICONOS.salir" />
+                <span class="rail-nav-label">Salir</span>
+            </button>
 
             <button type="button" class="theme-toggle rail-theme-toggle" aria-label="Cambiar tema" @click="alternarTema">
                 <span class="theme-toggle-knob"></span>
@@ -174,6 +212,18 @@ onMounted(aplicarTemaGuardado);
     font-weight: 600;
     text-align: center;
     transition: color 0.15s ease, border-color 0.15s ease;
+}
+.rail-nav-item-secundario {
+    /* .rail-nav-item ya resetea background/border-left -- esto solo cubre
+       lo que un <button> nativo trae de más (border en los otros 3 lados,
+       cursor, ancho) para que Usuarios/Salir se vean igual que los <Link>
+       de arriba. */
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+    width: 100%;
+    cursor: pointer;
+    margin-top: 8px;
 }
 .rail-nav-icon {
     display: flex;
