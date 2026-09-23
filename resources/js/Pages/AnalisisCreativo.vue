@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import PodiumTop3 from '@/Components/Creativo/PodiumTop3.vue';
 import CreativeCarousel from '@/Components/Creativo/CreativeCarousel.vue';
@@ -478,7 +478,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                     <h1 class="title">Análisis creativo</h1>
                     <p class="subtitle">{{ creativos.length }} creativo(s) cargados</p>
                 </div>
-                <Link :href="`/pais/${pais}/importar`" class="cargar-datos-btn">Cargar datos</Link>
             </header>
 
             <div class="resumen-filtros">
@@ -682,21 +681,6 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
     font-size: 13px;
     color: var(--text-muted);
     margin: 0;
-}
-.cargar-datos-btn {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    border-radius: 8px;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
-}
-.cargar-datos-btn:hover {
-    border-color: var(--amber);
-    color: var(--amber);
 }
 .ranking-controls {
     display: flex;
