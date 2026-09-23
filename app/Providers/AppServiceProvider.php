@@ -69,5 +69,13 @@ class AppServiceProvider extends ServiceProvider
         // usuarios) -- ver routes/web.php ->middleware('can:epa'). Un
         // 'cliente' (correo/contraseña, solo lectura) nunca pasa esto.
         Gate::define('epa', fn (User $user) => $user->esEpa());
+
+        // Administrar usuarios ajenos (rol, países asignados, desactivar) --
+        // superadmin/director (ver User::puedeGestionarUsuarios()).
+        // gerente/senior/junior tienen el mismo acceso completo al
+        // dashboard, pero no a esto. Otorgar 'director'/'superadmin' en sí
+        // es más estricto todavía -- ver UsuariosController::ROLES_QUE_
+        // SOLO_SUPERADMIN_PUEDE_OTORGAR.
+        Gate::define('gestionar-usuarios', fn (User $user) => $user->puedeGestionarUsuarios());
     }
 }

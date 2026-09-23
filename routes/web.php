@@ -18,38 +18,54 @@ use Illuminate\Support\Facades\Route;
 // acá.
 Route::middleware('auth')->group(function () {
     // Puerto de index.html -- selector de país, entrada real de la app.
+    // LandingController filtra a los países que el usuario tiene asignados
+    // (ver EnsureAccesoPais) -- nunca muestra una tarjeta que después 403ee.
     Route::get('/', [LandingController::class, 'index'])->name('landing');
 
-    // Lectura -- accesible a cualquier usuario logueado, incluido 'cliente'
-    // (solo lectura, ver User::esEpa()).
-    Route::get('/pais/{pais}/analisis/{plataforma?}', [AnalisisCreativoController::class, 'index'])
-        ->name('analisis-creativo');
-    Route::get('/pais/{pais}/inteligencia', [InteligenciaController::class, 'index'])->name('inteligencia');
+    // Scope por país (2026-09-23, pedido explícito) -- aplica a TODOS los
+    // roles por igual, incluido 'director' (ver EnsureAccesoPais). Se
+    // asigna desde /usuarios, ver Gate 'gestionar-usuarios' más abajo.
+    Route::prefix('pais/{pais}')->middleware('acceso-pais')->group(function () {
+        // Lectura -- cualquier usuario logueado con acceso a este país,
+        // 'cliente' incluido (solo lectura, ver User::esEpa()).
+        Route::get('/analisis/{plataforma?}', [AnalisisCreativoController::class, 'index'])
+            ->name('analisis-creativo');
+        Route::get('/inteligencia', [InteligenciaController::class, 'index'])->name('inteligencia');
 
-    // Escritura / herramientas de gestión -- EPA únicamente (Gate 'epa',
-    // ver AppServiceProvider). Un 'cliente' nunca llega acá ni por UI
-    // (DashboardLayout.vue las oculta) ni por URL directa (403 acá).
+        // Escritura / herramientas de gestión -- EPA únicamente (Gate
+        // 'epa', ver AppServiceProvider). Un 'cliente' nunca llega acá ni
+        // por UI (DashboardLayout.vue las oculta) ni por URL directa (403).
+        Route::middleware('can:epa')->group(function () {
+            Route::post('/creativos/{creativo}/evaluar', [EvaluacionCreativoController::class, 'evaluar'])
+                ->name('creativos.evaluar');
+
+            Route::get('/ajustes/nombres', [GestionNombresController::class, 'index'])->name('gestion-nombres');
+            Route::post('/creativos/{creativo}/nombre', [GestionNombresController::class, 'store'])
+                ->name('creativos.nombre.store');
+
+            Route::get('/importar', [ImportarDatosController::class, 'show'])->name('importar-datos');
+            Route::post('/importar/previsualizar', [ImportarDatosController::class, 'previsualizar'])->name('importar-datos.previsualizar');
+            Route::post('/importar', [ImportarDatosController::class, 'importar'])->name('importar-datos.importar');
+            Route::get('/importar/estado/{id}', [ImportarDatosController::class, 'estadoImportacion'])->name('importar-datos.estado');
+            Route::post('/importar/api', [ImportarDatosController::class, 'importarApi'])->name('importar-datos.importar-api');
+            Route::get('/importar/resumen', [ImportarDatosController::class, 'resumenPorArte'])->name('importar-datos.resumen');
+
+            Route::get('/ajustes', [AjustesController::class, 'index'])->name('ajustes');
+            Route::post('/ajustes/appsflyer-apps', [AjustesController::class, 'storeAppsflyerApp'])->name('ajustes.appsflyer-apps.store');
+        });
+    });
+
+    // Transversal a países -- no lleva 'acceso-pais'. Invitar/ver usuarios
+    // es EPA (Gate 'epa'); cambiar rol o qué países ve cada quien es SOLO
+    // 'director' (Gate 'gestionar-usuarios', ver User::esDirector()).
     Route::middleware('can:epa')->group(function () {
-        Route::post('/pais/{pais}/creativos/{creativo}/evaluar', [EvaluacionCreativoController::class, 'evaluar'])
-            ->name('creativos.evaluar');
-
-        Route::get('/pais/{pais}/ajustes/nombres', [GestionNombresController::class, 'index'])->name('gestion-nombres');
-        Route::post('/pais/{pais}/creativos/{creativo}/nombre', [GestionNombresController::class, 'store'])
-            ->name('creativos.nombre.store');
-
-        Route::get('/pais/{pais}/importar', [ImportarDatosController::class, 'show'])->name('importar-datos');
-        Route::post('/pais/{pais}/importar/previsualizar', [ImportarDatosController::class, 'previsualizar'])->name('importar-datos.previsualizar');
-        Route::post('/pais/{pais}/importar', [ImportarDatosController::class, 'importar'])->name('importar-datos.importar');
-        Route::get('/pais/{pais}/importar/estado/{id}', [ImportarDatosController::class, 'estadoImportacion'])->name('importar-datos.estado');
-        Route::post('/pais/{pais}/importar/api', [ImportarDatosController::class, 'importarApi'])->name('importar-datos.importar-api');
-        Route::get('/pais/{pais}/importar/resumen', [ImportarDatosController::class, 'resumenPorArte'])->name('importar-datos.resumen');
-
-        Route::get('/pais/{pais}/ajustes', [AjustesController::class, 'index'])->name('ajustes');
-        Route::post('/pais/{pais}/ajustes/appsflyer-apps', [AjustesController::class, 'storeAppsflyerApp'])->name('ajustes.appsflyer-apps.store');
-
         Route::get('/usuarios', [UsuariosController::class, 'index'])->name('usuarios.index');
         Route::post('/usuarios', [UsuariosController::class, 'store'])->name('usuarios.store');
         Route::delete('/usuarios/{usuario}', [UsuariosController::class, 'destroy'])->name('usuarios.destroy');
+
+        Route::middleware('can:gestionar-usuarios')->group(function () {
+            Route::patch('/usuarios/{usuario}', [UsuariosController::class, 'actualizarRolYPaises'])->name('usuarios.actualizar');
+        });
     });
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

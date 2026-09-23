@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 
@@ -9,15 +9,30 @@ import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 // @epa.digital). Sin envío de correo automático: store() devuelve el link
 // de invitación, acá se muestra para copiar y mandar a mano (Slack/
 // WhatsApp/correo). Mismo patrón axios+JSON que Ajustes/Index.vue.
+//
+// Cambiar rol/países de OTRO usuario es más estricto -- superadmin/
+// director (Gate 'gestionar-usuarios', ver
+// UsuariosController::actualizarRolYPaises y User::puedeGestionarUsuarios()).
+// Otorgar 'director'/'superadmin' en sí es solo superadmin. Acá se refleja
+// ocultando/deshabilitando esos controles -- la guardia real es el backend.
 const props = defineProps({
     pais: { type: String, required: true },
     usuarios: { type: Array, required: true },
+    paises: { type: Array, required: true },
+    roles: { type: Array, required: true },
 });
 
-const usuarios = ref(props.usuarios);
+const usuarios = ref(props.usuarios.map((u) => ({ ...u, paisIdsEditando: u.paises.map((p) => p.id) })));
+// superadmin/director -- ver User::puedeGestionarUsuarios() (mismo check
+// del lado backend, esto es solo para mostrar/ocultar los controles).
+const puedeGestionar = computed(() => ['superadmin', 'director'].includes(usePage().props.auth?.user?.rol));
+const esSuperadmin = computed(() => usePage().props.auth?.user?.rol === 'superadmin');
+const miId = computed(() => usePage().props.auth?.user?.id);
+const ROLES_ALTOS = ['superadmin', 'director'];
 
 const nombre = ref('');
 const email = ref('');
+const paisIdsInvitar = ref([]);
 const invitando = ref(false);
 const error = ref('');
 const ultimoLink = ref('');
@@ -32,11 +47,13 @@ async function invitar() {
         const { data } = await axios.post('/usuarios', {
             name: nombre.value.trim(),
             email: email.value.trim(),
+            pais_ids: paisIdsInvitar.value,
         });
-        usuarios.value.unshift({ ...data.usuario, invitacion_token: 'pendiente' });
+        usuarios.value.unshift({ ...data.usuario, invitacion_token: 'pendiente', paisIdsEditando: data.usuario.paises.map((p) => p.id) });
         ultimoLink.value = data.linkInvitacion;
         nombre.value = '';
         email.value = '';
+        paisIdsInvitar.value = [];
     } catch (e) {
         error.value = e.response?.data?.message || Object.values(e.response?.data?.errors || {}).flat().join(' ') || 'No se pudo invitar.';
     } finally {
@@ -60,7 +77,25 @@ async function desactivar(usuario) {
     }
 }
 
+async function guardarRolYPaises(usuario) {
+    usuario.guardando = true;
+    usuario.errorFila = '';
+    try {
+        const { data } = await axios.patch(`/usuarios/${usuario.id}`, {
+            rol: usuario.rol,
+            pais_ids: usuario.paisIdsEditando,
+        });
+        usuario.paises = data.usuario.paises;
+        usuario.rol = data.usuario.rol;
+    } catch (e) {
+        usuario.errorFila = e.response?.data?.message || 'No se pudo guardar.';
+    } finally {
+        usuario.guardando = false;
+    }
+}
+
 const ROL_LABEL = {
+    superadmin: 'Superadmin',
     director: 'Director',
     gerente: 'Gerente',
     senior: 'Senior',
@@ -77,12 +112,16 @@ const ROL_LABEL = {
             <h1>Usuarios</h1>
             <p class="hint">
                 Cuentas @epa.digital entran solo con Google (acceso completo, sin invitación). Acá invitás gente sin
-                ese dominio -- entran con correo/contraseña, solo lectura, nunca pueden modificar nada.
+                ese dominio -- entran con correo/contraseña, solo lectura, nunca pueden modificar nada. Cada
+                usuario solo ve los países que tenga asignados abajo -- incluido un director.
             </p>
 
             <form class="invitar-form" @submit.prevent="invitar">
                 <input v-model="nombre" type="text" placeholder="Nombre" required />
                 <input v-model="email" type="email" placeholder="correo@cliente.com" required />
+                <select v-model="paisIdsInvitar" multiple class="select-paises" title="Países que puede ver">
+                    <option v-for="p in paises" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                </select>
                 <button type="submit" :disabled="invitando">{{ invitando ? 'Invitando…' : 'Invitar' }}</button>
             </form>
             <p v-if="error" class="error">{{ error }}</p>
@@ -98,6 +137,7 @@ const ROL_LABEL = {
                         <th>Nombre</th>
                         <th>Correo</th>
                         <th>Rol</th>
+                        <th>Países</th>
                         <th>Estado</th>
                         <th></th>
                     </tr>
@@ -106,16 +146,48 @@ const ROL_LABEL = {
                     <tr v-for="u in usuarios" :key="u.id">
                         <td>{{ u.name }}</td>
                         <td>{{ u.email }}</td>
-                        <td>{{ ROL_LABEL[u.rol] || u.rol }}</td>
+                        <td>
+                            <select
+                                v-if="puedeGestionar"
+                                v-model="u.rol"
+                                :disabled="u.id === miId && ROLES_ALTOS.includes(u.rol)"
+                            >
+                                <option
+                                    v-for="r in roles"
+                                    :key="r"
+                                    :value="r"
+                                    :disabled="ROLES_ALTOS.includes(r) && !esSuperadmin"
+                                >
+                                    {{ ROL_LABEL[r] || r }}
+                                </option>
+                            </select>
+                            <span v-else>{{ ROL_LABEL[u.rol] || u.rol }}</span>
+                        </td>
+                        <td>
+                            <select v-if="puedeGestionar" v-model="u.paisIdsEditando" multiple class="select-paises">
+                                <option v-for="p in paises" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                            </select>
+                            <span v-else>{{ u.paises.map((p) => p.nombre).join(', ') || '—' }}</span>
+                        </td>
                         <td>
                             <span :class="['estado', u.activo ? 'activo' : 'inactivo']">
                                 {{ u.activo ? 'Activo' : 'Desactivado' }}
                             </span>
                         </td>
-                        <td>
-                            <button v-if="u.activo" type="button" class="btn-desactivar" @click="desactivar(u)">
+                        <td class="acciones">
+                            <button
+                                v-if="puedeGestionar"
+                                type="button"
+                                class="btn-guardar"
+                                :disabled="u.guardando"
+                                @click="guardarRolYPaises(u)"
+                            >
+                                {{ u.guardando ? 'Guardando…' : 'Guardar' }}
+                            </button>
+                            <button v-if="u.activo && u.id !== miId" type="button" class="btn-desactivar" @click="desactivar(u)">
                                 Desactivar
                             </button>
+                            <p v-if="u.errorFila" class="error fila">{{ u.errorFila }}</p>
                         </td>
                     </tr>
                 </tbody>
@@ -127,7 +199,7 @@ const ROL_LABEL = {
 <style scoped>
 .usuarios-page {
     padding: 32px 40px;
-    max-width: 900px;
+    max-width: 1100px;
 }
 h1 {
     font-family: 'Space Grotesk', sans-serif;
@@ -139,7 +211,7 @@ h1 {
     color: var(--text-muted);
     font-size: 0.85rem;
     margin: 0 0 24px;
-    max-width: 640px;
+    max-width: 680px;
 }
 .invitar-form {
     display: flex;
@@ -153,6 +225,17 @@ h1 {
     border-radius: 6px;
     background: var(--surface);
     color: var(--text);
+}
+.select-paises {
+    min-width: 140px;
+    max-width: 200px;
+    height: 34px;
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.75rem;
 }
 .invitar-form button {
     padding: 8px 16px;
@@ -171,6 +254,10 @@ h1 {
     color: var(--coral);
     font-size: 0.85rem;
     margin: 0 0 16px;
+}
+.error.fila {
+    margin: 4px 0 0;
+    font-size: 0.7rem;
 }
 .link-invitacion {
     display: flex;
@@ -214,6 +301,21 @@ h1 {
     padding: 10px 12px;
     border-bottom: 1px solid var(--border);
     color: var(--text);
+    vertical-align: top;
+}
+.tabla-usuarios select {
+    padding: 4px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.8rem;
+}
+.acciones {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
 }
 .estado {
     font-size: 0.75rem;
@@ -229,7 +331,8 @@ h1 {
     background: rgba(255, 69, 58, 0.15);
     color: var(--coral, #ff453a);
 }
-.btn-desactivar {
+.btn-desactivar,
+.btn-guardar {
     padding: 4px 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -237,5 +340,13 @@ h1 {
     color: var(--text-muted);
     font-size: 0.75rem;
     cursor: pointer;
+}
+.btn-guardar {
+    color: var(--text);
+    border-color: var(--amber);
+}
+.btn-guardar:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 </style>

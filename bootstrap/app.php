@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAccesoPais;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
+
+        $middleware->alias(['acceso-pais' => EnsureAccesoPais::class]);
 
         // Confía en el header X-Forwarded-Proto de cualquier proxy (2026-09-02,
         // demo por ngrok) -- sin esto, Laravel genera las URLs de asset()/

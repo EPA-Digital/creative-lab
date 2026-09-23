@@ -75,6 +75,31 @@ class User extends Authenticatable
         return $this->rol !== 'cliente';
     }
 
+    /**
+     * superadmin/director pueden tocar usuarios/roles/países ajenos (Gate
+     * 'gestionar-usuarios', ver AppServiceProvider y UsuariosController).
+     * gerente/senior/junior tienen el mismo acceso completo al dashboard
+     * que un director (ver esEpa()), pero no administran gente. "Puede
+     * haber muchos directores" (pedido explícito 2026-09-23) -- por eso
+     * existe superadmin arriba: único rol que puede asignarle 'director'
+     * o 'superadmin' a alguien más (ver esSuperadmin() y
+     * UsuariosController::actualizarRolYPaises).
+     */
+    public function puedeGestionarUsuarios(): bool
+    {
+        return in_array($this->rol, ['superadmin', 'director'], true);
+    }
+
+    /**
+     * Único rol que puede otorgar 'director'/'superadmin' -- un director
+     * normal administra gerente/senior/junior/cliente, pero no puede
+     * crear otro director ni ascenderse a superadmin.
+     */
+    public function esSuperadmin(): bool
+    {
+        return $this->rol === 'superadmin';
+    }
+
     public function paises(): BelongsToMany
     {
         return $this->belongsToMany(Pais::class, 'usuario_pais', 'usuario_id', 'pais_id');

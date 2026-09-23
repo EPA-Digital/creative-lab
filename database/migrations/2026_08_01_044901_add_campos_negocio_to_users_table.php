@@ -9,7 +9,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->enum('rol', ['director', 'gerente', 'senior', 'junior', 'cliente'])
+            // string, no enum -- la lista de roles válidos creció una vez
+            // ya (2026-09-23, agregado 'superadmin') y va a seguir
+            // creciendo; un enum de MySQL exige una migración con ALTER
+            // MODIFY cada vez (ver 2026_09_23_000000_convert_rol_a_string_
+            // en_users_table.php) y encima rompe sqlite:memory sin
+            // doctrine/dbal (no instalado). La validez del valor se
+            // enforce en la app (UsuariosController::ROLES), no en el
+            // esquema.
+            $table->string('rol', 20)
                 ->nullable()
                 ->after('email');
             $table->foreignId('creado_por')
