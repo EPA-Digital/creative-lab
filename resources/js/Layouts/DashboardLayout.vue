@@ -27,16 +27,26 @@ const props = defineProps({
 const usuario = computed(() => usePage().props.auth?.user ?? null);
 const esEpa = computed(() => usuario.value && usuario.value.rol !== 'cliente');
 
-const NAV_ITEMS = computed(() => [
-    { vista: 'resumen', label: 'Resumen', icono: 'house', href: (id) => `/pais/${id}/analisis` },
-    { vista: 'creativos', label: 'Creativos', icono: 'play', href: (id) => `/pais/${id}/analisis` },
-    { vista: 'inteligencia', label: 'Inteligencia', icono: 'bulb', href: (id) => `/pais/${id}/inteligencia` },
-    { vista: 'insights', label: 'Insights', icono: 'star', href: null },
-    ...(esEpa.value ? [
+// 'cliente' (pedido explícito 2026-09-23) -- solo ve Creativos, nada más.
+// Resumen/Inteligencia/Insights/Cargar datos/Ajustes desaparecen del rail
+// aunque backend ya las dejaba pasar en solo-lectura (analisis-creativo/
+// inteligencia); un cliente no necesita ver más superficie que la data de
+// creativos en sí. La guardia real sigue siendo el backend (->middleware
+// ('can:epa') para Cargar datos/Ajustes) -- esto es solo UX.
+const NAV_ITEMS = computed(() => {
+    if (! esEpa.value) {
+        return [{ vista: 'creativos', label: 'Creativos', icono: 'play', href: (id) => `/pais/${id}/analisis` }];
+    }
+
+    return [
+        { vista: 'resumen', label: 'Resumen', icono: 'house', href: (id) => `/pais/${id}/analisis` },
+        { vista: 'creativos', label: 'Creativos', icono: 'play', href: (id) => `/pais/${id}/analisis` },
+        { vista: 'inteligencia', label: 'Inteligencia', icono: 'bulb', href: (id) => `/pais/${id}/inteligencia` },
+        { vista: 'insights', label: 'Insights', icono: 'star', href: null },
         { vista: 'importar', label: 'Cargar datos', icono: 'upload', href: (id) => `/pais/${id}/importar` },
         { vista: 'ajustes', label: 'Ajustes', icono: 'gear', href: (id) => `/pais/${id}/ajustes` },
-    ] : []),
-]);
+    ];
+});
 
 function cerrarSesion() {
     router.post('/logout');
