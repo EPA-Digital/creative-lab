@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProcesarImportacionCsv;
+use App\Models\Importacion;
 use App\Models\Pais;
 use App\Services\Ingesta\ImportadorDatos;
 use Carbon\Carbon;
@@ -58,20 +60,19 @@ class ImportarDatosController extends Controller
     }
 
     /**
-     * Corre el pipeline completo sobre el CSV ya subido en previsualizar() y
-     * persiste -- misma clase ImportadorDatos que importar:csv por consola.
+     * Despacha el pipeline completo (mismo ImportadorDatos::importar() que
+     * consola/"Por API") a un Job en cola en vez de correrlo síncrono --
+     * un CSV real (~250 creativos entre Meta+TikTok) tarda más que el
+     * timeout de Cloud Run (300s). El controller responde al instante
+     * (202) con el id para que el frontend haga polling de
+     * estadoImportacion() -- ver ProcesarImportacionCsv para el resto del
+     * flujo y por qué el CSV viaja como contenido en BD, no como ruta.
      */
     public function importar(Request $request, string $pais): JsonResponse
     {
-        // El SAPI web (a diferencia de CLI, que no tiene límite por defecto)
-        // corta a los 30s -- esta llamada trae costos de Meta/TikTok para
-        // TODOS los ads del rango vía API real, que con cientos de ads
-        // legítimamente tarda más que eso. Mismo trabajo que ya hacía
-        // importar:csv por consola, sin este límite.
-        set_time_limit(0);
-        // Ver nota en ImportarAppsFlyerApi::handle() (consola) -- el 128M
-        // default también aplica acá, mismo pipeline de caché de imágenes.
-        ini_set('memory_limit', '512M');
+        $config = config("paises.{$pais}");
+        abort_unless($config, 404, "País \"{$pais}\" no existe en config/paises.php.");
+        $paisModelo = Pais::where('codigo', $config['codigo'])->firstOrFail();
 
         $data = $request->validate([
             'token' => ['required', 'string'],
@@ -87,27 +88,73 @@ class ImportarDatosController extends Controller
         $rutaRelativa = "imports/{$data['token']}.csv";
         abort_unless(Storage::exists($rutaRelativa), 404, 'El archivo ya no está disponible -- volvé a subirlo.');
 
-        try {
-            $resumen = ImportadorDatos::importar(
-                Storage::path($rutaRelativa),
-                $pais,
-                $data['desde'],
-                $data['hasta'],
-                $data['nc_total_real_meta'] ?? null,
-                $data['orders_total_real_meta'] ?? null,
-                $data['nc_total_real_tiktok'] ?? null,
-                $data['orders_total_real_tiktok'] ?? null,
-                $data['nombre_archivo'],
-            );
-        } catch (InvalidArgumentException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
-        } finally {
-            Storage::delete($rutaRelativa);
+        $contenidoCsv = Storage::get($rutaRelativa);
+        Storage::delete($rutaRelativa);
+
+        $importacion = Importacion::create([
+            'pais_id' => $paisModelo->id,
+            'origen' => 'csv',
+            'nombre_archivo' => $data['nombre_archivo'],
+            'desde' => $data['desde'],
+            'hasta' => $data['hasta'],
+            'nc_total_real_meta' => $data['nc_total_real_meta'] ?? null,
+            'orders_total_real_meta' => $data['orders_total_real_meta'] ?? null,
+            'nc_total_real_tiktok' => $data['nc_total_real_tiktok'] ?? null,
+            'orders_total_real_tiktok' => $data['orders_total_real_tiktok'] ?? null,
+            'estado' => 'procesando',
+            'csv_contenido' => $contenidoCsv,
+        ]);
+
+        ProcesarImportacionCsv::dispatch(
+            $importacion->id,
+            $pais,
+            $data['desde'],
+            $data['hasta'],
+            $data['nc_total_real_meta'] ?? null,
+            $data['orders_total_real_meta'] ?? null,
+            $data['nc_total_real_tiktok'] ?? null,
+            $data['orders_total_real_tiktok'] ?? null,
+            $data['nombre_archivo'],
+        );
+
+        return response()->json([
+            'importacionId' => $importacion->id,
+            'estado' => 'procesando',
+        ], 202);
+    }
+
+    /**
+     * Polling del frontend mientras ProcesarImportacionCsv corre en
+     * background -- mismo shape de respuesta que el importar() síncrono de
+     * antes cuando estado=completado, para no tener que tocar cómo
+     * ImportarDatos.vue pinta el resumen final.
+     */
+    public function estadoImportacion(Request $request, string $pais, int $id): JsonResponse
+    {
+        $config = config("paises.{$pais}");
+        abort_unless($config, 404, "País \"{$pais}\" no existe en config/paises.php.");
+        $paisModelo = Pais::where('codigo', $config['codigo'])->firstOrFail();
+
+        $importacion = Importacion::where('pais_id', $paisModelo->id)->findOrFail($id);
+
+        if ($importacion->estado === 'error') {
+            return response()->json(['estado' => 'error', 'error' => $importacion->error_mensaje], 422);
         }
 
-        unset($resumen['pais']);
+        if ($importacion->estado === 'procesando') {
+            return response()->json(['estado' => 'procesando']);
+        }
 
-        return response()->json($resumen);
+        return response()->json([
+            'estado' => 'completado',
+            'esRangoParcial' => (bool) $importacion->es_rango_parcial,
+            'creativosTocados' => $importacion->creativos_tocados,
+            'resultadosTocados' => $importacion->resultados_tocados,
+            'tieneMetaTrue' => $importacion->tiene_meta_true,
+            'problemas' => $importacion->problemas,
+            'excluidos' => $importacion->excluidos,
+            'sinActividadDescartados' => $importacion->sin_actividad_descartados,
+        ]);
     }
 
     /**

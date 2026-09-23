@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
@@ -97,6 +97,13 @@ const ncTotalRealTiktok = ref('');
 const ordersTotalRealTiktok = ref('');
 
 const importando = ref(false);
+// true desde que el POST inicial confirma que el Job quedó despachado hasta
+// que el polling ve estado!=='procesando' -- separado de `importando` (que
+// cubre TODO el ciclo, incluido el POST inicial) solo para distinguir el
+// texto que ve el usuario ("Importando…" vs "Procesando en background…").
+const procesando = ref(false);
+const importacionId = ref(null);
+let pollHandle = null;
 const importError = ref('');
 const resumen = ref(null);
 
@@ -149,6 +156,11 @@ const esRangoParcialPreview = computed(() => {
     );
 });
 
+// El import corre en un Job en background (ver ProcesarImportacionCsv) --
+// un CSV real (~250 creativos) tarda más que el timeout de Cloud Run. El
+// POST solo despacha y devuelve un id al instante; acá se hace polling de
+// estadoImportacion() hasta que termina, mismo shape final que antes
+// (resumen.value) para no tocar el resto de la plantilla.
 async function importar() {
     if (rangoError.value || !token.value || importando.value) return;
     importando.value = true;
@@ -166,15 +178,49 @@ async function importar() {
             nc_total_real_tiktok: ncTotalRealTiktok.value === '' ? null : ncTotalRealTiktok.value,
             orders_total_real_tiktok: ordersTotalRealTiktok.value === '' ? null : ordersTotalRealTiktok.value,
         });
-        resumen.value = data;
+        importacionId.value = data.importacionId;
+        procesando.value = true;
         token.value = null; // el archivo temporal ya se borró en el server
         if (archivoInput.value) archivoInput.value.value = '';
+        iniciarPollEstadoImportacion();
     } catch (err) {
         importError.value = err.response?.data?.error || err.response?.data?.message || 'No se pudo importar.';
-    } finally {
         importando.value = false;
     }
 }
+
+function detenerPollEstadoImportacion() {
+    if (pollHandle) {
+        clearInterval(pollHandle);
+        pollHandle = null;
+    }
+}
+
+function iniciarPollEstadoImportacion() {
+    detenerPollEstadoImportacion();
+    pollHandle = setInterval(async () => {
+        try {
+            const { data } = await axios.get(`/pais/${props.pais}/importar/estado/${importacionId.value}`);
+            if (data.estado === 'procesando') return;
+
+            detenerPollEstadoImportacion();
+            importando.value = false;
+            procesando.value = false;
+            if (data.estado === 'error') {
+                importError.value = data.error || 'No se pudo importar.';
+                return;
+            }
+            resumen.value = data;
+        } catch {
+            detenerPollEstadoImportacion();
+            importando.value = false;
+            procesando.value = false;
+            importError.value = 'No se pudo consultar el estado de la importación.';
+        }
+    }, 3000);
+}
+
+onUnmounted(() => detenerPollEstadoImportacion());
 
 // --- Resumen por arte (2026-08-28, pedido explícito) ------------------
 // Tabla al fondo del panel, una fila por ARTE + FECHA (pedido posterior:
@@ -416,10 +462,11 @@ onMounted(() => cargarResumen());
                             :disabled="!token || !!rangoError || importando"
                             @click="importar"
                         >
-                            {{ importando ? 'Importando…' : 'Limpiar y cargar' }}
+                            {{ procesando ? 'Procesando…' : importando ? 'Importando…' : 'Limpiar y cargar' }}
                         </button>
                         <span class="import-status">
                             <template v-if="importError">{{ importError }}</template>
+                            <template v-else-if="procesando">Procesando en background -- esto puede tardar unos minutos…</template>
                             <template v-else-if="!preview">Aún no se ha cargado nada.</template>
                             <template v-else-if="!resumen">Listo para importar.</template>
                             <template v-else>Importación completa.</template>

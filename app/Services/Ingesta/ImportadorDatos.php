@@ -77,6 +77,12 @@ class ImportadorDatos
         mixed $ncTotalRealTiktok,
         mixed $ordersTotalRealTiktok,
         ?string $nombreArchivo = null,
+        // Solo lo pasa ProcesarImportacionCsv (import async vía panel web) --
+        // sin esto, ejecutarPipeline crea una fila `Importacion` nueva al
+        // terminar (comportamiento de siempre: consola, "Por API"). Con esto,
+        // actualiza la fila que ya existe (creada en estado=procesando ANTES
+        // de despachar el Job) en vez de duplicarla.
+        ?Importacion $importacionExistente = null,
     ): array {
         [$config, $pais] = self::resolverPais($paisSlug);
         self::validarRango($desde, $hasta);
@@ -87,6 +93,7 @@ class ImportadorDatos
             $config, $pais, $csv, $desde, $hasta,
             $ncTotalRealMeta, $ordersTotalRealMeta, $ncTotalRealTiktok, $ordersTotalRealTiktok,
             'csv', $nombreArchivo ?? $archivo,
+            $importacionExistente,
         );
     }
 
@@ -175,6 +182,7 @@ class ImportadorDatos
         mixed $ordersTotalRealTiktok,
         string $origen,
         string $nombreArchivo,
+        ?Importacion $importacionExistente = null,
     ): array {
         $clasificados = CruceCostosAppsFlyer::clasificarPorPlataforma($csv['limpias']);
 
@@ -243,9 +251,12 @@ class ImportadorDatos
 
         // Un solo lugar hace el trabajo -- importar() (CSV, consola + panel
         // web) e importarDesdeApi() llaman las dos a ejecutarPipeline(), así
-        // que el historial de `importaciones` queda completo sin duplicar el
-        // Importacion::create() en cada punto de entrada.
-        Importacion::create([
+        // que el historial de `importaciones` queda completo sin duplicar
+        // esta escritura en cada punto de entrada. Con $importacionExistente
+        // (import async vía panel web, ver ProcesarImportacionCsv) actualiza
+        // la fila que ya existe en vez de crear una nueva -- esa fila nació
+        // en estado=procesando antes de despachar el Job.
+        $datosImportacion = [
             'pais_id' => $pais->id,
             'origen' => $origen,
             'nombre_archivo' => $nombreArchivo,
@@ -264,7 +275,14 @@ class ImportadorDatos
             'nc_recalculados' => $ncRecalculados,
             'orders_preservados' => $ordersPreservados,
             'orders_recalculados' => $ordersRecalculados,
-        ]);
+            'excluidos' => count($clasificados['excluidos']),
+            'sin_actividad_descartados' => $sinActividadDescartados,
+        ];
+        if ($importacionExistente) {
+            $importacionExistente->update([...$datosImportacion, 'estado' => 'completado']);
+        } else {
+            Importacion::create($datosImportacion);
+        }
 
         return [
             'pais' => $pais,

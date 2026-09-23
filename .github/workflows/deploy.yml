@@ -17,6 +17,7 @@ env:
   JOB_MIGRATE: zx-dashboard-migrate
   JOB_IMPORTAR_APPSFLYER: zx-dashboard-importar-appsflyer
   JOB_SYNC_ADS: zx-dashboard-sincronizar-ads
+  JOB_QUEUE_WORKER: zx-dashboard-queue-worker
 
 jobs:
   deploy:
@@ -147,3 +148,21 @@ jobs:
             --command=php --args="artisan,meta:sincronizar-estado-ads" \
             --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest" \
             --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,META_GRAPH_API_VERSION=v21.0"
+
+          # Worker de la cola (QUEUE_CONNECTION=database) -- procesa
+          # ProcesarImportacionCsv (import de CSV vía panel web, ver
+          # ImportarDatosController::importar()). --stop-when-empty: corre,
+          # drena lo que haya, sale -- Cloud Scheduler lo dispara cada
+          # minuto (zx-dashboard-queue-worker-tick), no queda un proceso
+          # vivo cobrando de más. Mismos secrets que el service porque
+          # corre el mismo pipeline (EnriquecedorCostosMeta/Tiktok +
+          # ImagenCacheService).
+          gcloud run jobs deploy ${{ env.JOB_QUEUE_WORKER }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
+            --image="$IMAGE_URI" \
+            --service-account=${{ env.RUNTIME_SA }} \
+            --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --task-timeout=1800 \
+            --command=php --args="artisan,queue:work,--stop-when-empty,--max-time=1700,--tries=1" \
+            --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest,TIKTOK_ACCESS_TOKEN=ZxDashboardTiktokAccessToken:latest,APPSFLYER_API_TOKEN=ZxDashboardAppsflyerApiToken:latest,ANTHROPIC_API_KEY=ZxDashboardAnthropicApiKey:latest" \
+            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,META_GRAPH_API_VERSION=v21.0,APPSFLYER_BUFFER_ATRIBUCION_DIAS=5,ANTHROPIC_MODEL=claude-sonnet-5"

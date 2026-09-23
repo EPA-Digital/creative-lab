@@ -46,6 +46,7 @@ Route::post('/pais/{pais}/creativos/{creativo}/nombre', [GestionNombresControlle
 Route::get('/pais/{pais}/importar', [ImportarDatosController::class, 'show'])->name('importar-datos');
 Route::post('/pais/{pais}/importar/previsualizar', [ImportarDatosController::class, 'previsualizar'])->name('importar-datos.previsualizar');
 Route::post('/pais/{pais}/importar', [ImportarDatosController::class, 'importar'])->name('importar-datos.importar');
+Route::get('/pais/{pais}/importar/estado/{id}', [ImportarDatosController::class, 'estadoImportacion'])->name('importar-datos.estado');
 Route::post('/pais/{pais}/importar/api', [ImportarDatosController::class, 'importarApi'])->name('importar-datos.importar-api');
 Route::get('/pais/{pais}/importar/resumen', [ImportarDatosController::class, 'resumenPorArte'])->name('importar-datos.resumen');
 

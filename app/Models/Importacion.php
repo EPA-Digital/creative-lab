@@ -32,6 +32,11 @@ class Importacion extends Model
         'nc_recalculados',
         'orders_preservados',
         'orders_recalculados',
+        'estado',
+        'error_mensaje',
+        'csv_contenido',
+        'excluidos',
+        'sin_actividad_descartados',
     ];
 
     protected function casts(): array
