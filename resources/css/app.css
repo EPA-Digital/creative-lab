@@ -426,6 +426,15 @@ h1, h2, .num, .kpi-value {
     color: var(--text-muted);
     border-top-color: color-mix(in srgb, var(--amber) 45%, var(--text-faint));
 }
+/* puesto 4/5 (2026-09-22, Top 5) -- mismo tratamiento plano que el puesto 3,
+   nunca elevado (la elevación central es solo del ganador, puesto 1). */
+.podio-puesto-4 .podio-base,
+.podio-puesto-5 .podio-base {
+    height: 52px;
+    font-size: 1.6rem;
+    color: var(--text-muted);
+    border-top-color: var(--text-faint);
+}
 
 /* ---------- import panel ---------- */
 .import-panel {
@@ -1396,6 +1405,39 @@ h1, h2, .num, .kpi-value {
 }
 .modal-copy-empty {
     color: var(--text-faint);
+}
+/* modal-miembros -- 2026-09-17, desglose por campaña de un arte
+   consolidado (spec Adenda A): el total ya se ve arriba en el resto del
+   modal, esta tabla es solo el "por dentro" de esa suma. */
+.modal-miembros {
+    display: block;
+}
+.modal-miembros-titulo {
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    display: block;
+    margin-bottom: 10px;
+}
+.modal-miembros-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.modal-miembros-tabla th {
+    text-align: left;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding: 4px 8px 4px 0;
+    border-bottom: 1px solid var(--border);
+}
+.modal-miembros-tabla td {
+    padding: 6px 8px 6px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
 }
 /* modal-vigencia -- 2026-08-28, pedido explícito: "el tiempo que
    estuvieron activos", detalle completo (todos los tramos, no solo el mes

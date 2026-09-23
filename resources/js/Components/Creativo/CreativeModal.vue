@@ -4,7 +4,7 @@ import axios from 'axios';
 import {
     cardDesdeCreativo, placeholderPorTipo, humanizarCampania,
     kpisPrincipales, etapasFunnel, generarLectura,
-    calcularScoreDesglose, nombrePrincipalYTecnico, formatNumeroExacto, formatearRangoFecha,
+    calcularScoreDesglose, nombrePrincipalYTecnico, formatNumeroExacto, formatMoneyExacto, formatearRangoFecha,
     FUNNEL_LABELS, FUNNEL_COLOR_VAR, TIPO_CUENTA_OPCIONES, TIPO_CREATIVO_LABELS,
 } from '@/motor';
 
@@ -214,6 +214,27 @@ const rotacionLabel = computed(() => (esTikTok.value ? 'TikTok Smart+ las rota' 
 // como si lo supiéramos cuando en realidad no tenemos ese dato.
 const faltaMeta = computed(() => card.value.tieneMeta === false);
 const faltaAppsFlyer = computed(() => card.value.tieneAppsFlyer === false);
+
+// Desglose por campaña (2026-09-17, consolidación por arte+etapa, spec
+// Adenda A: "al abrir una fila, desglose por campaña individual mostrando
+// el TOTAL del arte junto a sus partes"). esGrupoArte es true para
+// CUALQUIER arte clasificado, incluso con un solo ad_id (ver
+// VentaRealYAgrupacion::agruparPorArteYFunnel) -- el desglose solo aporta
+// algo cuando hay 2+ miembros, mostrarlo con 1 solo sería un duplicado
+// exacto del total de arriba.
+const miembrosDesglose = computed(() => (card.value.miembros?.length > 1 ? card.value.miembros : []));
+// Volumen del desglose usa el MISMO campo que la etapa del arte (no siempre
+// newCustomers) -- un miembro de Awareness no tiene newCustomers, mostrar
+// eso ahí daría "0" siempre en vez del dato real (impresiones).
+const CAMPO_VOLUMEN_POR_FUNNEL_MODAL = { AWA: 'impressions', CON: 'installs', CONS: 'installs', CNV: 'newCustomers', LOY: 'orders' };
+const labelVolumenMiembros = computed(() => {
+    const campo = CAMPO_VOLUMEN_POR_FUNNEL_MODAL[card.value.etapaFunnel];
+    return { impressions: 'Impresiones', installs: 'Installs', newCustomers: 'NC', orders: 'Órdenes' }[campo] || 'Volumen';
+});
+function volumenMiembro(m) {
+    const campo = CAMPO_VOLUMEN_POR_FUNNEL_MODAL[card.value.etapaFunnel] || 'installs';
+    return m[campo] ?? null;
+}
 
 // Evaluación IA on-demand (2026-08-26, ver plan) -- botones "Evaluar por
 // métricas"/"Evaluar por arte". El backend (EvaluacionCreativoController)
@@ -470,6 +491,28 @@ watch(() => props.creativo?.id, () => {
                                     <span v-if="multiVariante" class="text-muted">{{ copyBodies.length }} variantes ({{ rotacionLabel }})</span>
                                 </div>
                             </div>
+                        </div>
+
+                        <div v-if="miembrosDesglose.length" class="modal-anuncio modal-miembros">
+                            <span class="modal-miembros-titulo">Desglose por campaña ({{ miembrosDesglose.length }} anuncios de este arte)</span>
+                            <table class="modal-miembros-tabla">
+                                <thead>
+                                    <tr>
+                                        <th>Ad ID</th>
+                                        <th>Campaña</th>
+                                        <th>Costo</th>
+                                        <th>{{ labelVolumenMiembros }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="m in miembrosDesglose" :key="m.adId">
+                                        <td class="mono">{{ m.adId }}</td>
+                                        <td>{{ m.campaignName || '—' }}</td>
+                                        <td class="mono">{{ formatMoneyExacto(m.cost) }}</td>
+                                        <td class="mono">{{ formatNumeroExacto(volumenMiembro(m)) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
 
                         <div v-if="lectura" class="modal-lectura">

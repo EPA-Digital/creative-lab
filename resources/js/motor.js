@@ -710,7 +710,20 @@ export function cardDesdeCreativo(creativo, mes = null) {
         campaignName: creativo.nombre_campania ?? null,
         serie: creativo.serie ?? null,
         fatiga: creativo.fatiga ?? null,
-        copyBodies: creativo.copy?.texto ? [creativo.copy.texto] : [],
+        // esGrupoArte/miembros (2026-09-17, consolidación por arte+etapa,
+        // ver AnalisisCreativoController::cardAJson) -- esGrupoArte es true
+        // para CUALQUIER creativo con arte+funnel válidos (incluso un solo
+        // ad_id), no solo cuando hay 2+ campañas fundidas: usar
+        // `miembros.length > 1` para decidir si vale la pena mostrar un
+        // desglose, no `esGrupoArte` a secas.
+        esGrupoArte: creativo.esGrupoArte ?? false,
+        miembros: creativo.miembros ?? null,
+        // copyBodies YA viene armado (deduplicado/etiquetado por campaña)
+        // cuando el backend consolidó por arte -- ver
+        // VentaRealYAgrupacion::consolidarCopyBodiesPorArte(). Si no viene
+        // (creativo sin consolidar todavía, otras páginas), se arma como
+        // siempre desde el copy singular.
+        copyBodies: creativo.copyBodies ?? (creativo.copy?.texto ? [creativo.copy.texto] : []),
         copyTitles: creativo.copy?.titulo ? [creativo.copy.titulo] : [],
         copyDescriptions: [],
         // `r` es el resultado del mes ya resuelto arriba -- `creativo.tieneMeta`

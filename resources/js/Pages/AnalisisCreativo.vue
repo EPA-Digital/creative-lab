@@ -17,6 +17,15 @@ const props = defineProps({
     creativos: Array,
     mes: String,
     mesesDisponibles: Array,
+    // Selector Inicio/Fin (spec Adenda B) -- solo tiene sentido donde haya
+    // `resultados_diarios` (hoy, Panamá). tieneDatosDiarios decide si se
+    // muestra el control; desde/hasta ya vienen aplicados por el backend
+    // cuando el usuario los usó (null si la página está en modo "Mes").
+    tieneDatosDiarios: { type: Boolean, default: false },
+    desde: { type: String, default: null },
+    hasta: { type: String, default: null },
+    rangoDiarioMin: { type: String, default: null },
+    rangoDiarioMax: { type: String, default: null },
 });
 
 // A diferencia de Plataforma/Tipo de cuenta/Formato (que filtran EN CLIENTE
@@ -32,6 +41,22 @@ function formatMesLabel(mesIso) {
 const mesOptions = computed(() => (props.mesesDisponibles || []).map((m) => ({ key: m, label: formatMesLabel(m) })));
 function cambiarMes(nuevoMes) {
     router.get(window.location.pathname, { mes: nuevoMes }, { preserveState: true, preserveScroll: true, replace: true });
+}
+
+// Selector Inicio/Fin (spec Adenda B) -- reemplaza "Mes" por un rango
+// arbitrario, sourced de resultados_diarios en vez de resultados (mes).
+// Un solo estado de tiempo para TODA la página (podio, tabla, carrusel,
+// barras reflejan el mismo rango a la vez) -- ver
+// AnalisisCreativoController::index, no hay dos relojes independientes.
+const usandoRango = computed(() => !!(props.desde && props.hasta));
+const rangoDesde = ref(props.desde || props.rangoDiarioMax || '');
+const rangoHasta = ref(props.hasta || props.rangoDiarioMax || '');
+function aplicarRango() {
+    if (!rangoDesde.value || !rangoHasta.value) return;
+    router.get(window.location.pathname, { desde: rangoDesde.value, hasta: rangoHasta.value }, { preserveState: true, preserveScroll: true, replace: true });
+}
+function volverAMes() {
+    router.get(window.location.pathname, { mes: props.mes }, { preserveState: true, preserveScroll: true, replace: true });
 }
 
 // Puerto literal de METRICAS_RANKING + calcularRanking + ETIQUETA_CORTA_POR_
@@ -103,6 +128,22 @@ function valorCampo(creativo, campo) {
     const r = creativo.resultados?.[0];
     const v = r?.[CAMPO_A_RESULTADO[campo]];
     return v === null || v === undefined ? null : Number(v);
+}
+
+// sinActividadReal (2026-09-22, pedido explícito) -- mismo criterio que
+// ImportadorDatos::esSinActividad en el backend: costo, impresiones,
+// clicks E installs los 4 en 0 (o null) significa que no hay ninguna señal
+// real para este creativo en el período visto, casi siempre un `Resultado`
+// huérfano de una importación de prueba vieja que quedó sin actualizar (ver
+// limpieza de 2026-09-22). Nunca excluye un creativo con AL MENOS un
+// número real, por chico que sea -- eso sí sería un creativo legítimo del
+// mes, no basura.
+function sinActividadReal(creativo) {
+    const r = creativo.resultados?.[0];
+    return !((Number(r?.cost) || 0) > 0
+        || (Number(r?.impressions) || 0) > 0
+        || (Number(r?.clicks) || 0) > 0
+        || (Number(r?.installs) || 0) > 0);
 }
 
 // Puerto literal de PLATAFORMA_OPCIONES + renderPlataformaToggle
@@ -252,7 +293,7 @@ function calcularRanking(cards, key) {
     const metrica = METRICAS_RANKING[key];
     if (!metrica) return { elegibles: [], excluidosPorVolumen: 0 };
 
-    let candidatos = cards.filter((c) => valorCampo(c, metrica.campo) !== null);
+    let candidatos = cards.filter((c) => valorCampo(c, metrica.campo) !== null && !sinActividadReal(c));
     let excluidosPorVolumen = 0;
 
     // Piso general de volumen -- por CARD, no por selección de funnel (con
@@ -319,31 +360,74 @@ const funnelsPresentes = computed(() => {
 
 const ranking = computed(() => calcularRanking(creativosFiltrados.value, metricaKey.value));
 
-// "Top 3 a mejorar" -- los peores DENTRO de los elegibles (mismo piso de
-// volumen que el Top 3 destacado, nunca un creativo con 1 sola conversión
-// aislada): son los últimos 3 de la misma lista ya ordenada, invertidos
-// para que el puesto 1 sea el más extremo (igual criterio que el Top 3
-// destacado, donde el puesto 1 es el mejor).
+// N (3/5) -- selector compartido por el podio único (TODOS) y los bloques
+// por etapa.
+const N_OPCIONES = [3, 5];
+const nPodio = ref(3);
+
+// Podio único (funnelSeleccionado === 'TODOS') -- vuelve al comportamiento
+// original (2026-09-22, pedido explícito): un solo ranking mezclando
+// funnels, rankeado por "Rankear por" (sí aplica acá, a propósito -- con
+// funnels mezclados no hay una sola métrica "natural"), con flechas para
+// alternar Mejores/A mejorar en vez de mostrarlos simultáneos. El bloque
+// por etapa (abajo) es solo para cuando se elige UNA etapa puntual.
 const vistaTop3 = ref('mejores');
 function alternarVistaTop3() {
     vistaTop3.value = vistaTop3.value === 'mejores' ? 'peores' : 'mejores';
 }
-const top3 = computed(() =>
+const topUnico = computed(() =>
     vistaTop3.value === 'mejores'
-        ? ranking.value.elegibles.slice(0, 3)
-        : [...ranking.value.elegibles].reverse().slice(0, 3),
+        ? ranking.value.elegibles.slice(0, nPodio.value)
+        : [...ranking.value.elegibles].reverse().slice(0, nPodio.value),
 );
+
+// Podio por etapa (spec Adenda B) -- un bloque por etapa, con TOP-N y
+// WORST-N simultáneos (verde/rojo). La métrica de volumen NO es elegible
+// acá (a propósito: "el costo no ordena el podio") -- se fija a
+// METRICA_POR_FUNNEL_DEFAULT de esa etapa. Solo corre para la etapa elegida
+// por chip (2026-09-22: antes corría para TODAS sin importar el chip
+// elegido) -- con "TODOS" no hay ningún bloque acá, se usa el podio único
+// de arriba.
+const podiosPorEtapa = computed(() => {
+    if (funnelSeleccionado.value === 'TODOS') return [];
+    return funnelsPresentes.value
+        .filter((etapa) => etapa === funnelSeleccionado.value)
+        .map((etapa) => {
+            const cardsEtapa = creativosPorFormato.value.filter((c) => c.funnel === etapa);
+            const metricaKeyEtapa = METRICA_POR_FUNNEL_DEFAULT[etapa] || 'nc';
+            const metricaEtapa = METRICAS_RANKING[metricaKeyEtapa];
+            const { elegibles, excluidosPorVolumen } = calcularRanking(cardsEtapa, metricaKeyEtapa);
+            function estrellaEtapa(creativo) {
+                return {
+                    label: ETIQUETA_CORTA_POR_CAMPO[metricaEtapa.campo] || metricaEtapa.campo,
+                    value: formatearValorMetrica(metricaEtapa.campo, valorCampo(creativo, metricaEtapa.campo)),
+                };
+            }
+            return {
+                etapa,
+                label: FUNNEL_LABELS[etapa] || etapa,
+                excluidosPorVolumen,
+                estrellaEtapa,
+                top: elegibles.slice(0, nPodio.value),
+                worst: [...elegibles].reverse().slice(0, nPodio.value),
+            };
+        });
+});
 
 // Vista general: mismo criterio que creativos.html -- TODAS las cards del
 // filtro actual, sin piso de volumen (el piso es para no ensuciar el Top 3,
 // no para esconder inventario); las que no tienen valor para la métrica van
-// al final sin pretender un orden que no existe.
+// al final sin pretender un orden que no existe. sinActividadReal SÍ se
+// excluye acá (2026-09-22) -- un creativo con costo/impresiones/clicks/
+// installs los 4 en 0 no es "inventario sin métrica todavía", es basura de
+// una importación vieja (ver limpieza 2026-09-22), nunca un caso real.
 const todasOrdenadas = computed(() => {
-    const generalSinPiso = creativosFiltrados.value.filter(
+    const conActividad = creativosFiltrados.value.filter((c) => !sinActividadReal(c));
+    const generalSinPiso = conActividad.filter(
         (c) => valorCampo(c, metricaActual.value.campo) !== null,
     );
     const idsEnGeneral = new Set(generalSinPiso.map((c) => c.id));
-    const sinMetrica = creativosFiltrados.value.filter((c) => !idsEnGeneral.has(c.id));
+    const sinMetrica = conActividad.filter((c) => !idsEnGeneral.has(c.id));
     return [...generalSinPiso.sort((a, b) => {
         const va = valorCampo(a, metricaActual.value.campo);
         const vb = valorCampo(b, metricaActual.value.campo);
@@ -398,7 +482,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
             </header>
 
             <div class="resumen-filtros">
-                <FiltroDropdown label="Mes" :modelValue="mes" :options="mesOptions" @update:modelValue="cambiarMes" />
+                <FiltroDropdown v-if="!usandoRango" label="Mes" :modelValue="mes" :options="mesOptions" @update:modelValue="cambiarMes" />
+                <div v-if="tieneDatosDiarios" class="rango-control">
+                    <template v-if="usandoRango">
+                        <input v-model="rangoDesde" type="date" :min="rangoDiarioMin" :max="rangoDiarioMax" @change="aplicarRango" />
+                        <span>→</span>
+                        <input v-model="rangoHasta" type="date" :min="rangoDiarioMin" :max="rangoDiarioMax" @change="aplicarRango" />
+                        <button type="button" class="chip" @click="volverAMes">Volver a Mes</button>
+                    </template>
+                    <button v-else type="button" class="chip" @click="aplicarRango">Rango personalizado</button>
+                </div>
                 <FiltroDropdown label="Plataforma" v-model="plataformaSeleccionada" :options="PLATAFORMA_OPCIONES" :counts="plataformaCounts" />
                 <FiltroDropdown label="Tipo de cuenta" v-model="tipoCuentaSeleccionado" :options="TIPO_CUENTA_OPCIONES" :counts="tipoCuentaCounts" />
                 <FiltroDropdown label="Formato" v-model="formatoSeleccionado" :options="FORMATO_OPCIONES" :counts="formatoCounts" />
@@ -440,33 +533,85 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
             </div>
 
             <section class="section">
-                <div class="top3-header">
-                    <h2 class="section-title top3-titulo">{{ vistaTop3 === 'mejores' ? 'Top 3 destacado' : 'Top 3 a mejorar' }}</h2>
-                </div>
-                <div class="top3-wrap">
-                    <button
-                        type="button"
-                        class="top3-flecha top3-flecha-izq"
-                        :aria-label="vistaTop3 === 'mejores' ? 'Ver los 3 con más oportunidad de mejora' : 'Ver el Top 3 destacado'"
-                        :title="vistaTop3 === 'mejores' ? 'Ver Top 3 a mejorar' : 'Ver Top 3 destacado'"
-                        @click="alternarVistaTop3"
-                    >
-                        ‹
-                    </button>
-                    <div class="podio">
-                        <PodiumTop3 v-if="top3.length" :top3="top3" :estrella-override="estrellaActual" :mes="mes" @abrir="abrirDetalle" />
-                        <p v-else class="empty-note">Ningún anuncio cumple el umbral actual para esta métrica.</p>
+                <div class="section-header">
+                    <h2 class="section-title">Análisis creativo{{ funnelSeleccionado === 'TODOS' ? '' : ` — ${FUNNEL_LABELS[funnelSeleccionado] || funnelSeleccionado}` }}</h2>
+                    <div class="chip-group">
+                        <button
+                            v-for="n in N_OPCIONES"
+                            :key="n"
+                            type="button"
+                            class="chip"
+                            :class="{ activo: nPodio === n }"
+                            @click="nPodio = n"
+                        >
+                            Top {{ n }}
+                        </button>
                     </div>
-                    <button
-                        type="button"
-                        class="top3-flecha top3-flecha-der"
-                        :aria-label="vistaTop3 === 'mejores' ? 'Ver los 3 con más oportunidad de mejora' : 'Ver el Top 3 destacado'"
-                        :title="vistaTop3 === 'mejores' ? 'Ver Top 3 a mejorar' : 'Ver Top 3 destacado'"
-                        @click="alternarVistaTop3"
-                    >
-                        ›
-                    </button>
                 </div>
+
+                <!-- TODOS: podio único (funnels mezclados, rankeado por "Rankear por"),
+                     flechas para alternar Mejores/A mejorar -- comportamiento original. -->
+                <template v-if="funnelSeleccionado === 'TODOS'">
+                    <div class="top3-header">
+                        <h3 class="etapa-titulo">{{ vistaTop3 === 'mejores' ? 'Mejores' : 'A mejorar' }}</h3>
+                    </div>
+                    <div class="top3-wrap">
+                        <button
+                            type="button"
+                            class="top3-flecha top3-flecha-izq"
+                            :title="vistaTop3 === 'mejores' ? 'Ver A mejorar' : 'Ver Mejores'"
+                            @click="alternarVistaTop3"
+                        >‹</button>
+                        <div class="podio">
+                            <PodiumTop3 v-if="topUnico.length" :top3="topUnico" :estrella-override="estrellaActual" :mes="mes" @abrir="abrirDetalle" />
+                            <p v-else class="empty-note">Ningún anuncio cumple el umbral actual para esta métrica.</p>
+                        </div>
+                        <button
+                            type="button"
+                            class="top3-flecha top3-flecha-der"
+                            :title="vistaTop3 === 'mejores' ? 'Ver A mejorar' : 'Ver Mejores'"
+                            @click="alternarVistaTop3"
+                        >›</button>
+                    </div>
+                </template>
+
+                <!-- Etapa específica: mismo patrón de flechas que TODOS (2026-09-22,
+                     pedido explícito -- antes mostraba Mejores + A mejorar
+                     simultáneos, sin carrusel; ahora es consistente con TODOS). -->
+                <template v-else>
+                    <div v-for="p in podiosPorEtapa" :key="p.etapa" class="etapa-bloque">
+                        <p v-if="p.excluidosPorVolumen > 0" class="umbral-nota">
+                            {{ p.excluidosPorVolumen }} anuncio(s) excluido(s) por bajo volumen.
+                        </p>
+                        <div class="top3-header">
+                            <h3 class="etapa-titulo">{{ vistaTop3 === 'mejores' ? 'Mejores' : 'A mejorar' }}</h3>
+                        </div>
+                        <div class="top3-wrap">
+                            <button
+                                type="button"
+                                class="top3-flecha top3-flecha-izq"
+                                :title="vistaTop3 === 'mejores' ? 'Ver A mejorar' : 'Ver Mejores'"
+                                @click="alternarVistaTop3"
+                            >‹</button>
+                            <div class="podio">
+                                <PodiumTop3
+                                    v-if="(vistaTop3 === 'mejores' ? p.top : p.worst).length"
+                                    :top3="vistaTop3 === 'mejores' ? p.top : p.worst"
+                                    :estrella-override="p.estrellaEtapa"
+                                    :mes="mes"
+                                    @abrir="abrirDetalle"
+                                />
+                                <p v-else class="empty-note">Ningún anuncio cumple el umbral actual.</p>
+                            </div>
+                            <button
+                                type="button"
+                                class="top3-flecha top3-flecha-der"
+                                :title="vistaTop3 === 'mejores' ? 'Ver A mejorar' : 'Ver Mejores'"
+                                @click="alternarVistaTop3"
+                            >›</button>
+                        </div>
+                    </div>
+                </template>
             </section>
 
             <section class="section">
@@ -649,12 +794,11 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
     padding: 24px 0;
     width: 100%;
 }
+.etapa-bloque {
+    margin-bottom: 32px;
+}
 .top3-header {
     margin-bottom: 8px;
-}
-.top3-titulo {
-    margin: 0;
-    text-align: center;
 }
 .top3-wrap {
     position: relative;
@@ -687,6 +831,26 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
 .top3-flecha:hover {
     border-color: var(--amber);
     color: var(--amber);
+}
+.etapa-titulo {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    text-align: center;
+    margin: 0 0 4px;
+}
+.rango-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.rango-control input[type='date'] {
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
 }
 .resumen-filtros {
     align-items: flex-start;
