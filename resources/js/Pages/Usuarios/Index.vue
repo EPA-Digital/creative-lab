@@ -119,9 +119,13 @@ const ROL_LABEL = {
             <form class="invitar-form" @submit.prevent="invitar">
                 <input v-model="nombre" type="text" placeholder="Nombre" required />
                 <input v-model="email" type="email" placeholder="correo@cliente.com" required />
-                <select v-model="paisIdsInvitar" multiple class="select-paises" title="Países que puede ver">
-                    <option v-for="p in paises" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-                </select>
+                <span class="paises-label">Países que puede ver:</span>
+                <div class="paises-chips">
+                    <label v-for="p in paises" :key="p.id" class="chip" :class="{ activo: paisIdsInvitar.includes(p.id) }">
+                        <input type="checkbox" :value="p.id" v-model="paisIdsInvitar" />
+                        {{ p.nombre }}
+                    </label>
+                </div>
                 <button type="submit" :disabled="invitando">{{ invitando ? 'Invitando…' : 'Invitar' }}</button>
             </form>
             <p v-if="error" class="error">{{ error }}</p>
@@ -164,9 +168,17 @@ const ROL_LABEL = {
                             <span v-else>{{ ROL_LABEL[u.rol] || u.rol }}</span>
                         </td>
                         <td>
-                            <select v-if="puedeGestionar" v-model="u.paisIdsEditando" multiple class="select-paises">
-                                <option v-for="p in paises" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-                            </select>
+                            <div v-if="puedeGestionar" class="paises-chips">
+                                <label
+                                    v-for="p in paises"
+                                    :key="p.id"
+                                    class="chip"
+                                    :class="{ activo: u.paisIdsEditando.includes(p.id) }"
+                                >
+                                    <input type="checkbox" :value="p.id" v-model="u.paisIdsEditando" />
+                                    {{ p.nombre }}
+                                </label>
+                            </div>
                             <span v-else>{{ u.paises.map((p) => p.nombre).join(', ') || '—' }}</span>
                         </td>
                         <td>
@@ -226,16 +238,47 @@ h1 {
     background: var(--surface);
     color: var(--text);
 }
-.select-paises {
-    min-width: 140px;
-    max-width: 200px;
-    height: 34px;
-    padding: 4px 6px;
+.paises-label {
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+.paises-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 999px;
     background: var(--surface);
-    color: var(--text);
+    color: var(--text-muted);
     font-size: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+}
+.chip input {
+    /* El checkbox real sigue ahí (accesibilidad, teclado) pero invisible --
+       el estado se ve en el estilo del chip completo (.activo), no en un
+       checkbox nativo chiquito difícil de ver dentro de una tabla. */
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+}
+.chip.activo {
+    background: var(--amber);
+    border-color: var(--amber);
+    color: #1a1a1a;
+    font-weight: 600;
 }
 .invitar-form button {
     padding: 8px 16px;
