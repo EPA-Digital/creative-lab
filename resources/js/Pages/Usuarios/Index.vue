@@ -10,11 +10,14 @@ import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 // de invitación, acá se muestra para copiar y mandar a mano (Slack/
 // WhatsApp/correo). Mismo patrón axios+JSON que Ajustes/Index.vue.
 //
-// Cambiar rol/países de OTRO usuario es más estricto -- superadmin/
-// director (Gate 'gestionar-usuarios', ver
-// UsuariosController::actualizarRolYPaises y User::puedeGestionarUsuarios()).
-// Otorgar 'director'/'superadmin' en sí es solo superadmin. Acá se refleja
-// ocultando/deshabilitando esos controles -- la guardia real es el backend.
+// Jerarquía completa (2026-09-23) -- el backend (UsuariosController::
+// index()) YA filtró la lista a "lo que puedo administrar + yo mismo", así
+// que si una fila aparece acá (y no es la mía) la puedo editar. Lo que
+// sigue siendo más estricto y necesita su propio check en el frontend:
+// desactivar (solo director/superadmin), aprobar invitación pendiente
+// (gerente/director/superadmin) y otorgar director/superadmin (solo
+// superadmin) -- la guardia real de los tres vive en el backend, esto es
+// solo para no mostrar un botón que va a dar 403.
 const props = defineProps({
     pais: { type: String, required: true },
     usuarios: { type: Array, required: true },
@@ -22,13 +25,21 @@ const props = defineProps({
     roles: { type: Array, required: true },
 });
 
-const usuarios = ref(props.usuarios.map((u) => ({ ...u, paisIdsEditando: u.paises.map((p) => p.id) })));
-// superadmin/director -- ver User::puedeGestionarUsuarios() (mismo check
-// del lado backend, esto es solo para mostrar/ocultar los controles).
-const puedeGestionar = computed(() => ['superadmin', 'director'].includes(usePage().props.auth?.user?.rol));
-const esSuperadmin = computed(() => usePage().props.auth?.user?.rol === 'superadmin');
+const usuarios = ref(props.usuarios.map((u) => ({
+    ...u,
+    paisIdsEditando: u.paises.map((p) => p.id),
+    paisIdsAprobando: u.pais_ids_propuestos ?? [],
+})));
+const miRol = computed(() => usePage().props.auth?.user?.rol);
+const puedeDesactivar = computed(() => ['superadmin', 'director'].includes(miRol.value));
+const puedeAprobar = computed(() => ['superadmin', 'gerente', 'director'].includes(miRol.value));
+const esSuperadmin = computed(() => miRol.value === 'superadmin');
 const miId = computed(() => usePage().props.auth?.user?.id);
 const ROLES_ALTOS = ['superadmin', 'director'];
+
+function esPendiente(u) {
+    return ! u.activo && u.pais_ids_propuestos !== null;
+}
 
 const nombre = ref('');
 const email = ref('');
@@ -36,6 +47,7 @@ const paisIdsInvitar = ref([]);
 const invitando = ref(false);
 const error = ref('');
 const ultimoLink = ref('');
+const avisoPendiente = ref(false);
 
 async function invitar() {
     if (!nombre.value.trim() || !email.value.trim() || invitando.value) return;
@@ -49,8 +61,14 @@ async function invitar() {
             email: email.value.trim(),
             pais_ids: paisIdsInvitar.value,
         });
-        usuarios.value.unshift({ ...data.usuario, invitacion_token: 'pendiente', paisIdsEditando: data.usuario.paises.map((p) => p.id) });
+        usuarios.value.unshift({
+            ...data.usuario,
+            invitacion_token: 'pendiente',
+            paisIdsEditando: data.usuario.paises.map((p) => p.id),
+            paisIdsAprobando: data.usuario.pais_ids_propuestos ?? [],
+        });
         ultimoLink.value = data.linkInvitacion;
+        avisoPendiente.value = data.pendiente;
         nombre.value = '';
         email.value = '';
         paisIdsInvitar.value = [];
@@ -74,6 +92,24 @@ async function desactivar(usuario) {
         usuario.activo = false;
     } catch (e) {
         alert(e.response?.data?.message || 'No se pudo desactivar.');
+    }
+}
+
+async function aprobar(usuario) {
+    usuario.guardando = true;
+    usuario.errorFila = '';
+    try {
+        const { data } = await axios.post(`/usuarios/${usuario.id}/aprobar`, {
+            pais_ids: usuario.paisIdsAprobando,
+        });
+        usuario.paises = data.usuario.paises;
+        usuario.paisIdsEditando = data.usuario.paises.map((p) => p.id);
+        usuario.activo = data.usuario.activo;
+        usuario.pais_ids_propuestos = null;
+    } catch (e) {
+        usuario.errorFila = e.response?.data?.message || 'No se pudo aprobar.';
+    } finally {
+        usuario.guardando = false;
     }
 }
 
@@ -134,6 +170,10 @@ const ROL_LABEL = {
                 <input :value="ultimoLink" readonly @focus="$event.target.select()" />
                 <button type="button" @click="copiarLink">Copiar</button>
             </div>
+            <p v-if="avisoPendiente" class="aviso-pendiente">
+                Queda pendiente de aprobación -- no va a poder entrar hasta que gerente, director o superadmin
+                confirme los países.
+            </p>
 
             <table class="tabla-usuarios">
                 <thead>
@@ -152,9 +192,8 @@ const ROL_LABEL = {
                         <td>{{ u.email }}</td>
                         <td>
                             <select
-                                v-if="puedeGestionar"
+                                v-if="u.id !== miId && !esPendiente(u)"
                                 v-model="u.rol"
-                                :disabled="u.id === miId && ROLES_ALTOS.includes(u.rol)"
                             >
                                 <option
                                     v-for="r in roles"
@@ -168,7 +207,24 @@ const ROL_LABEL = {
                             <span v-else>{{ ROL_LABEL[u.rol] || u.rol }}</span>
                         </td>
                         <td>
-                            <div v-if="puedeGestionar" class="paises-chips">
+                            <!-- Pendiente de aprobación: países PROPUESTOS por quien invitó -- editables
+                                 solo para quien puede aprobar (gerente/director/superadmin), de lo
+                                 contrario solo lectura (ver User::puedeAprobarInvitaciones()). -->
+                            <div v-if="esPendiente(u) && puedeAprobar && u.id !== miId" class="paises-chips">
+                                <label
+                                    v-for="p in paises"
+                                    :key="p.id"
+                                    class="chip"
+                                    :class="{ activo: u.paisIdsAprobando.includes(p.id) }"
+                                >
+                                    <input type="checkbox" :value="p.id" v-model="u.paisIdsAprobando" />
+                                    {{ p.nombre }}
+                                </label>
+                            </div>
+                            <span v-else-if="esPendiente(u)" class="propuesto">
+                                Propuesto: {{ paises.filter((p) => u.pais_ids_propuestos?.includes(p.id)).map((p) => p.nombre).join(', ') || '—' }}
+                            </span>
+                            <div v-else-if="u.id !== miId" class="paises-chips">
                                 <label
                                     v-for="p in paises"
                                     :key="p.id"
@@ -182,13 +238,23 @@ const ROL_LABEL = {
                             <span v-else>{{ u.paises.map((p) => p.nombre).join(', ') || '—' }}</span>
                         </td>
                         <td>
-                            <span :class="['estado', u.activo ? 'activo' : 'inactivo']">
+                            <span v-if="esPendiente(u)" class="estado pendiente">Pendiente de aprobación</span>
+                            <span v-else :class="['estado', u.activo ? 'activo' : 'inactivo']">
                                 {{ u.activo ? 'Activo' : 'Desactivado' }}
                             </span>
                         </td>
                         <td class="acciones">
                             <button
-                                v-if="puedeGestionar"
+                                v-if="esPendiente(u) && puedeAprobar && u.id !== miId"
+                                type="button"
+                                class="btn-guardar"
+                                :disabled="u.guardando"
+                                @click="aprobar(u)"
+                            >
+                                {{ u.guardando ? 'Aprobando…' : 'Aprobar' }}
+                            </button>
+                            <button
+                                v-else-if="!esPendiente(u) && u.id !== miId"
                                 type="button"
                                 class="btn-guardar"
                                 :disabled="u.guardando"
@@ -196,7 +262,12 @@ const ROL_LABEL = {
                             >
                                 {{ u.guardando ? 'Guardando…' : 'Guardar' }}
                             </button>
-                            <button v-if="u.activo && u.id !== miId" type="button" class="btn-desactivar" @click="desactivar(u)">
+                            <button
+                                v-if="u.activo && u.id !== miId && puedeDesactivar"
+                                type="button"
+                                class="btn-desactivar"
+                                @click="desactivar(u)"
+                            >
                                 Desactivar
                             </button>
                             <p v-if="u.errorFila" class="error fila">{{ u.errorFila }}</p>
@@ -373,6 +444,21 @@ h1 {
 .estado.inactivo {
     background: rgba(255, 69, 58, 0.15);
     color: var(--coral, #ff453a);
+}
+.estado.pendiente {
+    background: rgba(255, 159, 10, 0.15);
+    color: var(--amber);
+}
+.aviso-pendiente {
+    color: var(--amber);
+    font-size: 0.8rem;
+    margin: 0 0 16px;
+    max-width: 640px;
+}
+.propuesto {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-style: italic;
 }
 .btn-desactivar,
 .btn-guardar {

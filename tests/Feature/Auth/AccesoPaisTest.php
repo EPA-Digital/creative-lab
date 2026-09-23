@@ -56,20 +56,44 @@ class AccesoPaisTest extends TestCase
             ->where('paises.0.codigo', 'EC'));
     }
 
-    public function test_solo_un_director_puede_cambiar_el_rol_o_los_paises_de_otro_usuario(): void
+    public function test_un_usuario_no_puede_gestionar_a_otro_de_su_mismo_nivel_o_mas_alto(): void
     {
-        $noDirector = User::factory()->create(['rol' => 'gerente']);
-        $cliente = User::factory()->create(['rol' => 'cliente']);
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $otroGerente = User::factory()->create(['rol' => 'gerente']);
+        $director = User::factory()->create(['rol' => 'director']);
 
-        $this->actingAs($noDirector)
-            ->patchJson("/usuarios/{$cliente->id}", ['rol' => 'gerente', 'pais_ids' => []])
+        $this->actingAs($gerente)
+            ->patchJson("/usuarios/{$otroGerente->id}", ['rol' => 'gerente', 'pais_ids' => []])
+            ->assertForbidden();
+
+        $this->actingAs($gerente)
+            ->patchJson("/usuarios/{$director->id}", ['rol' => 'gerente', 'pais_ids' => []])
             ->assertForbidden();
     }
 
-    public function test_un_director_puede_asignar_paises_a_otro_usuario(): void
+    public function test_un_gerente_si_puede_gestionar_a_un_senior_junior_o_cliente(): void
     {
+        // Jerarquía completa (2026-09-23) -- no solo director/superadmin
+        // administran gente, cualquiera administra a quien tenga
+        // ESTRICTAMENTE debajo.
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $cliente = User::factory()->create(['rol' => 'cliente']);
+
+        $response = $this->actingAs($gerente)->patchJson("/usuarios/{$cliente->id}", [
+            'rol' => 'cliente',
+            'pais_ids' => [],
+        ]);
+
+        $response->assertOk();
+    }
+
+    public function test_un_director_puede_asignar_paises_a_otro_usuario_si_el_mismo_los_tiene(): void
+    {
+        // Nadie otorga acceso a un país que ni él mismo puede ver -- ver
+        // UsuariosController::actualizarRolYPaises().
         $pa = Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
         $director = User::factory()->create(['rol' => 'director']);
+        $director->paises()->attach($pa->id);
         $cliente = User::factory()->create(['rol' => 'cliente']);
 
         $response = $this->actingAs($director)->patchJson("/usuarios/{$cliente->id}", [
@@ -79,6 +103,35 @@ class AccesoPaisTest extends TestCase
 
         $response->assertOk();
         $this->assertTrue($cliente->fresh()->paises()->where('paises.id', $pa->id)->exists());
+    }
+
+    public function test_no_se_puede_otorgar_acceso_a_un_pais_que_el_actor_mismo_no_tiene(): void
+    {
+        $pa = Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
+        $director = User::factory()->create(['rol' => 'director']); // sin países asignados
+        $cliente = User::factory()->create(['rol' => 'cliente']);
+
+        $this->actingAs($director)
+            ->patchJson("/usuarios/{$cliente->id}", ['rol' => 'cliente', 'pais_ids' => [$pa->id]])
+            ->assertStatus(422);
+    }
+
+    public function test_solo_director_o_superadmin_pueden_desactivar_usuarios(): void
+    {
+        // Más estricto que la jerarquía general (pedido explícito
+        // 2026-09-23) -- un gerente no desactiva ni a su propio junior.
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $junior = User::factory()->create(['rol' => 'junior']);
+
+        $this->actingAs($gerente)
+            ->deleteJson("/usuarios/{$junior->id}")
+            ->assertForbidden();
+
+        $director = User::factory()->create(['rol' => 'director']);
+        $this->actingAs($director)
+            ->deleteJson("/usuarios/{$junior->id}")
+            ->assertOk();
+        $this->assertFalse($junior->fresh()->activo);
     }
 
     public function test_un_director_no_puede_tocar_su_propio_rol_de_director_ni_para_bajarlo(): void

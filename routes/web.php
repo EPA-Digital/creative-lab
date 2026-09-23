@@ -55,16 +55,24 @@ Route::middleware('auth')->group(function () {
         });
     });
 
-    // Transversal a países -- no lleva 'acceso-pais'. Invitar/ver usuarios
-    // es EPA (Gate 'epa'); cambiar rol o qué países ve cada quien es SOLO
-    // 'director' (Gate 'gestionar-usuarios', ver User::esDirector()).
+    // Transversal a países -- no lleva 'acceso-pais'. Ver/invitar usuarios
+    // es EPA (Gate 'epa'); el resto sigue la jerarquía completa (ver
+    // User::puedeGestionarA()) o restricciones más estrictas puntuales
+    // (desactivar, aprobar invitaciones) -- ver UsuariosController.
     Route::middleware('can:epa')->group(function () {
         Route::get('/usuarios', [UsuariosController::class, 'index'])->name('usuarios.index');
         Route::post('/usuarios', [UsuariosController::class, 'store'])->name('usuarios.store');
-        Route::delete('/usuarios/{usuario}', [UsuariosController::class, 'destroy'])->name('usuarios.destroy');
 
-        Route::middleware('can:gestionar-usuarios')->group(function () {
+        Route::middleware('can:desactivar-usuarios')->group(function () {
+            Route::delete('/usuarios/{usuario}', [UsuariosController::class, 'destroy'])->name('usuarios.destroy');
+        });
+
+        Route::middleware('can:gestionar-usuarios,usuario')->group(function () {
             Route::patch('/usuarios/{usuario}', [UsuariosController::class, 'actualizarRolYPaises'])->name('usuarios.actualizar');
+        });
+
+        Route::middleware('can:aprobar-invitaciones')->group(function () {
+            Route::post('/usuarios/{usuario}/aprobar', [UsuariosController::class, 'aprobar'])->name('usuarios.aprobar');
         });
     });
 

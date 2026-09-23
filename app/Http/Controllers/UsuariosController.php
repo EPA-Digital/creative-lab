@@ -16,13 +16,25 @@ use Inertia\Response;
  * donde se crean usuarios 'cliente' -- no hay auto-registro (ver
  * InvitacionController), un EPA siempre invita a mano.
  *
- * actualizarRolYPaises() es más estricto -- superadmin/director (Gate
- * 'gestionar-usuarios', ver User::puedeGestionarUsuarios()). Otorgar
- * 'director'/'superadmin' en sí es MÁS estricto todavía -- solo
- * superadmin ("puede haber muchos directores", pedido explícito
- * 2026-09-23): un director normal administra gerente/senior/junior/
- * cliente, pero no puede crear otro director ni ascenderse. Ver también
- * EnsureAccesoPais, que aplica el scope de país a TODOS por igual.
+ * Jerarquía completa (2026-09-23, pedido explícito): superadmin > director
+ * > gerente > senior > junior > cliente. Cada quien administra (rol,
+ * países) SOLO a los que están estrictamente por debajo (ver
+ * User::puedeGestionarA(), Gate 'gestionar-usuarios') y en index() solo VE
+ * a los que están por debajo -- nunca a su propio nivel ni arriba. Dos
+ * excepciones a la jerarquía general:
+ * - Desactivar: solo director/superadmin (Gate 'desactivar-usuarios'),
+ *   un gerente no desactiva ni a su propio junior.
+ * - Otorgar 'director'/'superadmin': solo superadmin (ROLES_SOLO_
+ *   SUPERADMIN más abajo), un director no puede crear otro director.
+ *
+ * Invitar con países propuestos (store()) por un junior/senior queda
+ * PENDIENTE (activo=false, pais_ids_propuestos poblado) hasta que alguien
+ * con puedeAprobarInvitaciones() (gerente/director/superadmin) lo apruebe
+ * -- ver aprobar(). Un invitado pendiente ni siquiera puede loguearse.
+ *
+ * Todo pais_ids (acá y en aprobar()) queda limitado a los países que el
+ * propio actor tiene asignados -- nadie puede otorgar acceso a un país
+ * que ni él mismo puede ver.
  *
  * Sin envío de correo automático a propósito -- MAIL_MAILER=log hoy no
  * entrega nada real y montar un transporte real es alcance aparte. store()
@@ -35,11 +47,18 @@ class UsuariosController extends Controller
 
     private const ROLES_SOLO_SUPERADMIN = ['superadmin', 'director'];
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $yo = $request->user();
+
         $usuarios = User::orderByDesc('id')
             ->with('paises:id,codigo,nombre')
-            ->get(['id', 'name', 'email', 'rol', 'activo', 'invitacion_token', 'creado_por']);
+            ->get(['id', 'name', 'email', 'rol', 'activo', 'invitacion_token', 'creado_por', 'pais_ids_propuestos'])
+            // Jerarquía (ver User::puedeGestionarA()) -- solo lo que está
+            // estrictamente por debajo, más la propia fila (para verse a
+            // sí mismo en la lista, nunca para autoadministrarse).
+            ->filter(fn (User $u) => $u->id === $yo->id || $yo->puedeGestionarA($u))
+            ->values();
 
         $paises = Pais::orderBy('nombre')->get(['id', 'codigo', 'nombre']);
 
@@ -58,12 +77,24 @@ class UsuariosController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $yo = $request->user();
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'pais_ids' => ['array'],
-            'pais_ids.*' => ['integer', 'exists:paises,id'],
+            'pais_ids.*' => [
+                'integer',
+                // Nadie propone/otorga acceso a un país que ni él mismo
+                // tiene asignado.
+                Rule::in($yo->paises()->pluck('paises.id')),
+            ],
         ]);
+
+        // junior/senior: pendiente de aprobación (ver
+        // User::puedeAprobarInvitaciones()) -- activo=false, los países
+        // propuestos NO se sincronizan todavía a usuario_pais.
+        $esPropuesta = ! $yo->puedeAprobarInvitaciones();
 
         $token = Str::random(40);
 
@@ -71,19 +102,21 @@ class UsuariosController extends Controller
             'name' => $data['name'],
             'email' => $data['email'],
             'rol' => 'cliente',
-            'activo' => true,
+            'activo' => ! $esPropuesta,
             'password' => null,
             'invitacion_token' => $token,
-            'creado_por' => $request->user()->id,
+            'creado_por' => $yo->id,
+            'pais_ids_propuestos' => $esPropuesta ? ($data['pais_ids'] ?? []) : null,
         ]);
 
-        if (! empty($data['pais_ids'])) {
+        if (! $esPropuesta && ! empty($data['pais_ids'])) {
             $usuario->paises()->sync($data['pais_ids']);
         }
 
         return response()->json([
-            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
+            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo', 'pais_ids_propuestos']), 'paises' => $usuario->paises],
             'linkInvitacion' => route('invitaciones.show', $token),
+            'pendiente' => $esPropuesta,
         ], 201);
     }
 
@@ -98,35 +131,53 @@ class UsuariosController extends Controller
 
     public function actualizarRolYPaises(Request $request, User $usuario): JsonResponse
     {
+        $yo = $request->user();
+
         $data = $request->validate([
             'rol' => ['required', Rule::in(self::ROLES)],
             'pais_ids' => ['array'],
-            'pais_ids.*' => ['integer', 'exists:paises,id'],
+            'pais_ids.*' => ['integer', Rule::in($yo->paises()->pluck('paises.id'))],
         ]);
 
-        // Solo superadmin puede otorgar 'director'/'superadmin' -- un
-        // director normal ni siquiera puede intentarlo (ni para otro, ni
-        // para reasignar el suyo propio a otra persona).
-        $tocaRolAlto = in_array($data['rol'], self::ROLES_SOLO_SUPERADMIN, true)
-            || in_array($usuario->rol, self::ROLES_SOLO_SUPERADMIN, true);
+        // Solo superadmin puede otorgar 'director'/'superadmin' -- ni
+        // siquiera un director puede crear otro director. (El Gate
+        // 'gestionar-usuarios' de la ruta ya validó la jerarquía general;
+        // esto es una restricción adicional sobre el ROL DESTINO.)
         abort_if(
-            $tocaRolAlto && ! $request->user()->esSuperadmin(),
+            in_array($data['rol'], self::ROLES_SOLO_SUPERADMIN, true) && ! $yo->esSuperadmin(),
             403,
-            'Solo un superadmin puede otorgar o quitar director/superadmin.'
-        );
-
-        // Nadie puede sacarse a sí mismo un rol de gestión -- se quedaría
-        // sin poder revertirlo.
-        abort_if(
-            $usuario->id === $request->user()->id
-                && $request->user()->puedeGestionarUsuarios()
-                && ! in_array($data['rol'], self::ROLES_SOLO_SUPERADMIN, true),
-            422,
-            'No podés quitarte tu propio rol de gestión.'
+            'Solo un superadmin puede otorgar director/superadmin.'
         );
 
         $usuario->update(['rol' => $data['rol']]);
         $usuario->paises()->sync($data['pais_ids'] ?? []);
+
+        return response()->json([
+            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
+        ]);
+    }
+
+    /**
+     * Aprueba una invitación que un junior/senior dejó pendiente en
+     * store() -- activa la cuenta y recién ahí sincroniza los países
+     * (propuestos por default, pero quien aprueba puede ajustar la lista
+     * antes de confirmar).
+     */
+    public function aprobar(Request $request, User $usuario): JsonResponse
+    {
+        $yo = $request->user();
+
+        abort_unless($usuario->estaPendienteDeAprobacion(), 422, 'Este usuario no tiene una invitación pendiente.');
+
+        $data = $request->validate([
+            'pais_ids' => ['array'],
+            'pais_ids.*' => ['integer', Rule::in($yo->paises()->pluck('paises.id'))],
+        ]);
+
+        $paisIds = $data['pais_ids'] ?? $usuario->pais_ids_propuestos ?? [];
+
+        $usuario->update(['activo' => true, 'pais_ids_propuestos' => null]);
+        $usuario->paises()->sync($paisIds);
 
         return response()->json([
             'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],

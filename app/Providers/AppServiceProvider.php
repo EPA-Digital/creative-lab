@@ -70,12 +70,23 @@ class AppServiceProvider extends ServiceProvider
         // 'cliente' (correo/contraseña, solo lectura) nunca pasa esto.
         Gate::define('epa', fn (User $user) => $user->esEpa());
 
-        // Administrar usuarios ajenos (rol, países asignados, desactivar) --
-        // superadmin/director (ver User::puedeGestionarUsuarios()).
-        // gerente/senior/junior tienen el mismo acceso completo al
-        // dashboard, pero no a esto. Otorgar 'director'/'superadmin' en sí
-        // es más estricto todavía -- ver UsuariosController::ROLES_QUE_
-        // SOLO_SUPERADMIN_PUEDE_OTORGAR.
-        Gate::define('gestionar-usuarios', fn (User $user) => $user->puedeGestionarUsuarios());
+        // Editar rol/países de OTRO usuario -- jerarquía completa (ver
+        // User::puedeGestionarA()): gerente administra senior/junior/
+        // cliente, senior administra junior/cliente, etc. Nunca del mismo
+        // nivel ni hacia arriba. Otorgar 'director'/'superadmin' en sí es
+        // más estricto todavía -- ver UsuariosController::ROLES_SOLO_
+        // SUPERADMIN. can:gestionar-usuarios,usuario en la ruta pasa el
+        // {usuario} del route model binding como $objetivo acá.
+        Gate::define('gestionar-usuarios', fn (User $user, User $objetivo) => $user->puedeGestionarA($objetivo));
+
+        // Desactivar es más estricto que la jerarquía general -- solo
+        // director/superadmin (pedido explícito 2026-09-23), un gerente
+        // no desactiva ni a su propio junior.
+        Gate::define('desactivar-usuarios', fn (User $user) => $user->puedeDesactivarUsuarios());
+
+        // Aprobar una invitación que un junior/senior propuso con países --
+        // gerente/director/superadmin (ver User::puedeAprobarInvitaciones()
+        // y UsuariosController::store()/aprobar()).
+        Gate::define('aprobar-invitaciones', fn (User $user) => $user->puedeAprobarInvitaciones());
     }
 }

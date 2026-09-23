@@ -24,6 +24,23 @@ class User extends Authenticatable
     public const DOMINIO_EPA = 'epa.digital';
 
     /**
+     * Jerarquía completa (2026-09-23, pedido explícito) -- cada rol
+     * administra/ve SOLO a los que están estrictamente por debajo, nunca a
+     * su mismo nivel ni arriba (ver Gate 'gestionar-usuarios' y
+     * UsuariosController::index()). 'cliente' es el piso -- nadie
+     * administra a otro 'cliente' por jerarquía, eso sigue siendo
+     * exclusivo de quien puede tocar usuarios en general.
+     */
+    private const NIVELES_JERARQUIA = [
+        'cliente' => 0,
+        'junior' => 1,
+        'senior' => 2,
+        'gerente' => 3,
+        'director' => 4,
+        'superadmin' => 5,
+    ];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -38,6 +55,7 @@ class User extends Authenticatable
         'invitacion_token',
         'activo',
         'email_verified_at',
+        'pais_ids_propuestos',
     ];
 
     /**
@@ -61,6 +79,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'activo' => 'boolean',
+            'pais_ids_propuestos' => 'array',
         ];
     }
 
@@ -75,19 +94,22 @@ class User extends Authenticatable
         return $this->rol !== 'cliente';
     }
 
-    /**
-     * superadmin/director pueden tocar usuarios/roles/países ajenos (Gate
-     * 'gestionar-usuarios', ver AppServiceProvider y UsuariosController).
-     * gerente/senior/junior tienen el mismo acceso completo al dashboard
-     * que un director (ver esEpa()), pero no administran gente. "Puede
-     * haber muchos directores" (pedido explícito 2026-09-23) -- por eso
-     * existe superadmin arriba: único rol que puede asignarle 'director'
-     * o 'superadmin' a alguien más (ver esSuperadmin() y
-     * UsuariosController::actualizarRolYPaises).
-     */
-    public function puedeGestionarUsuarios(): bool
+    public function nivelJerarquia(): int
     {
-        return in_array($this->rol, ['superadmin', 'director'], true);
+        return self::NIVELES_JERARQUIA[$this->rol] ?? -1;
+    }
+
+    /**
+     * Gate 'gestionar-usuarios' (ver AppServiceProvider) -- true solo si
+     * $this está estrictamente por encima de $objetivo en la jerarquía.
+     * Nunca del mismo nivel ni hacia arriba, ni siquiera un director sobre
+     * otro director. gerente/senior/junior SÍ pueden administrar a quien
+     * tengan debajo con esto (a diferencia del viejo esquema donde solo
+     * director/superadmin administraban a cualquiera).
+     */
+    public function puedeGestionarA(self $objetivo): bool
+    {
+        return $this->nivelJerarquia() > $objetivo->nivelJerarquia();
     }
 
     /**
@@ -98,6 +120,40 @@ class User extends Authenticatable
     public function esSuperadmin(): bool
     {
         return $this->rol === 'superadmin';
+    }
+
+    /**
+     * Desactivar cualquier usuario queda reservado a director/superadmin
+     * (pedido explícito 2026-09-23) -- más estricto que puedeGestionarA(),
+     * que sí dejaría a un gerente desactivar a un junior. Deactivar es la
+     * única acción que NO sigue la jerarquía general.
+     */
+    public function puedeDesactivarUsuarios(): bool
+    {
+        return in_array($this->rol, ['superadmin', 'director'], true);
+    }
+
+    /**
+     * Aprobar una invitación pendiente (ver
+     * UsuariosController::store()/aprobar()) -- gerente/director/
+     * superadmin. Un junior/senior puede INVITAR y proponer países, pero
+     * el usuario queda con activo=false (ni siquiera puede loguearse,
+     * pedido explícito) hasta que alguien de este nivel lo apruebe.
+     */
+    public function puedeAprobarInvitaciones(): bool
+    {
+        return in_array($this->rol, ['gerente', 'director', 'superadmin'], true);
+    }
+
+    /**
+     * true = esta cuenta fue invitada por un junior/senior y todavía no la
+     * aprobó nadie con puedeAprobarInvitaciones() -- ver
+     * UsuariosController::store(). No puede loguearse (activo=false)
+     * hasta ese momento.
+     */
+    public function estaPendienteDeAprobacion(): bool
+    {
+        return ! $this->activo && $this->pais_ids_propuestos !== null;
     }
 
     public function paises(): BelongsToMany

@@ -48,6 +48,18 @@ class InvitacionController extends Controller
             'email_verified_at' => now(),
         ]);
 
+        // Invitado por un junior/senior -- pendiente de aprobación (ver
+        // User::estaPendienteDeAprobacion()) hasta que gerente/director/
+        // superadmin confirme los países. Ya puede setear su contraseña
+        // (arriba), pero el login en sí queda para después de aprobar --
+        // "ni siquiera puede loguearse hasta aprobar" (pedido explícito).
+        if ($usuario->fresh()->estaPendienteDeAprobacion()) {
+            return redirect()->route('login')->with(
+                'status',
+                'Tu cuenta quedó pendiente de aprobación -- vas a poder entrar apenas alguien de EPA confirme tu acceso.'
+            );
+        }
+
         Auth::login($usuario, remember: true);
 
         return redirect()->route('landing');

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\Pais;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -94,6 +95,87 @@ class InvitacionTest extends TestCase
 
         $this->actingAs($cliente)
             ->get('/pais/ecuador/importar')
+            ->assertForbidden();
+    }
+
+    public function test_un_junior_puede_invitar_pero_queda_pendiente_de_aprobacion(): void
+    {
+        // "el junior sí puede dar permiso pero el director o gerente
+        // tiene que aceptarlo" (pedido explícito 2026-09-23).
+        $pa = Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
+        $junior = User::factory()->create(['rol' => 'junior']);
+        $junior->paises()->attach($pa->id);
+
+        $response = $this->actingAs($junior)->postJson('/usuarios', [
+            'name' => 'Cliente Nuevo',
+            'email' => 'pendiente@afuera.com',
+            'pais_ids' => [$pa->id],
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('pendiente', true);
+
+        $creado = User::where('email', 'pendiente@afuera.com')->firstOrFail();
+        $this->assertFalse($creado->activo);
+        $this->assertTrue($creado->estaPendienteDeAprobacion());
+        $this->assertSame([$pa->id], $creado->pais_ids_propuestos);
+        $this->assertCount(0, $creado->paises); // todavía no sincronizado
+    }
+
+    public function test_un_pendiente_de_aprobacion_no_puede_loguearse_aunque_acepte_la_invitacion(): void
+    {
+        $usuario = User::factory()->create([
+            'rol' => 'cliente',
+            'password' => null,
+            'invitacion_token' => 'token-pendiente',
+            'activo' => false,
+            'pais_ids_propuestos' => [1],
+        ]);
+
+        $response = $this->post('/invitaciones/token-pendiente', [
+            'password' => 'contrasena-segura',
+            'password_confirmation' => 'contrasena-segura',
+        ]);
+
+        $response->assertRedirect(route('login'));
+        $this->assertGuest();
+
+        $usuario->refresh();
+        $this->assertNull($usuario->invitacion_token); // el token sí se consume
+        $this->assertNotNull($usuario->password); // la contraseña sí quedó puesta
+        $this->assertFalse($usuario->activo); // pero sigue sin poder entrar
+    }
+
+    public function test_un_gerente_puede_aprobar_una_invitacion_pendiente(): void
+    {
+        $pa = Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $gerente->paises()->attach($pa->id);
+
+        $pendiente = User::factory()->create([
+            'rol' => 'cliente',
+            'activo' => false,
+            'pais_ids_propuestos' => [$pa->id],
+        ]);
+
+        $response = $this->actingAs($gerente)->postJson("/usuarios/{$pendiente->id}/aprobar", [
+            'pais_ids' => [$pa->id],
+        ]);
+
+        $response->assertOk();
+        $pendiente->refresh();
+        $this->assertTrue($pendiente->activo);
+        $this->assertNull($pendiente->pais_ids_propuestos);
+        $this->assertTrue($pendiente->paises()->where('paises.id', $pa->id)->exists());
+    }
+
+    public function test_un_junior_no_puede_aprobar_invitaciones(): void
+    {
+        $junior = User::factory()->create(['rol' => 'junior']);
+        $pendiente = User::factory()->create(['rol' => 'cliente', 'activo' => false, 'pais_ids_propuestos' => []]);
+
+        $this->actingAs($junior)
+            ->postJson("/usuarios/{$pendiente->id}/aprobar", ['pais_ids' => []])
             ->assertForbidden();
     }
 }
