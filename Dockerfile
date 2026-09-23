@@ -38,8 +38,8 @@ WORKDIR /var/www/html
 COPY --from=vendor /app /var/www/html
 COPY --from=assets /app/public/build /var/www/html/public/build
 
-RUN mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache \
-    && chown -R www-data:www-data storage bootstrap/cache \
+RUN mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache public/creative-images \
+    && chown -R www-data:www-data storage bootstrap/cache public/creative-images \
     && mkdir -p /var/lib/nginx/tmp/client_body \
     && chown -R www-data:www-data /var/lib/nginx
 
