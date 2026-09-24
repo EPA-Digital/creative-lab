@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 class User extends Authenticatable
 {
@@ -22,6 +24,10 @@ class User extends Authenticatable
      * rechazado en el callback de Google, nunca llega a crear sesión.
      */
     public const DOMINIO_EPA = 'epa.digital';
+
+    public const METODO_GOOGLE = 'google';
+
+    public const METODO_PASSWORD = 'password';
 
     /**
      * Jerarquía completa (2026-09-23, pedido explícito) -- cada rol
@@ -49,6 +55,7 @@ class User extends Authenticatable
         'name',
         'email',
         'google_id',
+        'metodo_auth',
         'password',
         'rol',
         'creado_por',
@@ -89,6 +96,32 @@ class User extends Authenticatable
      * uso en routes/web.php. No diferencia entre los 4 roles EPA todavía
      * (pedido explícito: "EPA puede todo de momento").
      */
+    /**
+     * Se registra una vez, en el modelo, para que ningún punto de entrada
+     * (Google, invitación, perfil) pueda dejar pasar un correo con
+     * mayúsculas/espacios ni una cuenta @epa.digital con metodo_auth
+     * distinto de 'google' -- regla dura pedida por auth-prompt.md Fase 1.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $usuario): void {
+            if ($usuario->isDirty('email') && $usuario->email !== null) {
+                $usuario->attributes['email'] = Str::lower(trim($usuario->email));
+            }
+
+            // null = todavía no se fijó explícitamente -> se resuelve al
+            // default de columna ('google'), no hace falta bloquearlo acá.
+            if ($usuario->esCorreoEpa() && $usuario->metodo_auth === self::METODO_PASSWORD) {
+                throw new InvalidArgumentException('Una cuenta @'.self::DOMINIO_EPA.' solo puede tener metodo_auth = google.');
+            }
+        });
+    }
+
+    public function esCorreoEpa(): bool
+    {
+        return $this->email !== null && str_ends_with(Str::lower($this->email), '@'.self::DOMINIO_EPA);
+    }
+
     public function esEpa(): bool
     {
         return $this->rol !== 'cliente';

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Pais;
 use App\Models\User;
+use App\Services\SesionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -125,6 +126,7 @@ class UsuariosController extends Controller
         abort_if($usuario->id === $request->user()->id, 422, 'No podés desactivarte a vos mismo.');
 
         $usuario->update(['activo' => false]);
+        SesionService::invalidarSesionesDe($usuario);
 
         return response()->json(['ok' => true]);
     }
