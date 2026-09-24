@@ -55,14 +55,18 @@ Route::middleware('auth')->group(function () {
         });
     });
 
-    // Transversal a países -- no lleva 'acceso-pais'. Ver/invitar usuarios
-    // es EPA (Gate 'epa'); el resto sigue la jerarquía completa (ver
+    // Transversal a países -- no lleva 'acceso-pais'. Ver la lista e
+    // invitar clientes es más estricto que el resto de /usuarios (pedido
+    // explícito 2026-09-24: junior/senior no pueden ni ver ni invitar,
+    // ver Gate 'ver-usuarios'); el resto sigue la jerarquía completa (ver
     // User::puedeGestionarA()) o restricciones más estrictas puntuales
     // (desactivar, aprobar invitaciones) -- ver UsuariosController.
-    Route::middleware('can:epa')->group(function () {
+    Route::middleware('can:ver-usuarios')->group(function () {
         Route::get('/usuarios', [UsuariosController::class, 'index'])->name('usuarios.index');
         Route::post('/usuarios', [UsuariosController::class, 'store'])->name('usuarios.store');
+    });
 
+    Route::middleware('can:epa')->group(function () {
         Route::middleware('can:desactivar-usuarios')->group(function () {
             Route::delete('/usuarios/{usuario}', [UsuariosController::class, 'destroy'])->name('usuarios.destroy');
 

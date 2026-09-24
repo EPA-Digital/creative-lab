@@ -27,6 +27,12 @@ const props = defineProps({
 const usuario = computed(() => usePage().props.auth?.user ?? null);
 const esEpa = computed(() => usuario.value && usuario.value.rol !== 'cliente');
 
+// Ver /usuarios e invitar clientes -- gerente/director/superadmin (pedido
+// explícito 2026-09-24: junior/senior ya no pueden ni ver la lista ni
+// invitar, ver Gate 'ver-usuarios'). Solo UX -- la guardia real vive en
+// el servidor, esto evita mostrar un link que va a dar 403.
+const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director', 'superadmin'].includes(usuario.value.rol));
+
 // 'cliente' (pedido explícito 2026-09-23) -- solo ve Creativos, nada más.
 // Resumen/Inteligencia/Insights/Cargar datos/Ajustes desaparecen del rail
 // aunque backend ya las dejaba pasar en solo-lectura (analisis-creativo/
@@ -113,7 +119,7 @@ onMounted(aplicarTemaGuardado);
             </nav>
 
             <Link
-                v-if="esEpa"
+                v-if="puedeVerUsuarios"
                 href="/usuarios"
                 class="rail-nav-item rail-nav-item-secundario"
                 title="Usuarios"

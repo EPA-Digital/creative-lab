@@ -166,28 +166,56 @@ class InvitacionTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_un_junior_puede_invitar_pero_queda_pendiente_de_aprobacion(): void
+    public function test_un_junior_no_puede_invitar_ni_ver_la_lista_de_usuarios(): void
     {
-        // "el junior sí puede dar permiso pero el director o gerente
-        // tiene que aceptarlo" (pedido explícito 2026-09-23).
+        // Antes un junior podía invitar y quedaba pendiente de aprobación
+        // (pedido explícito 2026-09-23) -- pedido explícito 2026-09-24 lo
+        // reemplaza: junior/senior ya no pueden ni invitar ni ver la
+        // lista, punto. Solo gerente/director/superadmin llegan a
+        // /usuarios (ver Gate 'ver-usuarios').
         $pa = Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
         $junior = User::factory()->create(['rol' => 'junior']);
         $junior->paises()->attach($pa->id);
 
-        $response = $this->actingAs($junior)->postJson('/usuarios', [
+        $this->actingAs($junior)->get('/usuarios')->assertForbidden();
+
+        $this->actingAs($junior)->postJson('/usuarios', [
             'name' => 'Cliente Nuevo',
             'email' => 'pendiente@afuera.com',
             'pais_ids' => [$pa->id],
+        ])->assertForbidden();
+
+        $this->assertDatabaseMissing('users', ['email' => 'pendiente@afuera.com']);
+    }
+
+    public function test_un_senior_no_puede_invitar_ni_ver_la_lista_de_usuarios(): void
+    {
+        $senior = User::factory()->create(['rol' => 'senior']);
+
+        $this->actingAs($senior)->get('/usuarios')->assertForbidden();
+
+        $this->actingAs($senior)->postJson('/usuarios', [
+            'name' => 'Cliente Nuevo',
+            'email' => 'otro@afuera.com',
+        ])->assertForbidden();
+    }
+
+    public function test_un_gerente_si_puede_invitar_y_ver_la_lista_de_usuarios(): void
+    {
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+
+        $this->actingAs($gerente)->get('/usuarios')->assertOk();
+
+        $response = $this->actingAs($gerente)->postJson('/usuarios', [
+            'name' => 'Cliente Nuevo',
+            'email' => 'nuevo@afuera.com',
         ]);
 
+        // Gerente ya puede aprobar (puedeAprobarInvitaciones()), así que
+        // ahora que solo gerente+ llega acá, una invitación nunca queda
+        // pendiente en la práctica -- queda activa de una.
         $response->assertStatus(201);
-        $response->assertJsonPath('pendiente', true);
-
-        $creado = User::where('email', 'pendiente@afuera.com')->firstOrFail();
-        $this->assertFalse($creado->activo);
-        $this->assertTrue($creado->estaPendienteDeAprobacion());
-        $this->assertSame([$pa->id], $creado->pais_ids_propuestos);
-        $this->assertCount(0, $creado->paises); // todavía no sincronizado
+        $response->assertJsonPath('pendiente', false);
     }
 
     public function test_un_pendiente_de_aprobacion_no_puede_loguearse_aunque_acepte_la_invitacion(): void

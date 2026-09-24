@@ -204,6 +204,20 @@ class User extends Authenticatable
     }
 
     /**
+     * Ver la lista de /usuarios e invitar clientes -- pedido explícito
+     * 2026-09-24: "que el senior y junior no puedan invitar clientes ni
+     * ver la lista de usuarios". Mismo nivel que puedeAprobarInvitaciones()
+     * hoy (coincide porque ahora solo gerente+ invita, así que toda
+     * invitación queda activa de una -- nunca más "pendiente" en la
+     * práctica), pero se deja como su propio método porque conceptualmente
+     * es un permiso distinto (ver/invitar vs. aprobar).
+     */
+    public function puedeVerUsuarios(): bool
+    {
+        return in_array($this->rol, ['gerente', 'director', 'superadmin'], true);
+    }
+
+    /**
      * true = esta cuenta fue invitada por un junior/senior y todavía no la
      * aprobó nadie con puedeAprobarInvitaciones() -- ver
      * UsuariosController::store(). No puede loguearse (activo=false)

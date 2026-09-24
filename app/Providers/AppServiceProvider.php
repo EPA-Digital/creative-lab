@@ -100,5 +100,13 @@ class AppServiceProvider extends ServiceProvider
         // gerente/director/superadmin (ver User::puedeAprobarInvitaciones()
         // y UsuariosController::store()/aprobar()).
         Gate::define('aprobar-invitaciones', fn (User $user) => $user->puedeAprobarInvitaciones());
+
+        // Ver /usuarios e invitar clientes -- gerente/director/superadmin
+        // (pedido explícito 2026-09-24: junior/senior ya no pueden ni ver
+        // la lista ni invitar). Más estricto que el Gate 'epa' general de
+        // arriba, que sigue abierto a cualquier rol EPA para el resto de
+        // /usuarios (editar rol/países según jerarquía, desactivar, etc.)
+        // -- ver routes/web.php.
+        Gate::define('ver-usuarios', fn (User $user) => $user->puedeVerUsuarios());
     }
 }
