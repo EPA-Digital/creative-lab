@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\Auditoria;
 use App\Services\TotpService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,6 +50,8 @@ class TotpEnrollmentController extends Controller
         $data = $request->validate(['codigo' => ['required', 'string']]);
 
         if (! $this->totp->verificarCodigo($usuario, $data['codigo'])) {
+            Auditoria::registrar('totp.enrolamiento_rechazado', $usuario);
+
             return back()->withErrors(['codigo' => 'Código inválido.']);
         }
 
@@ -71,6 +74,8 @@ class TotpEnrollmentController extends Controller
         if (! $pendiente) {
             Auth::login($usuario);
         }
+
+        Auditoria::registrar('totp.enrolado', $usuario);
 
         // Los códigos de recuperación en texto plano solo existen en esta
         // respuesta -- nunca se persisten así, la vista los muestra una

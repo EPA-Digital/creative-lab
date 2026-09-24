@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Auth;
 
 use App\Models\User;
+use App\Services\Auditoria;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -52,6 +53,7 @@ class LoginRequest extends FormRequest
 
         if (! Auth::validate([...$this->only('email', 'password'), 'metodo_auth' => User::METODO_PASSWORD])) {
             RateLimiter::hit($this->throttleKey());
+            Auditoria::registrar('login.password.rechazado', emailIntentado: Str::lower(trim($this->string('email'))), detalle: ['razon' => 'credenciales_invalidas']);
 
             throw ValidationException::withMessages([
                 'email' => trans('auth.failed'),

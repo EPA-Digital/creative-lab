@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\Auditoria;
 use App\Services\TotpService;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Http\RedirectResponse;
@@ -58,11 +59,12 @@ class TwoFactorLoginController extends Controller
             ]);
         }
 
-        $valido = $this->totp->verificarCodigo($usuario, $data['codigo'])
-            || $this->totp->verificarYConsumirCodigoRecuperacion($usuario, $data['codigo']);
+        $conTotp = $this->totp->verificarCodigo($usuario, $data['codigo']);
+        $conRecuperacion = ! $conTotp && $this->totp->verificarYConsumirCodigoRecuperacion($usuario, $data['codigo']);
 
-        if (! $valido) {
+        if (! $conTotp && ! $conRecuperacion) {
             RateLimiter::hit($throttleKey);
+            Auditoria::registrar('2fa.rechazado', $usuario);
 
             return back()->withErrors(['codigo' => 'Código inválido.']);
         }
@@ -72,6 +74,7 @@ class TwoFactorLoginController extends Controller
 
         Auth::login($usuario);
         $request->session()->regenerate();
+        Auditoria::registrar('login.exito', $usuario, detalle: ['con_recuperacion' => $conRecuperacion]);
 
         return redirect()->intended(route('landing', absolute: false));
     }

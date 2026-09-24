@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\Auditoria;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -55,6 +56,8 @@ class GoogleAuthController extends Controller
         $email = $googleUser->getEmail();
 
         if (! $email || ($raw['email_verified'] ?? false) !== true) {
+            Auditoria::registrar('login.google.rechazado', emailIntentado: $email, detalle: ['razon' => 'email_no_verificado']);
+
             return redirect()->route('login')->withErrors(['email' => self::MENSAJE_GENERICO]);
         }
 
@@ -62,6 +65,8 @@ class GoogleAuthController extends Controller
         $esEpa = str_ends_with($email, '@'.User::DOMINIO_EPA);
 
         if ($esEpa && ($raw['hd'] ?? null) !== User::DOMINIO_EPA) {
+            Auditoria::registrar('login.google.rechazado', emailIntentado: $email, detalle: ['razon' => 'hd_invalido']);
+
             return redirect()->route('login')->withErrors(['email' => self::MENSAJE_GENERICO]);
         }
 
@@ -74,10 +79,13 @@ class GoogleAuthController extends Controller
         }
 
         if (! $usuario) {
+            Auditoria::registrar('login.google.rechazado', emailIntentado: $email, detalle: ['razon' => 'sin_acceso']);
+
             return redirect()->route('login')->withErrors(['email' => self::MENSAJE_GENERICO]);
         }
 
         Auth::login($usuario);
+        Auditoria::registrar('login.google.exito', $usuario);
 
         return redirect()->intended(route('landing', absolute: false));
     }

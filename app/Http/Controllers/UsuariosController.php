@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Pais;
 use App\Models\User;
+use App\Services\Auditoria;
 use App\Services\SesionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -134,6 +135,8 @@ class UsuariosController extends Controller
             $usuario->paises()->sync($data['pais_ids']);
         }
 
+        Auditoria::registrar('invitacion.creada', $usuario, detalle: ['creado_por' => $yo->id, 'metodo' => $metodo, 'pendiente' => $esPropuesta]);
+
         return response()->json([
             'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo', 'pais_ids_propuestos', 'metodo_auth']), 'paises' => $usuario->paises],
             'linkInvitacion' => route('invitaciones.show', $tokenPlano),
@@ -147,6 +150,7 @@ class UsuariosController extends Controller
 
         $usuario->update(['activo' => false]);
         SesionService::invalidarSesionesDe($usuario);
+        Auditoria::registrar('usuario.desactivado', $usuario, detalle: ['desactivado_por' => $request->user()->id]);
 
         return response()->json(['ok' => true]);
     }
@@ -171,8 +175,15 @@ class UsuariosController extends Controller
             'Solo un superadmin puede otorgar director/superadmin.'
         );
 
+        $rolAnterior = $usuario->rol;
         $usuario->update(['rol' => $data['rol']]);
         $usuario->paises()->sync($data['pais_ids'] ?? []);
+        Auditoria::registrar('usuario.rol_cambiado', $usuario, detalle: [
+            'cambiado_por' => $yo->id,
+            'rol_anterior' => $rolAnterior,
+            'rol_nuevo' => $data['rol'],
+            'pais_ids' => $data['pais_ids'] ?? [],
+        ]);
 
         return response()->json([
             'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
@@ -200,6 +211,7 @@ class UsuariosController extends Controller
 
         $usuario->update(['activo' => true, 'pais_ids_propuestos' => null]);
         $usuario->paises()->sync($paisIds);
+        Auditoria::registrar('invitacion.aprobada', $usuario, detalle: ['aprobado_por' => $yo->id, 'pais_ids' => $paisIds]);
 
         return response()->json([
             'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
@@ -212,7 +224,7 @@ class UsuariosController extends Controller
      * invitaciones, ver AppServiceProvider). El usuario re-enrola en su
      * próximo login por contraseña.
      */
-    public function resetearTotp(User $usuario): JsonResponse
+    public function resetearTotp(Request $request, User $usuario): JsonResponse
     {
         abort_if($usuario->metodo_auth !== User::METODO_PASSWORD, 422, 'Este usuario no usa TOTP.');
 
@@ -222,6 +234,7 @@ class UsuariosController extends Controller
             'totp_recovery_codes' => null,
             'totp_last_timestep' => null,
         ]);
+        Auditoria::registrar('totp.reseteado', $usuario, detalle: ['reseteado_por' => $request->user()->id]);
 
         return response()->json(['ok' => true]);
     }

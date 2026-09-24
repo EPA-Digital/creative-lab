@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\Auditoria;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -36,11 +37,15 @@ class AuthenticatedSessionController extends Controller
 
         if (! $usuario->activo) {
             if ($usuario->estaPendienteDeAprobacion()) {
+                Auditoria::registrar('login.password.rechazado', $usuario, detalle: ['razon' => 'pendiente_de_aprobacion']);
+
                 return redirect()->route('login')->with(
                     'status',
                     'Tu cuenta está pendiente de aprobación -- vas a poder entrar apenas alguien de EPA confirme tu acceso.'
                 );
             }
+
+            Auditoria::registrar('login.password.rechazado', $usuario, detalle: ['razon' => 'desactivado']);
 
             return redirect()->route('login')->withErrors(['email' => 'Esta cuenta está desactivada.']);
         }
@@ -53,6 +58,8 @@ class AuthenticatedSessionController extends Controller
 
             return redirect()->route('2fa.enrolar');
         }
+
+        Auditoria::registrar('login.password.paso1_exitoso', $usuario);
 
         $request->session()->put([
             '2fa.pendiente_user_id' => $usuario->id,
@@ -67,6 +74,8 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        Auditoria::registrar('logout', $request->user());
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();

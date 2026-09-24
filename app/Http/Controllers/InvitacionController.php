@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\Auditoria;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -55,6 +56,7 @@ class InvitacionController extends Controller
             'invitacion_expira_en' => null,
             'email_verified_at' => now(),
         ]);
+        Auditoria::registrar('invitacion.aceptada', $usuario);
 
         // metodo_auth=password exige TOTP obligatorio en el mismo flujo de
         // aceptación (ver TotpEnrollmentController) -- la cuenta no se
