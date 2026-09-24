@@ -67,6 +67,10 @@ Route::middleware('auth')->group(function () {
             Route::delete('/usuarios/{usuario}', [UsuariosController::class, 'destroy'])->name('usuarios.destroy');
         });
 
+        Route::middleware('can:eliminar-usuarios')->group(function () {
+            Route::delete('/usuarios/{usuario}/eliminar', [UsuariosController::class, 'eliminar'])->name('usuarios.eliminar');
+        });
+
         Route::middleware('can:gestionar-usuarios,usuario')->group(function () {
             Route::patch('/usuarios/{usuario}', [UsuariosController::class, 'actualizarRolYPaises'])->name('usuarios.actualizar');
         });

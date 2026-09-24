@@ -92,6 +92,16 @@ class AuditoriaTest extends TestCase
         $this->assertSame(1, AuditoriaAcceso::where('evento', 'pais.primera_visita')->count());
     }
 
+    public function test_eliminar_un_usuario_queda_registrado(): void
+    {
+        $superadmin = User::factory()->create(['rol' => 'superadmin']);
+        $junior = User::factory()->create(['rol' => 'junior']);
+
+        $this->actingAs($superadmin)->deleteJson("/usuarios/{$junior->id}/eliminar");
+
+        $this->assertDatabaseHas('auditoria_accesos', ['evento' => 'usuario.eliminado', 'email_intentado' => $junior->email]);
+    }
+
     public function test_el_logout_queda_registrado(): void
     {
         $usuario = User::factory()->create();
