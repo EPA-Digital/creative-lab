@@ -61,7 +61,7 @@ function creativoConResultado(int $id, string $adId, string $arte, string $funne
 }
 
 it('consolida por arte+funnel el mismo caso real de Panamá (RGB-GOLDEN, CNV y CONS separados)', function () {
-    $controller = new AnalisisCreativoController;
+    $controller = app(AnalisisCreativoController::class);
     $creativos = collect([
         creativoConResultado(1, '120245819365050680', 'RGB-GOLDEN', 'CNV', 27.26, 0),
         creativoConResultado(2, '120245819419690680', 'RGB-GOLDEN', 'CNV', 85.34, 11),
@@ -104,7 +104,7 @@ it('un arte sin par en su etapa sigue como grupo de 1 miembro (nunca se mezcla c
     // quedan realmente "sueltos" (ver el test de abajo). El frontend decide
     // si vale la pena mostrar el desglose de miembros mirando
     // miembros.length > 1, no esGrupoArte a secas.
-    $controller = new AnalisisCreativoController;
+    $controller = app(AnalisisCreativoController::class);
     $creativos = collect([
         creativoConResultado(1, '111', 'ARTE-UNICO', 'AWA', 50.0, 0),
     ]);
@@ -121,7 +121,7 @@ it('un arte sin par en su etapa sigue como grupo de 1 miembro (nunca se mezcla c
 });
 
 it('un creativo sin arte clasificado queda "Sin clasificar" -> funnel null en el JSON, nunca agrupado', function () {
-    $controller = new AnalisisCreativoController;
+    $controller = app(AnalisisCreativoController::class);
     $creativo = creativoConResultado(1, '222', 'ARTE-X', 'AWA', 10.0, 0);
     $creativo->funnel = null;
     $creativos = collect([$creativo]);
