@@ -92,6 +92,20 @@ class AuditoriaTest extends TestCase
         $this->assertSame(1, AuditoriaAcceso::where('evento', 'pais.primera_visita')->count());
     }
 
+    public function test_resetear_contrasena_queda_registrado(): void
+    {
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $usuario = User::factory()->create([
+            'rol' => 'cliente',
+            'metodo_auth' => User::METODO_PASSWORD,
+            'password' => 'ContraseñaSegura2026',
+        ]);
+
+        $this->actingAs($gerente)->postJson("/usuarios/{$usuario->id}/resetear-password");
+
+        $this->assertDatabaseHas('auditoria_accesos', ['evento' => 'usuario.password_reseteado', 'usuario_id' => $usuario->id]);
+    }
+
     public function test_reactivar_un_usuario_queda_registrado(): void
     {
         $director = User::factory()->create(['rol' => 'director']);

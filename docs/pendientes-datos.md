@@ -23,20 +23,28 @@ funcione.
   bucket -- si se cierra antes de que la firma funcione, todas las
   imágenes de creativos se rompen.
 
-## 2. Proveedor de correo real (SMTP)
+## 2. ~~Proveedor de correo real (SMTP)~~ -- resuelto sin SMTP (2026-09-24)
 
-`MAIL_MAILER=log` en producción -- el reset de contraseña
-(`NewPasswordController`) hoy no entrega ningún correo real, solo lo deja
-en el log. Con `metodo_auth=password` ahora siendo una opción real para
-clientes sin Google (Fase 3), esto deja de ser un detalle menor.
+`MAIL_MAILER=log` sigue en producción y así se queda -- decisión
+explícita: en vez de un proveedor de correo real, la recuperación de
+acceso para `metodo_auth=password` es manual. El link de "olvidé mi
+contraseña" (`/forgot-password`) se ocultó (`canResetPassword=false`,
+ver `AuthenticatedSessionController::create()`) porque sin correo real
+era un callejón sin salida silencioso -- Laravel mostraba el mensaje de
+éxito genérico igual, aunque nada llegara nunca.
 
-- Acción: elegir proveedor (SES, Postmark, Resend, lo que ya use el resto
-  de EPA) y crear el secreto correspondiente en Secret Manager con el
-  patrón `ZxDashboard*` (ej. `ZxDashboardMailPassword` o el que
-  corresponda a las credenciales del proveedor elegido).
-- Revisar si alguna de las variables `AWS_*` que ya trae `.env.example`
-  (scaffold de Laravel, sin usar hoy) corresponde a una cuenta SES real
-  de EPA o es config muerta -- no se pudo confirmar desde este entorno.
+En su lugar: `UsuariosController::resetearPassword()` (gerente/director/
+superadmin, botón "Resetear contraseña" en `/usuarios`) reusa el mismo
+mecanismo de invitación (token hasheado + 72h) -- un admin genera el
+link y lo manda a mano (Slack/WhatsApp), igual que ya se hacía para
+invitar. El TOTP existente no se toca; al aceptar el link sigue
+pidiendo el segundo factor antes de abrir sesión (nunca alcanza con
+solo la contraseña nueva).
+
+Si en algún momento se quiere volver a un flujo de autoservicio por
+correo, hay que: revisar si alguna variable `AWS_*` de `.env.example`
+(scaffold de Laravel, sin usar hoy) corresponde a una cuenta SES real de
+EPA, elegir proveedor, y volver `canResetPassword` a `true`.
 
 ## 3. Reemplazar `GCP_SA_KEY` por Workload Identity Federation
 

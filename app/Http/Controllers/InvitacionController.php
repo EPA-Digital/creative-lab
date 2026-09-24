@@ -60,14 +60,53 @@ class InvitacionController extends Controller
 
         // metodo_auth=password exige TOTP obligatorio en el mismo flujo de
         // aceptación (ver TotpEnrollmentController) -- la cuenta no se
-        // considera lista hasta confirmar el primer código.
-        if ($usuario->metodo_auth === User::METODO_PASSWORD) {
+        // considera lista hasta confirmar el primer código. Este mismo
+        // link también se reusa para "reseteo de contraseña" (ver
+        // UsuariosController::resetearPassword(), pedido explícito
+        // 2026-09-24 -- sin SMTP real, un admin genera el link a mano en
+        // vez de un correo de "olvidé mi contraseña") -- ahí el usuario
+        // YA tiene TOTP confirmado, así que no hace falta re-enrolar, va
+        // directo a loguearse con el authenticator que ya tenía.
+        if ($usuario->metodo_auth === User::METODO_PASSWORD && ! $usuario->tieneTotpConfirmado()) {
             $request->session()->put('2fa.enrolando_user_id', $usuario->id);
 
             return redirect()->route('2fa.enrolar');
         }
 
+        // Reset de contraseña con TOTP ya confirmado -- poner una
+        // contraseña nueva NUNCA alcanza sola para abrir sesión, sigue
+        // pidiendo el segundo factor exactamente como un login normal
+        // (ver AuthenticatedSessionController::store()) en vez de loguear
+        // directo -- si no, quien intercepte el link (Slack/WhatsApp)
+        // podría entrar sin el authenticator.
+        if ($usuario->metodo_auth === User::METODO_PASSWORD) {
+            return $this->irAVerificarTotpOQuedarPendiente($request, $usuario);
+        }
+
         return $this->intentarLoginOQuedarPendiente($usuario);
+    }
+
+    private function irAVerificarTotpOQuedarPendiente(Request $request, User $usuario): RedirectResponse
+    {
+        $usuario = $usuario->fresh();
+
+        if ($usuario->estaPendienteDeAprobacion()) {
+            return redirect()->route('login')->with(
+                'status',
+                'Tu cuenta quedó pendiente de aprobación -- vas a poder entrar apenas alguien de EPA confirme tu acceso.'
+            );
+        }
+
+        if (! $usuario->activo) {
+            return redirect()->route('login')->withErrors(['email' => 'Esta cuenta está desactivada.']);
+        }
+
+        $request->session()->put([
+            '2fa.pendiente_user_id' => $usuario->id,
+            '2fa.expira_en' => now()->addMinutes(5)->timestamp,
+        ]);
+
+        return redirect()->route('2fa.verificar');
     }
 
     /**
