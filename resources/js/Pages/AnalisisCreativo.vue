@@ -509,7 +509,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                         :class="{ activo: funnelSeleccionado === 'TODOS' }"
                         @click="funnelSeleccionado = 'TODOS'"
                     >
-                        TODOS
+                        Todos
                     </button>
                     <button
                         v-for="f in funnelsPresentes"

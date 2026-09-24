@@ -700,7 +700,6 @@ h1, h2, .num, .kpi-value {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.03em;
-    text-transform: uppercase;
     color: var(--text-muted);
 }
 .resumen-filtros .toggle-btn:hover {
@@ -1315,6 +1314,81 @@ h1, h2, .num, .kpi-value {
     font-size: 0.68rem !important;
     color: var(--text-faint) !important;
 }
+/* Score de rendimiento -- rediseño 2026-09-24 (pedido explícito: el
+   anillo chico de arriba con la explicación escondida detrás de un
+   hover "no se ve muy bien"). Pasa de un anillo de 52px + tooltip a un
+   panel horizontal siempre visible, primera fila de .modal-content
+   (visible en ambas vistas, Resumen y Etapas). Reusa .modal-score-ring/
+   -track/-fill (mismo mecanismo de stroke-dashoffset, r=30 en vez de 22
+   -- ver CIRCUNFERENCIA_RENDIMIENTO en CreativeModal.vue) y
+   .modal-score-ring-value-max ("/5") tal cual. "Score de arte" no
+   cambió -- sigue con el anillo chico + tooltip en el header, no se
+   pidió tocarlo. */
+.modal-score-rendimiento {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid color-mix(in srgb, var(--score-color, var(--violet)) 30%, transparent);
+}
+.modal-score-rendimiento-ring {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-score-rendimiento-ring .modal-score-ring-fill,
+.modal-score-rendimiento-ring .modal-score-ring-track {
+    stroke-width: 4;
+}
+.modal-score-rendimiento-ring .modal-score-ring-fill {
+    stroke: var(--score-color, var(--text-faint));
+}
+.modal-score-rendimiento-value {
+    font-size: 1.4rem;
+    color: var(--text);
+}
+.modal-score-rendimiento-texto {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.modal-score-rendimiento-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.modal-score-rendimiento-caption {
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.modal-score-rendimiento-etiqueta {
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+.modal-score-rendimiento-explicacion {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+.modal-score-rendimiento-explicacion.sin-dato {
+    font-style: italic;
+}
+.modal-score-rendimiento-volumen {
+    margin: 2px 0 0;
+    font-size: 0.72rem;
+    color: var(--text-faint);
+}
 .modal-content {
     display: flex;
     flex-direction: column;
@@ -1720,6 +1794,16 @@ h1, h2, .num, .kpi-value {
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--violet);
+}
+/* modal-etapa-metrica-promedio -- 2026-09-24, pedido explícito: "poner
+   los números del por qué" en vez de depender solo del tag Mejor/Peor
+   que la media y la marca abstracta en la barra -- el número real de la
+   media (mismo formato que el valor, ver metricaPromedio en
+   etapasFunnel()) más el % de diferencia que ya calculaba
+   compararConPromedio. */
+.modal-etapa-metrica-promedio {
+    font-size: 0.72rem;
+    color: var(--text-faint);
 }
 .modal-etapa-tag {
     font-size: 0.68rem;

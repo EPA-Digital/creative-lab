@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
     cardDesdeCreativo, placeholderPorTipo, humanizarCampania,
@@ -30,6 +31,12 @@ const props = defineProps({
 });
 
 defineEmits(['cerrar']);
+
+// "Evaluar por métricas"/"Evaluar por arte" son EPA-only en el backend
+// (Gate 'epa', ver EvaluacionCreativoController/routes/web.php) -- un
+// 'cliente' que los probara solo vería un 403, mejor no mostrárselos
+// (pedido explícito 2026-09-24). Mismo criterio que DashboardLayout.vue.
+const esEpa = computed(() => usePage().props.auth?.user?.rol !== 'cliente');
 
 const card = computed(() => cardDesdeCreativo(props.creativo));
 const esTikTok = computed(() => card.value.plataforma === 'tiktok');
@@ -164,8 +171,27 @@ const funnelPasos = computed(() => {
 // inventa un número si faltan datos). CIRCUNFERENCIA/dashoffset replican
 // las matemáticas exactas del SVG del diseño importado (r=22).
 const scoreDesglose = computed(() => calcularScoreDesglose(card.value, props.promedios));
-const scoreTipAbierto = ref(false);
 const CIRCUNFERENCIA = 2 * Math.PI * 22;
+// Rediseño 2026-09-24 (pedido explícito: el anillo chico con la
+// explicación escondida detrás de un hover "no se ve muy bien") -- pasa
+// a un panel horizontal siempre visible (ver .modal-score-rendimiento),
+// con su propio anillo más grande (r=30, no reusa CIRCUNFERENCIA de
+// arriba porque ese sigue siendo el de "Score de arte", que no cambió).
+const CIRCUNFERENCIA_RENDIMIENTO = 2 * Math.PI * 30;
+// Instalaciones vs. la media del grupo -- solo tiene sentido mostrarlo
+// cuando CPI (costo por instalación) es una de las métricas relevantes
+// de la etapa de este creativo (ver METRICAS_RELEVANTES_POR_FUNNEL en
+// motor.js): ahí es donde "¿está peor por costo o por volumen?" es una
+// pregunta real. Para Awareness/Conversión/Loyalty, instalaciones no es
+// la métrica de volumen que importa, mostrarla ahí confundiría más de
+// lo que aclara -- se deja pendiente para cuando se trabaje ese caso por
+// nivel de funnel (pedido explícito).
+const volumenComparado = computed(() => {
+    if (!scoreDesglose.value?.categorias?.some((cat) => cat.clave === 'cpi')) return false;
+    const instalaciones = card.value.installs;
+    const media = props.promedios?.installs;
+    return instalaciones !== null && instalaciones !== undefined && media !== null && media !== undefined;
+});
 function colorPorPuntaje(pct) {
     // pct: fracción 0-1 del máximo de esa categoría/score
     if (pct === null) return 'var(--text-faint)';
@@ -186,7 +212,7 @@ function colorPorEtiqueta(etiqueta) {
 }
 const scoreColor = computed(() => (scoreDesglose.value ? colorPorEtiqueta(scoreDesglose.value.etiqueta) : 'var(--text-faint)'));
 const scoreDashoffset = computed(() =>
-    scoreDesglose.value ? CIRCUNFERENCIA * (1 - scoreDesglose.value.score / 100) : CIRCUNFERENCIA,
+    scoreDesglose.value ? CIRCUNFERENCIA_RENDIMIENTO * (1 - scoreDesglose.value.score / 100) : CIRCUNFERENCIA_RENDIMIENTO,
 );
 function catColor(cat) {
     return colorPorPuntaje(cat.puntos === null ? null : cat.puntos / cat.max);
@@ -338,7 +364,7 @@ watch(() => props.creativo?.id, () => {
                         <div class="modal-title-row">
                             <template v-if="!editandoNombre">
                                 <h2>{{ nombre.principal }}</h2>
-                                <button type="button" class="modal-nombre-editar" title="Renombrar" @click="abrirEdicionNombre">✎</button>
+                                <button v-if="esEpa" type="button" class="modal-nombre-editar" title="Renombrar" @click="abrirEdicionNombre">✎</button>
                             </template>
                             <div v-else class="modal-nombre-edicion">
                                 <input
@@ -364,40 +390,6 @@ watch(() => props.creativo?.id, () => {
                     </div>
 
                     <div class="modal-scores">
-                        <div v-if="scoreDesglose" class="modal-score-ring-block">
-                            <span class="modal-score-ring-caption">Score de rendimiento</span>
-                            <div
-                                class="modal-score-ring-wrap"
-                                tabindex="0"
-                                @mouseenter="scoreTipAbierto = true"
-                                @mouseleave="scoreTipAbierto = false"
-                                @focus="scoreTipAbierto = true"
-                                @blur="scoreTipAbierto = false"
-                            >
-                                <svg width="52" height="52" viewBox="0 0 52 52" class="modal-score-ring">
-                                    <circle cx="26" cy="26" r="22" class="modal-score-ring-track" />
-                                    <circle
-                                        cx="26" cy="26" r="22" class="modal-score-ring-fill"
-                                        :style="{ '--score-color': scoreColor, strokeDasharray: CIRCUNFERENCIA, strokeDashoffset: scoreDashoffset }"
-                                    />
-                                </svg>
-                                <span class="modal-score-ring-value mono">{{ scoreDesglose.nivel }}<span class="modal-score-ring-value-max">/5</span></span>
-                                <span class="modal-score-ring-help" aria-hidden="true">?</span>
-                                <div v-if="scoreTipAbierto" class="modal-score-tooltip" role="tooltip">
-                                    <div class="modal-score-tooltip-head">
-                                        <span>Score de rendimiento</span>
-                                        <span class="mono" :style="{ color: scoreColor }">{{ scoreDesglose.etiqueta }} · {{ scoreDesglose.nivel }}/5</span>
-                                    </div>
-                                    <template v-if="scoreDesglose.explicacion">
-                                        <span class="modal-score-tooltip-kicker">El score de este creativo se debe a...</span>
-                                        <p class="modal-score-tooltip-explicacion">{{ scoreDesglose.explicacion }}</p>
-                                    </template>
-                                    <p v-else>Compara {{ FUNNEL_LABELS[card.etapaFunnel] || 'este creativo' }} contra la media de su grupo ({{ paisLabel }} · {{ tipoCuentaLabel }}).</p>
-                                    <p class="modal-score-tooltip-foot">Se recalcula con cada carga de datos.</p>
-                                </div>
-                            </div>
-                        </div>
-
                         <div v-if="scoreArte !== null" class="modal-score-ring-block">
                             <span class="modal-score-ring-caption">Score de arte</span>
                             <div
@@ -438,6 +430,32 @@ watch(() => props.creativo?.id, () => {
                 </div>
 
                 <div class="modal-content">
+                    <div v-if="scoreDesglose" class="modal-score-rendimiento" :style="{ '--score-color': scoreColor }">
+                        <div class="modal-score-rendimiento-ring">
+                            <svg width="72" height="72" viewBox="0 0 72 72" class="modal-score-ring">
+                                <circle cx="36" cy="36" r="30" class="modal-score-ring-track" />
+                                <circle
+                                    cx="36" cy="36" r="30" class="modal-score-ring-fill"
+                                    :style="{ strokeDasharray: CIRCUNFERENCIA_RENDIMIENTO, strokeDashoffset: scoreDashoffset }"
+                                />
+                            </svg>
+                            <span class="modal-score-rendimiento-value mono">{{ scoreDesglose.nivel }}<span class="modal-score-ring-value-max">/5</span></span>
+                        </div>
+                        <div class="modal-score-rendimiento-texto">
+                            <div class="modal-score-rendimiento-head">
+                                <span class="modal-score-rendimiento-caption">Score de rendimiento</span>
+                                <span class="modal-score-rendimiento-etiqueta mono" :style="{ color: scoreColor }">{{ scoreDesglose.etiqueta }}</span>
+                            </div>
+                            <p v-if="scoreDesglose.explicacion" class="modal-score-rendimiento-explicacion">{{ scoreDesglose.explicacion }}</p>
+                            <p v-else class="modal-score-rendimiento-explicacion sin-dato">
+                                Compara {{ FUNNEL_LABELS[card.etapaFunnel] || 'este creativo' }} contra la media de su grupo ({{ paisLabel }} · {{ tipoCuentaLabel }}) -- todavía sin un cuello de botella claro.
+                            </p>
+                            <p v-if="volumenComparado" class="modal-score-rendimiento-volumen mono">
+                                {{ formatNumeroExacto(card.installs) }} instalaciones · media del grupo: {{ formatNumeroExacto(promedios.installs) }}
+                            </p>
+                        </div>
+                    </div>
+
                     <div class="modal-kpis">
                         <div v-for="k in kpis" :key="k.label" class="modal-kpi" :class="{ accent: k.accent }">
                             <span class="modal-kpi-label">{{ k.label }}</span>
@@ -520,7 +538,7 @@ watch(() => props.creativo?.id, () => {
                             <p>{{ lectura }}</p>
                         </div>
 
-                        <div class="modal-ia-acciones">
+                        <div v-if="esEpa" class="modal-ia-acciones">
                             <button type="button" :disabled="cargandoMetricas" @click="evaluar('metricas')">
                                 {{ cargandoMetricas ? 'Evaluando…' : 'Evaluar por métricas' }}
                             </button>
@@ -576,6 +594,9 @@ watch(() => props.creativo?.id, () => {
                                         <div class="modal-etapa-metrica">
                                             <span class="modal-etapa-metrica-label">{{ e.metricaLabel }}</span>
                                             <span class="mono">{{ e.metricaValor }}</span>
+                                            <span v-if="e.metricaPromedio" class="modal-etapa-metrica-promedio mono">
+                                                vs. {{ e.metricaPromedio }} de media<template v-if="e.comparacion"> ({{ e.comparacion.pct }}%)</template>
+                                            </span>
                                         </div>
                                         <span
                                             v-if="e.comparacion"
