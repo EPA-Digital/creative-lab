@@ -65,6 +65,10 @@ Route::middleware('auth')->group(function () {
 
         Route::middleware('can:desactivar-usuarios')->group(function () {
             Route::delete('/usuarios/{usuario}', [UsuariosController::class, 'destroy'])->name('usuarios.destroy');
+
+            // Inverso de desactivar -- mismo Gate (director/superadmin),
+            // pedido explícito 2026-09-24.
+            Route::post('/usuarios/{usuario}/reactivar', [UsuariosController::class, 'reactivar'])->name('usuarios.reactivar');
         });
 
         Route::middleware('can:eliminar-usuarios')->group(function () {

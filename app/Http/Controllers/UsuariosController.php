@@ -156,6 +156,23 @@ class UsuariosController extends Controller
     }
 
     /**
+     * Inverso de destroy() -- vuelve a activar a alguien que se había
+     * desactivado (pedido explícito 2026-09-24). No sirve para una
+     * invitación todavía pendiente de aprobación (esa pasa por aprobar(),
+     * que además sincroniza los países propuestos) -- acá se rechaza ese
+     * caso para no confundir los dos flujos.
+     */
+    public function reactivar(Request $request, User $usuario): JsonResponse
+    {
+        abort_if($usuario->estaPendienteDeAprobacion(), 422, 'Este usuario tiene una invitación pendiente -- usá "Aprobar", no "Reactivar".');
+
+        $usuario->update(['activo' => true]);
+        Auditoria::registrar('usuario.reactivado', $usuario, detalle: ['reactivado_por' => $request->user()->id]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
      * Borra la fila de `users` de verdad -- exclusivo de superadmin
      * (Gate 'eliminar-usuarios', pedido explícito 2026-09-24). Distinto
      * de destroy(): eso desactiva (reversible, el historial queda), esto

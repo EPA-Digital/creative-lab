@@ -95,6 +95,20 @@ async function desactivar(usuario) {
     }
 }
 
+// Inverso de desactivar() -- mismo permiso (director/superadmin).
+async function reactivar(usuario) {
+    usuario.guardando = true;
+    usuario.errorFila = '';
+    try {
+        await axios.post(`/usuarios/${usuario.id}/reactivar`);
+        usuario.activo = true;
+    } catch (e) {
+        usuario.errorFila = e.response?.data?.message || 'No se pudo reactivar.';
+    } finally {
+        usuario.guardando = false;
+    }
+}
+
 // Solo superadmin (Gate 'eliminar-usuarios') -- borra la fila de verdad,
 // a diferencia de desactivar() que es reversible. Doble confirmación a
 // propósito, es irreversible.
@@ -283,6 +297,15 @@ const ROL_LABEL = {
                                 @click="desactivar(u)"
                             >
                                 Desactivar
+                            </button>
+                            <button
+                                v-if="!u.activo && !esPendiente(u) && u.id !== miId && puedeDesactivar"
+                                type="button"
+                                class="btn-guardar"
+                                :disabled="u.guardando"
+                                @click="reactivar(u)"
+                            >
+                                {{ u.guardando ? 'Reactivando…' : 'Reactivar' }}
                             </button>
                             <button
                                 v-if="u.id !== miId && esSuperadmin"
