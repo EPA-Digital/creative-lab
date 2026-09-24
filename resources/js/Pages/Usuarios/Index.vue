@@ -415,6 +415,10 @@ h1 {
     margin: 0 0 16px;
 }
 .error.fila {
+    /* width:100% en un flex-item fuerza el salto de línea dentro de
+       .acciones (ahora en fila) -- si no, el mensaje intenta acomodarse
+       al lado de los botones en vez de abajo. */
+    width: 100%;
     margin: 4px 0 0;
     font-size: 0.7rem;
 }
@@ -472,9 +476,10 @@ h1 {
 }
 .acciones {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
     gap: 6px;
-    align-items: flex-start;
+    align-items: center;
 }
 .estado {
     font-size: 0.75rem;
