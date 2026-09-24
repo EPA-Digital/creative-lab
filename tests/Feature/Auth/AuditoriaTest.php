@@ -92,6 +92,16 @@ class AuditoriaTest extends TestCase
         $this->assertSame(1, AuditoriaAcceso::where('evento', 'pais.primera_visita')->count());
     }
 
+    public function test_reactivar_un_usuario_queda_registrado(): void
+    {
+        $director = User::factory()->create(['rol' => 'director']);
+        $junior = User::factory()->create(['rol' => 'junior', 'activo' => false]);
+
+        $this->actingAs($director)->postJson("/usuarios/{$junior->id}/reactivar");
+
+        $this->assertDatabaseHas('auditoria_accesos', ['evento' => 'usuario.reactivado', 'usuario_id' => $junior->id]);
+    }
+
     public function test_eliminar_un_usuario_queda_registrado(): void
     {
         $superadmin = User::factory()->create(['rol' => 'superadmin']);

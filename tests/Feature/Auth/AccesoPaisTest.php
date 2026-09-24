@@ -134,6 +134,34 @@ class AccesoPaisTest extends TestCase
         $this->assertFalse($junior->fresh()->activo);
     }
 
+    public function test_solo_director_o_superadmin_pueden_reactivar_un_usuario_desactivado(): void
+    {
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $junior = User::factory()->create(['rol' => 'junior', 'activo' => false]);
+
+        $this->actingAs($gerente)
+            ->postJson("/usuarios/{$junior->id}/reactivar")
+            ->assertForbidden();
+        $this->assertFalse($junior->fresh()->activo);
+
+        $director = User::factory()->create(['rol' => 'director']);
+        $this->actingAs($director)
+            ->postJson("/usuarios/{$junior->id}/reactivar")
+            ->assertOk();
+        $this->assertTrue($junior->fresh()->activo);
+    }
+
+    public function test_un_pendiente_de_aprobacion_no_se_reactiva_hay_que_aprobarlo(): void
+    {
+        $director = User::factory()->create(['rol' => 'director']);
+        $pendiente = User::factory()->create(['rol' => 'cliente', 'activo' => false, 'pais_ids_propuestos' => []]);
+
+        $this->actingAs($director)
+            ->postJson("/usuarios/{$pendiente->id}/reactivar")
+            ->assertStatus(422);
+        $this->assertFalse($pendiente->fresh()->activo);
+    }
+
     public function test_solo_superadmin_puede_eliminar_la_fila_de_un_usuario(): void
     {
         // Más estricto todavía que desactivar (pedido explícito
