@@ -155,6 +155,25 @@ class UsuariosController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Borra la fila de `users` de verdad -- exclusivo de superadmin
+     * (Gate 'eliminar-usuarios', pedido explícito 2026-09-24). Distinto
+     * de destroy(): eso desactiva (reversible, el historial queda), esto
+     * es irreversible. Las tablas que referencian al usuario ya están
+     * armadas para esto (nullOnDelete/cascadeOnDelete en sus migraciones)
+     * -- no hace falta borrar nada más a mano.
+     */
+    public function eliminar(Request $request, User $usuario): JsonResponse
+    {
+        abort_if($usuario->id === $request->user()->id, 422, 'No podés eliminarte a vos mismo.');
+
+        SesionService::invalidarSesionesDe($usuario);
+        Auditoria::registrar('usuario.eliminado', $usuario, detalle: ['eliminado_por' => $request->user()->id]);
+        $usuario->delete();
+
+        return response()->json(['ok' => true]);
+    }
+
     public function actualizarRolYPaises(Request $request, User $usuario): JsonResponse
     {
         $yo = $request->user();

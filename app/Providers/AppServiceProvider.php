@@ -92,6 +92,10 @@ class AppServiceProvider extends ServiceProvider
         // no desactiva ni a su propio junior.
         Gate::define('desactivar-usuarios', fn (User $user) => $user->puedeDesactivarUsuarios());
 
+        // Borrar la fila de verdad (no solo desactivar) -- exclusivo de
+        // superadmin (pedido explícito 2026-09-24).
+        Gate::define('eliminar-usuarios', fn (User $user) => $user->puedeEliminarUsuarios());
+
         // Aprobar una invitación que un junior/senior propuso con países --
         // gerente/director/superadmin (ver User::puedeAprobarInvitaciones()
         // y UsuariosController::store()/aprobar()).

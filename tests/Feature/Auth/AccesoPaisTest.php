@@ -134,6 +134,36 @@ class AccesoPaisTest extends TestCase
         $this->assertFalse($junior->fresh()->activo);
     }
 
+    public function test_solo_superadmin_puede_eliminar_la_fila_de_un_usuario(): void
+    {
+        // Más estricto todavía que desactivar (pedido explícito
+        // 2026-09-24) -- ni siquiera un director puede borrar la fila,
+        // solo desactivarla.
+        $director = User::factory()->create(['rol' => 'director']);
+        $junior = User::factory()->create(['rol' => 'junior']);
+
+        $this->actingAs($director)
+            ->deleteJson("/usuarios/{$junior->id}/eliminar")
+            ->assertForbidden();
+        $this->assertDatabaseHas('users', ['id' => $junior->id]);
+
+        $superadmin = User::factory()->create(['rol' => 'superadmin']);
+        $this->actingAs($superadmin)
+            ->deleteJson("/usuarios/{$junior->id}/eliminar")
+            ->assertOk();
+        $this->assertDatabaseMissing('users', ['id' => $junior->id]);
+    }
+
+    public function test_un_superadmin_no_se_puede_eliminar_a_si_mismo(): void
+    {
+        $superadmin = User::factory()->create(['rol' => 'superadmin']);
+
+        $this->actingAs($superadmin)
+            ->deleteJson("/usuarios/{$superadmin->id}/eliminar")
+            ->assertStatus(422);
+        $this->assertDatabaseHas('users', ['id' => $superadmin->id]);
+    }
+
     public function test_un_director_no_puede_tocar_su_propio_rol_de_director_ni_para_bajarlo(): void
     {
         // Solo superadmin toca 'director'/'superadmin' (ver

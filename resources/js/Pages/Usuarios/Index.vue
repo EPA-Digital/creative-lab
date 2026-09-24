@@ -95,6 +95,20 @@ async function desactivar(usuario) {
     }
 }
 
+// Solo superadmin (Gate 'eliminar-usuarios') -- borra la fila de verdad,
+// a diferencia de desactivar() que es reversible. Doble confirmación a
+// propósito, es irreversible.
+async function eliminar(usuario) {
+    if (!confirm(`¿Eliminar el registro de ${usuario.name} (${usuario.email})? Esto NO es reversible -- se borra la cuenta de verdad, no solo se desactiva.`)) return;
+    if (!confirm('Confirmá de nuevo: esta acción no se puede deshacer.')) return;
+    try {
+        await axios.delete(`/usuarios/${usuario.id}/eliminar`);
+        usuarios.value = usuarios.value.filter((u) => u.id !== usuario.id);
+    } catch (e) {
+        alert(e.response?.data?.message || 'No se pudo eliminar.');
+    }
+}
+
 async function aprobar(usuario) {
     usuario.guardando = true;
     usuario.errorFila = '';
@@ -269,6 +283,14 @@ const ROL_LABEL = {
                                 @click="desactivar(u)"
                             >
                                 Desactivar
+                            </button>
+                            <button
+                                v-if="u.id !== miId && esSuperadmin"
+                                type="button"
+                                class="btn-eliminar"
+                                @click="eliminar(u)"
+                            >
+                                Eliminar
                             </button>
                             <p v-if="u.errorFila" class="error fila">{{ u.errorFila }}</p>
                         </td>
@@ -477,5 +499,14 @@ h1 {
 .btn-guardar:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+.btn-eliminar {
+    padding: 4px 10px;
+    border: 1px solid var(--coral, #ff453a);
+    border-radius: 6px;
+    background: none;
+    color: var(--coral, #ff453a);
+    font-size: 0.75rem;
+    cursor: pointer;
 }
 </style>

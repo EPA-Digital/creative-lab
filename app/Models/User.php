@@ -181,6 +181,17 @@ class User extends Authenticatable
     }
 
     /**
+     * Borrar en serio la fila de un usuario (no solo desactivar) --
+     * exclusivo de superadmin, pedido explícito. Distinto de
+     * puedeDesactivarUsuarios(): desactivar es reversible (activo=false,
+     * el historial queda), esto borra la fila de `users` de verdad.
+     */
+    public function puedeEliminarUsuarios(): bool
+    {
+        return $this->esSuperadmin();
+    }
+
+    /**
      * Aprobar una invitación pendiente (ver
      * UsuariosController::store()/aprobar()) -- gerente/director/
      * superadmin. Un junior/senior puede INVITAR y proponer países, pero
