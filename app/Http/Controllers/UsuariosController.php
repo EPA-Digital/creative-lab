@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Pais;
 use App\Models\User;
+use App\Services\Auditoria;
+use App\Services\SesionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -89,14 +92,30 @@ class UsuariosController extends Controller
                 // tiene asignado.
                 Rule::in($yo->paises()->pluck('paises.id')),
             ],
+            // metodo/motivo (auth-prompt.md Fase 3) -- default google
+            // (opción preferida). Elegir 'password' exige guardar el
+            // motivo -- ese usuario va a tener TOTP obligatorio.
+            'metodo' => ['nullable', Rule::in([User::METODO_GOOGLE, User::METODO_PASSWORD])],
+            'motivo' => ['required_if:metodo,'.User::METODO_PASSWORD, 'nullable', 'string', 'max:500'],
         ]);
+
+        $metodo = $data['metodo'] ?? User::METODO_GOOGLE;
+
+        // Regla dura (auth-prompt.md Fase 1) validada también acá, no solo
+        // en el modelo -- un @epa.digital nunca puede invitarse con
+        // contraseña, entra siempre por Google.
+        if ($metodo === User::METODO_PASSWORD && str_ends_with(Str::lower($data['email']), '@'.User::DOMINIO_EPA)) {
+            throw ValidationException::withMessages([
+                'metodo' => 'Una cuenta @'.User::DOMINIO_EPA.' no puede invitarse con contraseña.',
+            ]);
+        }
 
         // junior/senior: pendiente de aprobación (ver
         // User::puedeAprobarInvitaciones()) -- activo=false, los países
         // propuestos NO se sincronizan todavía a usuario_pais.
         $esPropuesta = ! $yo->puedeAprobarInvitaciones();
 
-        $token = Str::random(40);
+        $tokenPlano = Str::random(40);
 
         $usuario = User::create([
             'name' => $data['name'],
@@ -104,7 +123,10 @@ class UsuariosController extends Controller
             'rol' => 'cliente',
             'activo' => ! $esPropuesta,
             'password' => null,
-            'invitacion_token' => $token,
+            'metodo_auth' => $metodo,
+            'motivo_password' => $metodo === User::METODO_PASSWORD ? $data['motivo'] : null,
+            'invitacion_token' => hash('sha256', $tokenPlano),
+            'invitacion_expira_en' => now()->addHours(72),
             'creado_por' => $yo->id,
             'pais_ids_propuestos' => $esPropuesta ? ($data['pais_ids'] ?? []) : null,
         ]);
@@ -113,9 +135,11 @@ class UsuariosController extends Controller
             $usuario->paises()->sync($data['pais_ids']);
         }
 
+        Auditoria::registrar('invitacion.creada', $usuario, detalle: ['creado_por' => $yo->id, 'metodo' => $metodo, 'pendiente' => $esPropuesta]);
+
         return response()->json([
-            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo', 'pais_ids_propuestos']), 'paises' => $usuario->paises],
-            'linkInvitacion' => route('invitaciones.show', $token),
+            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo', 'pais_ids_propuestos', 'metodo_auth']), 'paises' => $usuario->paises],
+            'linkInvitacion' => route('invitaciones.show', $tokenPlano),
             'pendiente' => $esPropuesta,
         ], 201);
     }
@@ -125,6 +149,8 @@ class UsuariosController extends Controller
         abort_if($usuario->id === $request->user()->id, 422, 'No podés desactivarte a vos mismo.');
 
         $usuario->update(['activo' => false]);
+        SesionService::invalidarSesionesDe($usuario);
+        Auditoria::registrar('usuario.desactivado', $usuario, detalle: ['desactivado_por' => $request->user()->id]);
 
         return response()->json(['ok' => true]);
     }
@@ -149,8 +175,15 @@ class UsuariosController extends Controller
             'Solo un superadmin puede otorgar director/superadmin.'
         );
 
+        $rolAnterior = $usuario->rol;
         $usuario->update(['rol' => $data['rol']]);
         $usuario->paises()->sync($data['pais_ids'] ?? []);
+        Auditoria::registrar('usuario.rol_cambiado', $usuario, detalle: [
+            'cambiado_por' => $yo->id,
+            'rol_anterior' => $rolAnterior,
+            'rol_nuevo' => $data['rol'],
+            'pais_ids' => $data['pais_ids'] ?? [],
+        ]);
 
         return response()->json([
             'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
@@ -178,9 +211,31 @@ class UsuariosController extends Controller
 
         $usuario->update(['activo' => true, 'pais_ids_propuestos' => null]);
         $usuario->paises()->sync($paisIds);
+        Auditoria::registrar('invitacion.aprobada', $usuario, detalle: ['aprobado_por' => $yo->id, 'pais_ids' => $paisIds]);
 
         return response()->json([
             'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
         ]);
+    }
+
+    /**
+     * "TOTP perdido" (auth-prompt.md Fase 3) -- sin autoservicio, un EPA
+     * con gerente o superior lo resetea a mano (mismo Gate que aprobar
+     * invitaciones, ver AppServiceProvider). El usuario re-enrola en su
+     * próximo login por contraseña.
+     */
+    public function resetearTotp(Request $request, User $usuario): JsonResponse
+    {
+        abort_if($usuario->metodo_auth !== User::METODO_PASSWORD, 422, 'Este usuario no usa TOTP.');
+
+        $usuario->update([
+            'totp_secret' => null,
+            'totp_confirmed_at' => null,
+            'totp_recovery_codes' => null,
+            'totp_last_timestep' => null,
+        ]);
+        Auditoria::registrar('totp.reseteado', $usuario, detalle: ['reseteado_por' => $request->user()->id]);
+
+        return response()->json(['ok' => true]);
     }
 }

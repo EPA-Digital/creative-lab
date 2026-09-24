@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 use League\Flysystem\Filesystem;
 use League\Flysystem\GoogleCloudStorage\GoogleCloudStorageAdapter;
 use League\Flysystem\GoogleCloudStorage\UniformBucketLevelAccessVisibility;
@@ -55,14 +56,21 @@ class AppServiceProvider extends ServiceProvider
     {
         Vite::prefetch(concurrency: 3);
 
+        // Política única de contraseñas (auth-prompt.md Fase 3) -- solo
+        // aplica a metodo_auth=password, un @epa.digital nunca setea una
+        // acá (entra por Google). Rules\Password::defaults() la toma
+        // automáticamente en cualquier validación que use Password::
+        // defaults() (reset de contraseña, ver NewPasswordController).
+        Password::defaults(fn () => Password::min(12)->mixedCase()->numbers()->uncompromised());
+
         // URLs de assets relativas ("/build/assets/x.js") en vez de absolutas
-        // con dominio completo -- el servicio es privado (--no-allow-
-        // unauthenticated) y se accede vía `gcloud run services proxy`, que
-        // preserva el Host real para que Cloud Run enrute. Con URL absoluta,
-        // el navegador pide el JS directo al dominio real sin pasar por el
-        // proxy y recibe 403 (página en blanco, Vue nunca monta). Vite (esta
-        // versión de Laravel) no trae Vite::useRelativeUrls() -- se logra lo
-        // mismo con el resolver de paths.
+        // con dominio completo -- ya no hace falta para el proxy (el
+        // servicio pasa a ser público con --allow-unauthenticated, Laravel
+        // protege todas las rutas -- ver auth-prompt.md), pero se mantiene
+        // igual: sirve también contra un dominio custom o detrás de un CDN
+        // sin tener que fijar APP_URL. Vite (esta versión de Laravel) no
+        // trae Vite::useRelativeUrls() -- se logra lo mismo con el
+        // resolver de paths.
         Vite::createAssetPathsUsing(fn (string $path, ?bool $secure = null) => '/'.ltrim($path, '/'));
 
         // Rutas de escritura (importar, evaluar IA, ajustes, invitar

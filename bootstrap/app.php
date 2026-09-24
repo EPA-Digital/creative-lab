@@ -2,10 +2,12 @@
 
 use App\Http\Middleware\EnsureAccesoPais;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,19 +19,29 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+            SecurityHeaders::class,
         ]);
 
         $middleware->alias(['acceso-pais' => EnsureAccesoPais::class]);
 
-        // Confía en el header X-Forwarded-Proto de cualquier proxy (2026-09-02,
-        // demo por ngrok) -- sin esto, Laravel genera las URLs de asset()/
-        // route() como http:// aunque la petición real haya llegado por
-        // https:// (ngrok termina TLS y reenvía por HTTP puro internamente),
-        // lo que el navegador bloquea como contenido mixto -- página en
-        // blanco, sin ningún error visible de Laravel. Server local propio,
-        // nunca expuesto directo a internet sin túnel -- confiar en todos
-        // los proxies acá no abre una superficie nueva real.
-        $middleware->trustProxies(at: '*');
+        // `at: '*'` -- en Cloud Run el único camino hacia el contenedor es
+        // el proxy de borde de Google (GFE), que agrega X-Forwarded-Proto/
+        // For/Host/Port; no hay una IP fija publicada para confiar por
+        // dirección (a diferencia de un proxy propio con IP conocida), así
+        // que "confiar en todos" es el patrón recomendado para este
+        // ingress específico, no una concesión de seguridad. Sí se acota
+        // explícitamente a los headers X-Forwarded-* estándar (en vez del
+        // default "todos los headers, incluido Forwarded RFC 7239") --
+        // auth-prompt.md Fase 4 pide validar esto contra el proxy real de
+        // Cloud Run antes de ir a producción, no se pudo probar en este
+        // entorno.
+        $middleware->trustProxies(
+            at: '*',
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

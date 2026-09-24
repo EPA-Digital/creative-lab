@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 class User extends Authenticatable
 {
@@ -22,6 +24,10 @@ class User extends Authenticatable
      * rechazado en el callback de Google, nunca llega a crear sesión.
      */
     public const DOMINIO_EPA = 'epa.digital';
+
+    public const METODO_GOOGLE = 'google';
+
+    public const METODO_PASSWORD = 'password';
 
     /**
      * Jerarquía completa (2026-09-23, pedido explícito) -- cada rol
@@ -49,10 +55,17 @@ class User extends Authenticatable
         'name',
         'email',
         'google_id',
+        'metodo_auth',
+        'totp_secret',
+        'totp_confirmed_at',
+        'totp_recovery_codes',
+        'totp_last_timestep',
+        'motivo_password',
         'password',
         'rol',
         'creado_por',
         'invitacion_token',
+        'invitacion_expira_en',
         'activo',
         'email_verified_at',
         'pais_ids_propuestos',
@@ -66,6 +79,10 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'google_id',
+        'totp_secret',
+        'totp_recovery_codes',
+        'totp_last_timestep',
     ];
 
     /**
@@ -80,7 +97,37 @@ class User extends Authenticatable
             'password' => 'hashed',
             'activo' => 'boolean',
             'pais_ids_propuestos' => 'array',
+            'totp_secret' => 'encrypted',
+            'totp_confirmed_at' => 'datetime',
+            'totp_recovery_codes' => 'array',
+            'invitacion_expira_en' => 'datetime',
         ];
+    }
+
+    /**
+     * Se registra una vez, en el modelo, para que ningún punto de entrada
+     * (Google, invitación, perfil) pueda dejar pasar un correo con
+     * mayúsculas/espacios ni una cuenta @epa.digital con metodo_auth
+     * distinto de 'google' -- regla dura pedida por auth-prompt.md Fase 1.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (self $usuario): void {
+            if ($usuario->isDirty('email') && $usuario->email !== null) {
+                $usuario->attributes['email'] = Str::lower(trim($usuario->email));
+            }
+
+            // null = todavía no se fijó explícitamente -> se resuelve al
+            // default de columna ('google'), no hace falta bloquearlo acá.
+            if ($usuario->esCorreoEpa() && $usuario->metodo_auth === self::METODO_PASSWORD) {
+                throw new InvalidArgumentException('Una cuenta @'.self::DOMINIO_EPA.' solo puede tener metodo_auth = google.');
+            }
+        });
+    }
+
+    public function esCorreoEpa(): bool
+    {
+        return $this->email !== null && str_ends_with(Str::lower($this->email), '@'.self::DOMINIO_EPA);
     }
 
     /**
@@ -154,6 +201,16 @@ class User extends Authenticatable
     public function estaPendienteDeAprobacion(): bool
     {
         return ! $this->activo && $this->pais_ids_propuestos !== null;
+    }
+
+    /**
+     * true = ya enroló y confirmó TOTP (ver TotpController) -- solo tiene
+     * sentido para metodo_auth=password, un @epa.digital nunca pasa por
+     * acá (entra por Google).
+     */
+    public function tieneTotpConfirmado(): bool
+    {
+        return $this->totp_confirmed_at !== null;
     }
 
     public function paises(): BelongsToMany

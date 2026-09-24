@@ -27,12 +27,20 @@ class HandleInertiaRequests extends Middleware
      *
      * @return array<string, mixed>
      */
+    /**
+     * Solo los campos que el front realmente usa (auth-prompt.md Fase 6)
+     * -- nunca el modelo completo. `$hidden` en User ya excluye password/
+     * google_id/totp_* de la serialización por defecto, pero compartir el
+     * modelo entero de todas formas expondría cualquier campo sensible
+     * que se agregue después y alguien olvide sumar a $hidden. only()
+     * fuerza a decidir explícitamente qué campo nuevo se comparte.
+     */
     public function share(Request $request): array
     {
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $request->user()?->only(['id', 'name', 'email', 'rol', 'email_verified_at']),
             ],
         ];
     }

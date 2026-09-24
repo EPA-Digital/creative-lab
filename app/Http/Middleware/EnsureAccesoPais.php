@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\Auditoria;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -29,6 +30,14 @@ class EnsureAccesoPais
 
         $tieneAcceso = $request->user()->paises()->where('codigo', $config['codigo'])->exists();
         abort_unless($tieneAcceso, 403, 'No tenés acceso a este país -- pedile a un director que te lo asigne desde Usuarios.');
+
+        // Auditoría (Fase 5) -- solo la primera vez por sesión, no en cada
+        // request dentro del mismo país (sería demasiado ruido).
+        $marca = "auditoria.pais_visitado.{$config['codigo']}";
+        if (! $request->session()->get($marca)) {
+            $request->session()->put($marca, true);
+            Auditoria::registrar('pais.primera_visita', $request->user(), detalle: ['pais' => $config['codigo']]);
+        }
 
         return $next($request);
     }

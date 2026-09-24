@@ -8,6 +8,8 @@ use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Auth\TotpEnrollmentController;
+use App\Http\Controllers\Auth\TwoFactorLoginController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\InvitacionController;
 use Illuminate\Support\Facades\Route;
@@ -43,6 +45,18 @@ Route::middleware('guest')->group(function () {
 
     Route::post('reset-password', [NewPasswordController::class, 'store'])
         ->name('password.store');
+});
+
+// Segundo paso de login para metodo_auth=password -- sin Auth::login()
+// previo (ver AuthenticatedSessionController/TwoFactorLoginController), así
+// que 'guest' es el middleware correcto: nadie llega logueado a estas dos
+// rutas.
+Route::middleware('guest')->group(function () {
+    Route::get('2fa/verificar', [TwoFactorLoginController::class, 'show'])->name('2fa.verificar');
+    Route::post('2fa/verificar', [TwoFactorLoginController::class, 'store']);
+
+    Route::get('2fa/enrolar', [TotpEnrollmentController::class, 'show'])->name('2fa.enrolar');
+    Route::post('2fa/enrolar', [TotpEnrollmentController::class, 'store']);
 });
 
 Route::middleware('auth')->group(function () {

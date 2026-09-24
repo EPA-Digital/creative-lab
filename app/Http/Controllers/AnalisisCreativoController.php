@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Pais;
 use App\Models\Resultado;
+use App\Services\ImagenFirmadaService;
 use App\Services\Ingesta\VentaRealYAgrupacion;
 use App\Services\RangosActividadService;
 use Illuminate\Http\Request;
@@ -30,6 +31,8 @@ use Inertia\Response;
  */
 class AnalisisCreativoController extends Controller
 {
+    public function __construct(private readonly ImagenFirmadaService $imagenes) {}
+
     public function index(Request $request, string $pais, ?string $plataforma = null): Response
     {
         $config = config("paises.{$pais}");
@@ -309,7 +312,7 @@ class AnalisisCreativoController extends Controller
             'nombre_campania' => $card['campaignName'] ?? null,
             'copy' => null,
             'copyBodies' => $card['copyBodies'] ?? [],
-            'imagen_url' => ($card['imageUrl'] ?? '') !== '' ? $card['imageUrl'] : null,
+            'imagen_url' => $this->imagenes->firmar(($card['imageUrl'] ?? '') !== '' ? $card['imageUrl'] : null),
             'plataforma' => $card['plataforma'] ?? null,
             'formato' => $card['formato'] ?? null,
             'funnel' => $funnel === 'Sin clasificar' ? null : $funnel,
