@@ -272,49 +272,51 @@ const ROL_LABEL = {
                             </span>
                         </td>
                         <td class="acciones">
-                            <button
-                                v-if="esPendiente(u) && puedeAprobar && u.id !== miId"
-                                type="button"
-                                class="btn-guardar"
-                                :disabled="u.guardando"
-                                @click="aprobar(u)"
-                            >
-                                {{ u.guardando ? 'Aprobando…' : 'Aprobar' }}
-                            </button>
-                            <button
-                                v-else-if="!esPendiente(u) && u.id !== miId"
-                                type="button"
-                                class="btn-guardar"
-                                :disabled="u.guardando"
-                                @click="guardarRolYPaises(u)"
-                            >
-                                {{ u.guardando ? 'Guardando…' : 'Guardar' }}
-                            </button>
-                            <button
-                                v-if="u.activo && u.id !== miId && puedeDesactivar"
-                                type="button"
-                                class="btn-desactivar"
-                                @click="desactivar(u)"
-                            >
-                                Desactivar
-                            </button>
-                            <button
-                                v-if="!u.activo && !esPendiente(u) && u.id !== miId && puedeDesactivar"
-                                type="button"
-                                class="btn-guardar"
-                                :disabled="u.guardando"
-                                @click="reactivar(u)"
-                            >
-                                {{ u.guardando ? 'Reactivando…' : 'Reactivar' }}
-                            </button>
-                            <button
-                                v-if="u.id !== miId && esSuperadmin"
-                                type="button"
-                                class="btn-eliminar"
-                                @click="eliminar(u)"
-                            >
-                                Eliminar
-                            </button>
+                            <div class="acciones-botones">
+                                <button
+                                    v-if="esPendiente(u) && puedeAprobar && u.id !== miId"
+                                    type="button"
+                                    class="btn-guardar"
+                                    :disabled="u.guardando"
+                                    @click="aprobar(u)"
+                                >
+                                    {{ u.guardando ? 'Aprobando…' : 'Aprobar' }}
+                                </button>
+                                <button
+                                    v-else-if="!esPendiente(u) && u.id !== miId"
+                                    type="button"
+                                    class="btn-guardar"
+                                    :disabled="u.guardando"
+                                    @click="guardarRolYPaises(u)"
+                                >
+                                    {{ u.guardando ? 'Guardando…' : 'Guardar' }}
+                                </button>
+                                <button
+                                    v-if="u.activo && u.id !== miId && puedeDesactivar"
+                                    type="button"
+                                    class="btn-desactivar"
+                                    @click="desactivar(u)"
+                                >
+                                    Desactivar
+                                </button>
+                                <button
+                                    v-if="!u.activo && !esPendiente(u) && u.id !== miId && puedeDesactivar"
+                                    type="button"
+                                    class="btn-guardar"
+                                    :disabled="u.guardando"
+                                    @click="reactivar(u)"
+                                >
+                                    {{ u.guardando ? 'Reactivando…' : 'Reactivar' }}
+                                </button>
+                                <button
+                                    v-if="u.id !== miId && esSuperadmin"
+                                    type="button"
+                                    class="btn-eliminar"
+                                    @click="eliminar(u)"
+                                >
+                                    Eliminar
+                                </button>
+                            </div>
                             <p v-if="u.errorFila" class="error fila">{{ u.errorFila }}</p>
                         </td>
                     </tr>
@@ -327,7 +329,11 @@ const ROL_LABEL = {
 <style scoped>
 .usuarios-page {
     padding: 32px 40px;
-    max-width: 1100px;
+    /* Ancha a propósito (pedido explícito 2026-09-24) -- con los 4
+       botones de acciones (Guardar/Desactivar-Reactivar/Eliminar) 1100px
+       los hacía saltar a una segunda línea, y las filas quedaban de
+       distinta altura (se veía mal el separador horizontal entre filas). */
+    max-width: 1600px;
 }
 h1 {
     font-family: 'Space Grotesk', sans-serif;
@@ -415,10 +421,6 @@ h1 {
     margin: 0 0 16px;
 }
 .error.fila {
-    /* width:100% en un flex-item fuerza el salto de línea dentro de
-       .acciones (ahora en fila) -- si no, el mensaje intenta acomodarse
-       al lado de los botones en vez de abajo. */
-    width: 100%;
     margin: 4px 0 0;
     font-size: 0.7rem;
 }
@@ -474,10 +476,10 @@ h1 {
     color: var(--text);
     font-size: 0.8rem;
 }
-.acciones {
+.acciones-botones {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
     align-items: center;
 }
