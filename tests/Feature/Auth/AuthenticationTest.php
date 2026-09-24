@@ -17,26 +17,57 @@ class AuthenticationTest extends TestCase
         $response->assertStatus(200);
     }
 
-    public function test_users_can_authenticate_using_the_login_screen(): void
+    /**
+     * Contraseña correcta lleva al segundo paso (TOTP), NUNCA abre sesión
+     * directo -- ver TotpLoginTest para el flujo completo de dos pasos.
+     * Solo metodo_auth=password llega hasta acá; el default (google) se
+     * rechaza (ver test de abajo).
+     */
+    public function test_una_contrasena_correcta_manda_al_segundo_paso_no_abre_sesion_directo(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create([
+            'metodo_auth' => User::METODO_PASSWORD,
+            'password' => 'ContraseñaSegura2026',
+            'activo' => true,
+            'totp_confirmed_at' => now(),
+        ]);
 
         $response = $this->post('/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'password' => 'ContraseñaSegura2026',
         ]);
 
-        $this->assertAuthenticated();
-        $response->assertRedirect(route('landing', absolute: false));
+        $this->assertGuest();
+        $response->assertRedirect(route('2fa.verificar'));
     }
 
     public function test_users_can_not_authenticate_with_invalid_password(): void
+    {
+        $user = User::factory()->create([
+            'metodo_auth' => User::METODO_PASSWORD,
+            'password' => 'ContraseñaSegura2026',
+            'activo' => true,
+        ]);
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'wrong-password',
+        ]);
+
+        $this->assertGuest();
+    }
+
+    /**
+     * metodo_auth=google (default) no tiene contraseña utilizable -- ver
+     * GoogleAuthTest para su propio camino de acceso.
+     */
+    public function test_un_usuario_metodo_auth_google_no_puede_autenticarse_con_password(): void
     {
         $user = User::factory()->create();
 
         $this->post('/login', [
             'email' => $user->email,
-            'password' => 'wrong-password',
+            'password' => 'password',
         ]);
 
         $this->assertGuest();
@@ -54,13 +85,18 @@ class AuthenticationTest extends TestCase
 
     public function test_un_usuario_desactivado_no_puede_autenticarse_aunque_la_contrasena_sea_correcta(): void
     {
-        $user = User::factory()->create(['activo' => false]);
+        $user = User::factory()->create([
+            'metodo_auth' => User::METODO_PASSWORD,
+            'password' => 'ContraseñaSegura2026',
+            'activo' => false,
+        ]);
 
-        $this->post('/login', [
+        $response = $this->post('/login', [
             'email' => $user->email,
-            'password' => 'password',
+            'password' => 'ContraseñaSegura2026',
         ]);
 
         $this->assertGuest();
+        $response->assertSessionHasErrors('email');
     }
 }

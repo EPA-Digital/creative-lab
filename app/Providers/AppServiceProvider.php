@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 use League\Flysystem\Filesystem;
 use League\Flysystem\GoogleCloudStorage\GoogleCloudStorageAdapter;
 use League\Flysystem\GoogleCloudStorage\UniformBucketLevelAccessVisibility;
@@ -54,6 +55,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Vite::prefetch(concurrency: 3);
+
+        // Política única de contraseñas (auth-prompt.md Fase 3) -- solo
+        // aplica a metodo_auth=password, un @epa.digital nunca setea una
+        // acá (entra por Google). Rules\Password::defaults() la toma
+        // automáticamente en cualquier validación que use Password::
+        // defaults() (reset de contraseña, ver NewPasswordController).
+        Password::defaults(fn () => Password::min(12)->mixedCase()->numbers()->uncompromised());
 
         // URLs de assets relativas ("/build/assets/x.js") en vez de absolutas
         // con dominio completo -- el servicio es privado (--no-allow-

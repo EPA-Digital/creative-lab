@@ -56,10 +56,16 @@ class User extends Authenticatable
         'email',
         'google_id',
         'metodo_auth',
+        'totp_secret',
+        'totp_confirmed_at',
+        'totp_recovery_codes',
+        'totp_last_timestep',
+        'motivo_password',
         'password',
         'rol',
         'creado_por',
         'invitacion_token',
+        'invitacion_expira_en',
         'activo',
         'email_verified_at',
         'pais_ids_propuestos',
@@ -73,6 +79,10 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'google_id',
+        'totp_secret',
+        'totp_recovery_codes',
+        'totp_last_timestep',
     ];
 
     /**
@@ -87,15 +97,13 @@ class User extends Authenticatable
             'password' => 'hashed',
             'activo' => 'boolean',
             'pais_ids_propuestos' => 'array',
+            'totp_secret' => 'encrypted',
+            'totp_confirmed_at' => 'datetime',
+            'totp_recovery_codes' => 'array',
+            'invitacion_expira_en' => 'datetime',
         ];
     }
 
-    /**
-     * true = EPA, acceso completo (director/gerente/senior/junior). false =
-     * 'cliente', solo lectura -- ver Gate 'epa' en AppServiceProvider y su
-     * uso en routes/web.php. No diferencia entre los 4 roles EPA todavía
-     * (pedido explícito: "EPA puede todo de momento").
-     */
     /**
      * Se registra una vez, en el modelo, para que ningún punto de entrada
      * (Google, invitación, perfil) pueda dejar pasar un correo con
@@ -122,6 +130,12 @@ class User extends Authenticatable
         return $this->email !== null && str_ends_with(Str::lower($this->email), '@'.self::DOMINIO_EPA);
     }
 
+    /**
+     * true = EPA, acceso completo (director/gerente/senior/junior). false =
+     * 'cliente', solo lectura -- ver Gate 'epa' en AppServiceProvider y su
+     * uso en routes/web.php. No diferencia entre los 4 roles EPA todavía
+     * (pedido explícito: "EPA puede todo de momento").
+     */
     public function esEpa(): bool
     {
         return $this->rol !== 'cliente';
@@ -187,6 +201,16 @@ class User extends Authenticatable
     public function estaPendienteDeAprobacion(): bool
     {
         return ! $this->activo && $this->pais_ids_propuestos !== null;
+    }
+
+    /**
+     * true = ya enroló y confirmó TOTP (ver TotpController) -- solo tiene
+     * sentido para metodo_auth=password, un @epa.digital nunca pasa por
+     * acá (entra por Google).
+     */
+    public function tieneTotpConfirmado(): bool
+    {
+        return $this->totp_confirmed_at !== null;
     }
 
     public function paises(): BelongsToMany

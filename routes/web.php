@@ -73,6 +73,10 @@ Route::middleware('auth')->group(function () {
 
         Route::middleware('can:aprobar-invitaciones')->group(function () {
             Route::post('/usuarios/{usuario}/aprobar', [UsuariosController::class, 'aprobar'])->name('usuarios.aprobar');
+
+            // "TOTP perdido" (auth-prompt.md Fase 3) -- sin autoservicio,
+            // mismo Gate que aprobar invitaciones.
+            Route::post('/usuarios/{usuario}/resetear-totp', [UsuariosController::class, 'resetearTotp'])->name('usuarios.resetear-totp');
         });
     });
 

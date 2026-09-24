@@ -60,13 +60,14 @@ class InvitacionTest extends TestCase
         $usuario = User::factory()->create([
             'rol' => 'cliente',
             'password' => null,
-            'invitacion_token' => 'token-de-prueba',
+            'invitacion_token' => hash('sha256', 'token-de-prueba'),
+            'invitacion_expira_en' => now()->addHours(72),
             'email_verified_at' => null,
         ]);
 
         $response = $this->post('/invitaciones/token-de-prueba', [
-            'password' => 'contrasena-segura',
-            'password_confirmation' => 'contrasena-segura',
+            'password' => 'ContraseñaSegura2026',
+            'password_confirmation' => 'ContraseñaSegura2026',
         ]);
 
         $response->assertRedirect(route('landing'));
@@ -81,12 +82,79 @@ class InvitacionTest extends TestCase
     public function test_un_token_de_invitacion_invalido_no_deja_activar_nada(): void
     {
         $response = $this->post('/invitaciones/token-que-no-existe', [
-            'password' => 'contrasena-segura',
-            'password_confirmation' => 'contrasena-segura',
+            'password' => 'ContraseñaSegura2026',
+            'password_confirmation' => 'ContraseñaSegura2026',
         ]);
 
         $response->assertNotFound();
         $this->assertGuest();
+    }
+
+    public function test_una_invitacion_expirada_no_deja_activar_nada(): void
+    {
+        User::factory()->create([
+            'rol' => 'cliente',
+            'password' => null,
+            'invitacion_token' => hash('sha256', 'token-vencido'),
+            'invitacion_expira_en' => now()->subHour(),
+            'email_verified_at' => null,
+        ]);
+
+        $response = $this->post('/invitaciones/token-vencido', [
+            'password' => 'ContraseñaSegura2026',
+            'password_confirmation' => 'ContraseñaSegura2026',
+        ]);
+
+        $response->assertNotFound();
+        $this->assertGuest();
+    }
+
+    public function test_un_epa_no_puede_invitar_con_metodo_password_a_un_correo_epa_digital(): void
+    {
+        $epa = $this->epaUser();
+
+        $response = $this->actingAs($epa)->postJson('/usuarios', [
+            'name' => 'Empleado',
+            'email' => 'empleado@epa.digital',
+            'metodo' => 'password',
+            'motivo' => 'Sin cuenta de Google corporativa',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseMissing('users', ['email' => 'empleado@epa.digital']);
+    }
+
+    public function test_invitar_con_metodo_password_exige_un_motivo(): void
+    {
+        $epa = $this->epaUser();
+
+        $response = $this->actingAs($epa)->postJson('/usuarios', [
+            'name' => 'Cliente Sin Google',
+            'email' => 'sinmotivo@afuera.com',
+            'metodo' => 'password',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('motivo');
+    }
+
+    public function test_invitar_con_metodo_password_guarda_el_motivo_y_el_metodo(): void
+    {
+        $epa = $this->epaUser();
+
+        $response = $this->actingAs($epa)->postJson('/usuarios', [
+            'name' => 'Cliente Sin Google',
+            'email' => 'conmotivo@afuera.com',
+            'metodo' => 'password',
+            'motivo' => 'No tiene cuenta de Google corporativa',
+        ]);
+
+        $response->assertStatus(201);
+        $this->assertDatabaseHas('users', [
+            'email' => 'conmotivo@afuera.com',
+            'metodo_auth' => 'password',
+            'motivo_password' => 'No tiene cuenta de Google corporativa',
+        ]);
     }
 
     public function test_un_cliente_no_puede_entrar_al_panel_de_cargar_datos(): void
@@ -127,14 +195,15 @@ class InvitacionTest extends TestCase
         $usuario = User::factory()->create([
             'rol' => 'cliente',
             'password' => null,
-            'invitacion_token' => 'token-pendiente',
+            'invitacion_token' => hash('sha256', 'token-pendiente'),
+            'invitacion_expira_en' => now()->addHours(72),
             'activo' => false,
             'pais_ids_propuestos' => [1],
         ]);
 
         $response = $this->post('/invitaciones/token-pendiente', [
-            'password' => 'contrasena-segura',
-            'password_confirmation' => 'contrasena-segura',
+            'password' => 'ContraseñaSegura2026',
+            'password_confirmation' => 'ContraseñaSegura2026',
         ]);
 
         $response->assertRedirect(route('login'));

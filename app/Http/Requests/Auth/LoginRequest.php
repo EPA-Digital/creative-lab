@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -34,18 +35,22 @@ class LoginRequest extends FormRequest
     }
 
     /**
-     * Attempt to authenticate the request's credentials.
+     * Valida contraseña + metodo_auth SIN loguear -- auth-prompt.md Fase 3
+     * exige TOTP antes de abrir sesión, así que acá solo se confirma que
+     * la contraseña es correcta y que el usuario es de tipo
+     * metodo_auth=password (un @epa.digital jamás matchea esto, entra
+     * solo por Google). El estado activo/pendiente se resuelve después,
+     * en el controller, para poder dar el mensaje de "pendiente de
+     * aprobación" en vez de un genérico "credenciales inválidas" -- ya se
+     * sabe que la contraseña es correcta en ese punto.
      *
      * @throws ValidationException
      */
-    public function authenticate(): void
+    public function authenticate(): User
     {
         $this->ensureIsNotRateLimited();
 
-        // 'activo' => true en las credenciales -- Auth::attempt lo suma como
-        // WHERE además de email/password (ver users.activo). Un usuario
-        // desactivado nunca entra por más que la contraseña sea correcta.
-        if (! Auth::attempt([...$this->only('email', 'password'), 'activo' => true], $this->boolean('remember'))) {
+        if (! Auth::validate([...$this->only('email', 'password'), 'metodo_auth' => User::METODO_PASSWORD])) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
@@ -54,6 +59,8 @@ class LoginRequest extends FormRequest
         }
 
         RateLimiter::clear($this->throttleKey());
+
+        return User::where('email', Str::lower(trim($this->string('email'))))->firstOrFail();
     }
 
     /**

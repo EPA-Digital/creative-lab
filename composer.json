@@ -7,12 +7,14 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "bacon/bacon-qr-code": "^3.1",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.31",
         "laravel/tinker": "^2.10.1",
         "league/flysystem-google-cloud-storage": "^3.34",
+        "pragmarx/google2fa": "^9.1",
         "tightenco/ziggy": "^2.0"
     },
     "require-dev": {
