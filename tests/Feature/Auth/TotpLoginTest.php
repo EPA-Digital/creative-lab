@@ -258,4 +258,71 @@ class TotpLoginTest extends TestCase
         $response->assertSessionHasErrors('codigo');
         $this->assertNull($usuario->fresh()->totp_confirmed_at);
     }
+
+    public function test_un_gerente_puede_resetear_la_contrasena_de_un_cliente(): void
+    {
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $usuario = $this->usuarioConPassword();
+
+        $response = $this->actingAs($gerente)->postJson("/usuarios/{$usuario->id}/resetear-password");
+
+        $response->assertOk();
+        $response->assertJsonStructure(['linkInvitacion']);
+        $usuario->refresh();
+        $this->assertNull($usuario->password);
+        $this->assertNotNull($usuario->invitacion_token);
+        $this->assertNotNull($usuario->invitacion_expira_en);
+        // El TOTP existente no se toca -- solo la contraseña se resetea.
+        $this->assertNotNull($usuario->totp_confirmed_at);
+    }
+
+    public function test_un_junior_no_puede_resetear_contrasenas(): void
+    {
+        $junior = User::factory()->create(['rol' => 'junior']);
+        $usuario = $this->usuarioConPassword();
+
+        $this->actingAs($junior)
+            ->postJson("/usuarios/{$usuario->id}/resetear-password")
+            ->assertForbidden();
+    }
+
+    public function test_no_se_puede_resetear_password_de_un_usuario_metodo_google(): void
+    {
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $usuario = User::factory()->create(['rol' => 'cliente', 'metodo_auth' => User::METODO_GOOGLE]);
+
+        $this->actingAs($gerente)
+            ->postJson("/usuarios/{$usuario->id}/resetear-password")
+            ->assertStatus(422);
+    }
+
+    public function test_aceptar_el_link_de_reset_pide_totp_de_nuevo_sin_reenrolar(): void
+    {
+        $gerente = User::factory()->create(['rol' => 'gerente']);
+        $usuario = $this->usuarioConPassword();
+        $secretoOriginal = $usuario->totp_secret;
+
+        $link = $this->actingAs($gerente)
+            ->postJson("/usuarios/{$usuario->id}/resetear-password")
+            ->json('linkInvitacion');
+        $token = basename(parse_url($link, PHP_URL_PATH));
+        $this->post('/logout');
+
+        $response = $this->post("/invitaciones/{$token}", [
+            'password' => 'OtraClaveNueva2026',
+            'password_confirmation' => 'OtraClaveNueva2026',
+        ]);
+
+        // Nunca abre sesión directo -- sigue pidiendo el segundo factor,
+        // igual que un login normal, nunca re-enrola (el TOTP ya estaba
+        // confirmado).
+        $this->assertGuest();
+        $response->assertRedirect(route('2fa.verificar'));
+        $this->assertSame($secretoOriginal, $usuario->fresh()->totp_secret);
+
+        $codigo = app(Google2FA::class)->getCurrentOtp($secretoOriginal);
+        $this->post('/2fa/verificar', ['codigo' => $codigo]);
+
+        $this->assertAuthenticatedAs($usuario->fresh());
+    }
 }

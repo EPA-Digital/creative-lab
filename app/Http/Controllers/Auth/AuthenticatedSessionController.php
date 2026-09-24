@@ -8,7 +8,6 @@ use App\Services\Auditoria;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,7 +19,15 @@ class AuthenticatedSessionController extends Controller
     public function create(): Response
     {
         return Inertia::render('Auth/Login', [
-            'canResetPassword' => Route::has('password.request'),
+            // Sin SMTP real (MAIL_MAILER=log, ver docs/pendientes-datos.md)
+            // el link de "olvidé mi contraseña" no entrega nada -- un
+            // 'cliente' que lo usara vería el mensaje de éxito genérico
+            // de Laravel sin que llegue nada nunca, un callejón sin salida
+            // silencioso. Se oculta a propósito (pedido explícito
+            // 2026-09-24: "yo como admin la reseteas manualmente") hasta
+            // que haya un proveedor de correo real -- la recuperación por
+            // ahora es UsuariosController::resetearPassword(), gerente+.
+            'canResetPassword' => false,
             'status' => session('status'),
         ]);
     }

@@ -85,6 +85,10 @@ Route::middleware('auth')->group(function () {
             // "TOTP perdido" (auth-prompt.md Fase 3) -- sin autoservicio,
             // mismo Gate que aprobar invitaciones.
             Route::post('/usuarios/{usuario}/resetear-totp', [UsuariosController::class, 'resetearTotp'])->name('usuarios.resetear-totp');
+
+            // "Olvidé mi contraseña" sin SMTP real (pedido explícito
+            // 2026-09-24) -- mismo Gate, mismo patrón que resetear-totp.
+            Route::post('/usuarios/{usuario}/resetear-password', [UsuariosController::class, 'resetearPassword'])->name('usuarios.resetear-password');
         });
     });
 

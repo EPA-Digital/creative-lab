@@ -56,7 +56,7 @@ class UsuariosController extends Controller
 
         $usuarios = User::orderByDesc('id')
             ->with('paises:id,codigo,nombre')
-            ->get(['id', 'name', 'email', 'rol', 'activo', 'invitacion_token', 'creado_por', 'pais_ids_propuestos'])
+            ->get(['id', 'name', 'email', 'rol', 'activo', 'metodo_auth', 'invitacion_token', 'creado_por', 'pais_ids_propuestos'])
             // Jerarquía (ver User::puedeGestionarA()) -- solo lo que está
             // estrictamente por debajo, más la propia fila (para verse a
             // sí mismo en la lista, nunca para autoadministrarse).
@@ -273,5 +273,35 @@ class UsuariosController extends Controller
         Auditoria::registrar('totp.reseteado', $usuario, detalle: ['reseteado_por' => $request->user()->id]);
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * "Olvidé mi contraseña" sin SMTP real (pedido explícito 2026-09-24:
+     * "yo como admin la reseteas manualmente") -- reusa el mismo
+     * mecanismo de invitación (token hasheado + 72h) en vez de un correo
+     * que hoy no se entrega (MAIL_MAILER=log, ver docs/pendientes-datos.md).
+     * Un admin genera el link acá y lo manda a mano (Slack/WhatsApp) --
+     * mismo patrón que store(). El TOTP existente NO se toca: al aceptar
+     * el link, InvitacionController salta el enrolamiento (ya está
+     * confirmado) pero sigue pidiendo el código antes de abrir sesión.
+     */
+    public function resetearPassword(Request $request, User $usuario): JsonResponse
+    {
+        abort_if($usuario->metodo_auth !== User::METODO_PASSWORD, 422, 'Este usuario entra con Google, no tiene contraseña que resetear.');
+
+        $tokenPlano = Str::random(40);
+
+        $usuario->update([
+            'password' => null,
+            'invitacion_token' => hash('sha256', $tokenPlano),
+            'invitacion_expira_en' => now()->addHours(72),
+        ]);
+        SesionService::invalidarSesionesDe($usuario);
+        Auditoria::registrar('usuario.password_reseteado', $usuario, detalle: ['reseteado_por' => $request->user()->id]);
+
+        return response()->json([
+            'ok' => true,
+            'linkInvitacion' => route('invitaciones.show', $tokenPlano),
+        ]);
     }
 }

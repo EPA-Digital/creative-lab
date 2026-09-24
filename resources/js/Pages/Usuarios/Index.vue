@@ -95,6 +95,40 @@ async function desactivar(usuario) {
     }
 }
 
+// "Olvidé mi contraseña" sin SMTP real (pedido explícito 2026-09-24) --
+// mismo Gate que aprobar invitaciones (gerente/director/superadmin).
+// Genera un link nuevo (mismo mecanismo que invitar) para mandar a mano;
+// el TOTP que el usuario ya tenía no se toca.
+async function resetearPassword(usuario) {
+    if (!confirm(`¿Resetear la contraseña de ${usuario.name}? Va a necesitar el link nuevo para volver a entrar -- se lo mandás vos por otro canal (Slack/WhatsApp).`)) return;
+    usuario.guardando = true;
+    usuario.errorFila = '';
+    try {
+        const { data } = await axios.post(`/usuarios/${usuario.id}/resetear-password`);
+        ultimoLink.value = data.linkInvitacion;
+        avisoPendiente.value = false;
+    } catch (e) {
+        usuario.errorFila = e.response?.data?.message || 'No se pudo resetear la contraseña.';
+    } finally {
+        usuario.guardando = false;
+    }
+}
+
+// "TOTP perdido" -- mismo Gate. El usuario re-enrola en su próximo login
+// por contraseña (ver AuthenticatedSessionController::store()).
+async function resetearTotp(usuario) {
+    if (!confirm(`¿Resetear el TOTP de ${usuario.name}? Va a tener que volver a escanear un QR nuevo en su próximo login.`)) return;
+    usuario.guardando = true;
+    usuario.errorFila = '';
+    try {
+        await axios.post(`/usuarios/${usuario.id}/resetear-totp`);
+    } catch (e) {
+        usuario.errorFila = e.response?.data?.message || 'No se pudo resetear el TOTP.';
+    } finally {
+        usuario.guardando = false;
+    }
+}
+
 // Inverso de desactivar() -- mismo permiso (director/superadmin).
 async function reactivar(usuario) {
     usuario.guardando = true;
@@ -194,7 +228,7 @@ const ROL_LABEL = {
             </form>
             <p v-if="error" class="error">{{ error }}</p>
             <div v-if="ultimoLink" class="link-invitacion">
-                <span>Link de invitación (copiá y mandalo vos):</span>
+                <span>Link (copiá y mandalo vos -- sirve para invitar o para resetear contraseña):</span>
                 <input :value="ultimoLink" readonly @focus="$event.target.select()" />
                 <button type="button" @click="copiarLink">Copiar</button>
             </div>
@@ -307,6 +341,24 @@ const ROL_LABEL = {
                                     @click="reactivar(u)"
                                 >
                                     {{ u.guardando ? 'Reactivando…' : 'Reactivar' }}
+                                </button>
+                                <button
+                                    v-if="u.metodo_auth === 'password' && u.activo && !esPendiente(u) && u.id !== miId && puedeAprobar"
+                                    type="button"
+                                    class="btn-guardar"
+                                    :disabled="u.guardando"
+                                    @click="resetearPassword(u)"
+                                >
+                                    Resetear contraseña
+                                </button>
+                                <button
+                                    v-if="u.metodo_auth === 'password' && u.activo && !esPendiente(u) && u.id !== miId && puedeAprobar"
+                                    type="button"
+                                    class="btn-guardar"
+                                    :disabled="u.guardando"
+                                    @click="resetearTotp(u)"
+                                >
+                                    Resetear TOTP
                                 </button>
                                 <button
                                     v-if="u.id !== miId && esSuperadmin"
