@@ -82,6 +82,14 @@ class AnalisisCreativoController extends Controller
         $agrupado = VentaRealYAgrupacion::agruparPorArteYFunnel($cards);
         $creativosJson = array_map(fn (array $c) => $this->cardAJson($c, $usaRango ? null : $mes), $agrupado['cards']);
 
+        // Un 'cliente' (solo lectura) no ve creativos "sin clasificar"
+        // (pedido explícito 2026-09-24) -- cardAJson() ya deja `funnel`
+        // en null para esos, EPA sigue viéndolos igual que siempre (los
+        // necesita para clasificarlos, ver GestionNombresController).
+        if (! $request->user()->esEpa()) {
+            $creativosJson = array_values(array_filter($creativosJson, fn (array $c) => $c['funnel'] !== null));
+        }
+
         // rangosActividad -- 2026-08-28, pedido explícito: "el tiempo que
         // estuvieron activos" en la card de cada creativo. Meta NO expone
         // el historial real de encendido/apagado de antes de esta semana

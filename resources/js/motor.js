@@ -46,11 +46,16 @@ export function formatMoneyExacto(n) {
 // mostrarse, CON y CONS comparten el mismo label visible.
 export const FUNNEL_ORDER = ['AWA', 'CON', 'CONS', 'CNV', 'LOY', 'Sin clasificar'];
 
+// En inglés (pedido explícito 2026-09-24) -- Awareness/Loyalty ya
+// estaban así, CON/CONS/CNV pasan de Consideración/Conversión al
+// término en inglés. 'Sin clasificar' se deja tal cual (no es una etapa
+// de funnel real, y para 'cliente' directamente no aparece más --
+// ver AnalisisCreativoController::index()).
 export const FUNNEL_LABELS = {
     AWA: 'Awareness',
-    CON: 'Consideración',
-    CONS: 'Consideración',
-    CNV: 'Conversión',
+    CON: 'Consideration',
+    CONS: 'Consideration',
+    CNV: 'Conversion',
     LOY: 'Loyalty',
     'Sin clasificar': 'Sin clasificar',
 };
@@ -343,6 +348,12 @@ export function etapasFunnel(c, promedios) {
         if (comparacion === null && valorMetrica === null && c[e.key] === 0 && (promedios?.[e.key] ?? null) !== null) {
             comparacion = compararConPromedio(c[e.key], promedios[e.key], e.key);
         }
+        // metricaPromedio -- 2026-09-24, pedido explícito: el marquito de
+        // "media del grupo" en la barra no explica el número real por el
+        // que el creativo va mejor/peor. Mismo formato que metricaValor
+        // (CTR en %, el resto en plata) para poder leerlos uno al lado
+        // del otro. null si no hay promedio de grupo -- nunca inventa.
+        const promedioMetrica = promedios?.[e.metricaCampo] ?? null;
         return {
             key: e.key,
             label: e.label,
@@ -350,6 +361,7 @@ export function etapasFunnel(c, promedios) {
             valor: formatNumeroExacto(c[e.key]),
             metricaLabel: e.metricaLabel,
             metricaValor: e.metricaCampo === 'ctr' ? formatPercent(valorMetrica) : formatMoneyExacto(valorMetrica),
+            metricaPromedio: promedioMetrica === null ? null : (e.metricaCampo === 'ctr' ? formatPercent(promedioMetrica) : formatMoneyExacto(promedioMetrica)),
             comparacion,
             progresoPct: subScore === null ? null : Math.round((subScore / 25) * 100),
             nota: notaEtapa(e.key, c),
