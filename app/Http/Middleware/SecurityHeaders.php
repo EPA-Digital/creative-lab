@@ -8,12 +8,16 @@ use Symfony\Component\HttpFoundation\Response;
 
 /**
  * auth-prompt.md Fase 4 -- cabeceras de seguridad estándar para un
- * servicio público con datos de cliente. La CSP va en modo Report-Only:
- * app.blade.php tiene un <script> inline (tema antes del primer paint) y
- * Ziggy (@routes) inyecta otro -- una CSP script-src estricta los rompe
- * sin un nonce, que no se puede validar en este entorno sin desplegar
- * contra el dominio real. Report-Only deja ver en la consola qué
- * bloquearía sin romper nada todavía.
+ * servicio público con datos de cliente.
+ *
+ * CSP enforced (2026-09-24, validado contra el servicio real en
+ * producción) -- estuvo en Report-Only hasta confirmar que
+ * script-src/style-src 'unsafe-inline' ya cubren los dos <script>
+ * inline de app.blade.php (tema antes del primer paint, Ziggy @routes)
+ * y que img-src coincide con el formato real que genera
+ * StorageObject::signedUrl() del SDK de PHP (`storage.googleapis.com/
+ * {bucket}/...`, estilo path -- no el subdominio `{bucket}.storage.
+ * googleapis.com` que usa por default el CLI de gcloud).
  */
 class SecurityHeaders
 {
@@ -38,7 +42,7 @@ class SecurityHeaders
             "script-src 'self' 'unsafe-inline'",
             "connect-src 'self'",
         ]);
-        $response->headers->set('Content-Security-Policy-Report-Only', $csp);
+        $response->headers->set('Content-Security-Policy', $csp);
 
         return $response;
     }
