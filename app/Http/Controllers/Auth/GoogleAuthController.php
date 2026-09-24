@@ -13,18 +13,27 @@ use Laravel\Socialite\Two\InvalidStateException;
 use Throwable;
 
 /**
- * Login EPA vía Google -- único camino de acceso completo (rol !==
- * 'cliente', ver User::esEpa()). Restringido a @epa.digital: cualquier
- * otra cuenta de Google queda rechazada ANTES de crear sesión o usuario,
- * nunca se auto-provisiona una cuenta EPA por accidente.
+ * Login vía Google -- dos caminos:
  *
- * Auto-provisiona en el primer login -- "EPA puede todo de momento" (pedido
- * explícito) significa que cualquier @epa.digital real entra solo, sin
- * invitación manual de por medio (a diferencia de 'cliente', ver
- * UsuarioInvitacionController).
+ * - @epa.digital: acceso completo (rol !== 'cliente', ver User::esEpa()),
+ *   auto-provisionado como 'junior' en el primer login ("EPA puede todo
+ *   de momento", pedido explícito). Exige además el claim `hd` de Google
+ *   (Workspace) para que no baste con un alias de correo que termine en
+ *
+ *   @epa.digital.
+ * - Otro dominio: reservado a un 'cliente' que ya fue invitado y aceptó
+ *   con metodo_auth=google (ver UsuariosController/InvitacionController).
+ *   Nunca se auto-provisiona -- sin invitación previa, se rechaza con un
+ *   mensaje genérico que no revela si el correo existe.
+ *
+ * Ninguno de los dos casos se cruza con metodo_auth='password': ese
+ * usuario no puede entrar por Google (ver InvitacionController/TotpController
+ * para su propio camino).
  */
 class GoogleAuthController extends Controller
 {
+    private const MENSAJE_GENERICO = 'No se pudo iniciar sesión con esta cuenta de Google.';
+
     public function redirect(): RedirectResponse
     {
         return Socialite::driver('google')->redirect();
@@ -42,26 +51,49 @@ class GoogleAuthController extends Controller
             return redirect()->route('login')->withErrors(['email' => 'No se pudo iniciar sesión con Google -- intentá de nuevo.']);
         }
 
+        $raw = $googleUser->getRaw();
         $email = $googleUser->getEmail();
-        if (! $email || ! str_ends_with(Str::lower($email), '@'.User::DOMINIO_EPA)) {
-            return redirect()->route('login')->withErrors([
-                'email' => 'Solo cuentas @'.User::DOMINIO_EPA.' pueden entrar con Google.',
-            ]);
+
+        if (! $email || ($raw['email_verified'] ?? false) !== true) {
+            return redirect()->route('login')->withErrors(['email' => self::MENSAJE_GENERICO]);
         }
 
-        $user = User::where('email', $email)->first();
+        $email = Str::lower(trim($email));
+        $esEpa = str_ends_with($email, '@'.User::DOMINIO_EPA);
 
-        if ($user && ! $user->activo) {
-            return redirect()->route('login')->withErrors(['email' => 'Esta cuenta está desactivada.']);
+        if ($esEpa && ($raw['hd'] ?? null) !== User::DOMINIO_EPA) {
+            return redirect()->route('login')->withErrors(['email' => self::MENSAJE_GENERICO]);
         }
 
-        if ($user) {
-            $user->update(['google_id' => $googleUser->getId()]);
+        $usuario = User::where('email', $email)->first();
+
+        if ($esEpa) {
+            $usuario = $this->resolverUsuarioEpa($usuario, $googleUser, $email);
         } else {
-            $user = User::create([
+            $usuario = $this->resolverUsuarioCliente($usuario, $googleUser);
+        }
+
+        if (! $usuario) {
+            return redirect()->route('login')->withErrors(['email' => self::MENSAJE_GENERICO]);
+        }
+
+        Auth::login($usuario);
+
+        return redirect()->intended(route('landing', absolute: false));
+    }
+
+    /**
+     * @epa.digital: auto-provisiona si no existe, exige activo +
+     * metodo_auth=google + google_id estable en los siguientes logins.
+     */
+    private function resolverUsuarioEpa(?User $usuario, $googleUser, string $email): ?User
+    {
+        if (! $usuario) {
+            return User::create([
                 'name' => $googleUser->getName() ?: $email,
                 'email' => $email,
                 'google_id' => $googleUser->getId(),
+                'metodo_auth' => User::METODO_GOOGLE,
                 'rol' => 'junior',
                 'activo' => true,
                 'email_verified_at' => now(),
@@ -69,8 +101,38 @@ class GoogleAuthController extends Controller
             ]);
         }
 
-        Auth::login($user, remember: true);
+        if (! $usuario->activo || $usuario->metodo_auth !== User::METODO_GOOGLE) {
+            return null;
+        }
 
-        return redirect()->intended(route('landing', absolute: false));
+        if ($usuario->google_id && $usuario->google_id !== $googleUser->getId()) {
+            return null;
+        }
+
+        $usuario->update(['google_id' => $googleUser->getId()]);
+
+        return $usuario;
+    }
+
+    /**
+     * Cliente (dominio distinto de epa.digital): sin auto-provisionamiento.
+     * Solo entra si ya existe, activo, metodo_auth=google, y el google_id
+     * coincide con el de un login previo (o todavía no se fijó ninguno).
+     */
+    private function resolverUsuarioCliente(?User $usuario, $googleUser): ?User
+    {
+        if (! $usuario || ! $usuario->activo || $usuario->metodo_auth !== User::METODO_GOOGLE) {
+            return null;
+        }
+
+        if ($usuario->google_id && $usuario->google_id !== $googleUser->getId()) {
+            return null;
+        }
+
+        if (! $usuario->google_id) {
+            $usuario->update(['google_id' => $googleUser->getId()]);
+        }
+
+        return $usuario;
     }
 }
