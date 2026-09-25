@@ -22,12 +22,13 @@ export function iniciarSeguimientoCarga() {
         const url = event.detail.visit.url;
         rutaDestino.value = typeof url === 'string' ? url : url?.pathname || '';
 
-        // Delay antes de mostrar (2026-09-24) -- mismo criterio que la
-        // barra de progreso default de Inertia (NProgress, ~250ms):
-        // una navegación rápida no debe hacer parpadear el overlay.
+        // Delay antes de mostrar (pedido explícito 2026-09-25: "si se
+        // tarda mas de un segundo") -- una navegación rápida (incluido el
+        // salto directo país único -> análisis, ver LandingController)
+        // nunca debe hacer parpadear el overlay.
         temporizadorMostrar = setTimeout(() => {
             cargando.value = true;
-        }, 250);
+        }, 1000);
     });
 
     router.on('finish', () => {

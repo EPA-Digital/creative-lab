@@ -1,15 +1,14 @@
 <script setup>
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import AuthCardLayout from '@/Layouts/AuthCardLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 
 // Único camino de acceso para un usuario 'cliente' -- un EPA lo invitó
 // desde /usuarios (ver UsuariosController), este link (con el token) se le
 // mandó a mano (Slack/WhatsApp/correo, sin envío automático todavía). Acá
 // solo pone su contraseña -- nombre/correo ya vienen fijos, no se editan.
+// Mismo link para "olvidé mi contraseña" (ver UsuariosController::
+// resetearPassword()) -- no hay forma de distinguir los dos casos desde
+// acá (ni hace falta), el copy sirve para ambos.
 const props = defineProps({
     token: { type: String, required: true },
     nombre: { type: String, required: true },
@@ -29,53 +28,44 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
-        <Head title="Aceptar invitación" />
+    <AuthCardLayout>
+        <Head title="Activar cuenta" />
 
-        <p class="mb-4 text-sm text-gray-600">
-            Hola {{ nombre }} -- estás por activar el acceso de <strong>{{ email }}</strong>. Elegí una contraseña para entrar.
-        </p>
+        <h1 class="auth-title">Hola, {{ nombre }}</h1>
 
-        <form @submit.prevent="submit">
-            <div>
-                <InputLabel for="password" value="Contraseña" />
+        <p class="auth-status">Estás por activar el acceso de <strong>{{ email }}</strong>. Elige una contraseña para entrar.</p>
 
-                <TextInput
+        <form class="auth-form" @submit.prevent="submit">
+            <div class="auth-field">
+                <label for="password" class="auth-label">Contraseña</label>
+                <input
                     id="password"
                     type="password"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.password"
                     required
                     autofocus
                     autocomplete="new-password"
                 />
-
-                <InputError class="mt-2" :message="form.errors.password" />
+                <p v-if="form.errors.password" class="auth-input-error">{{ form.errors.password }}</p>
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password_confirmation" value="Confirmar contraseña" />
-
-                <TextInput
+            <div class="auth-field">
+                <label for="password_confirmation" class="auth-label">Confirmar contraseña</label>
+                <input
                     id="password_confirmation"
                     type="password"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.password_confirmation"
                     required
                     autocomplete="new-password"
                 />
-
-                <InputError class="mt-2" :message="form.errors.password_confirmation" />
+                <p v-if="form.errors.password_confirmation" class="auth-input-error">{{ form.errors.password_confirmation }}</p>
             </div>
 
-            <div class="mt-4 flex items-center justify-end">
-                <PrimaryButton
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Activar cuenta
-                </PrimaryButton>
-            </div>
+            <button type="submit" class="auth-btn-secondary" :disabled="form.processing">
+                Activar cuenta
+            </button>
         </form>
-    </GuestLayout>
+    </AuthCardLayout>
 </template>

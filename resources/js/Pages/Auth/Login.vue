@@ -1,11 +1,7 @@
 <script setup>
-import Checkbox from '@/Components/Checkbox.vue';
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import AuthCardLayout from '@/Layouts/AuthCardLayout.vue';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 
 defineProps({
     canResetPassword: {
@@ -22,6 +18,11 @@ const form = useForm({
     remember: false,
 });
 
+// Si el form.errors ya tiene algo (validación fallida en /login, ver
+// LoginRequest) el formulario de correo/contraseña arranca abierto --
+// nunca esconder un error detrás del botón "Usar correo y contraseña".
+const mostrarFormulario = ref(Object.keys(usePage().props.errors ?? {}).length > 0);
+
 const submit = () => {
     form.post(route('login'), {
         onFinish: () => form.reset('password'),
@@ -30,85 +31,73 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
+    <AuthCardLayout>
         <Head title="Iniciar sesión" />
 
-        <div v-if="status" class="mb-4 text-sm font-medium text-green-600">
-            {{ status }}
-        </div>
+        <h1 class="auth-title">Bienvenido de vuelta</h1>
 
-        <a
-            :href="route('google.redirect')"
-            class="flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-        >
-            <svg class="h-4 w-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.89c2.28-2.1 3.56-5.2 3.56-8.82Z"/><path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.89-3a7.4 7.4 0 0 1-11-3.9H1.02v3.1A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" d="M5.04 14.19a7.2 7.2 0 0 1 0-4.38v-3.1H1.02a12 12 0 0 0 0 10.58l4.02-3.1Z"/><path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.94 1.19 15.23 0 12 0A12 12 0 0 0 1.02 6.71l4.02 3.1A7.15 7.15 0 0 1 12 4.75Z"/></svg>
-            Continuar con Google (@epa.digital)
+        <p v-if="status" class="auth-status">{{ status }}</p>
+
+        <a :href="route('google.redirect')" class="auth-btn-google">
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.89c2.28-2.1 3.56-5.2 3.56-8.82Z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.89-3a7.4 7.4 0 0 1-11-3.9H1.02v3.1A12 12 0 0 0 12 24Z"/>
+                <path fill="#FBBC05" d="M5.04 14.19a7.2 7.2 0 0 1 0-4.38v-3.1H1.02a12 12 0 0 0 0 10.58l4.02-3.1Z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.44-3.44C17.94 1.19 15.23 0 12 0A12 12 0 0 0 1.02 6.71l4.02 3.1A7.15 7.15 0 0 1 12 4.75Z"/>
+            </svg>
+            Continuar con Google <span class="auth-btn-google-domain">(@epa.digital)</span>
         </a>
 
-        <div class="my-4 flex items-center gap-3 text-xs text-gray-400">
-            <div class="h-px flex-1 bg-gray-200" />
-            o con tu correo y contraseña
-            <div class="h-px flex-1 bg-gray-200" />
-        </div>
+        <button v-if="!mostrarFormulario" type="button" class="auth-btn-ghost" @click="mostrarFormulario = true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="m4 7 8 6 8-6" />
+            </svg>
+            Usar correo y contraseña
+        </button>
 
-        <form @submit.prevent="submit">
-            <div>
-                <InputLabel for="email" value="Correo" />
-
-                <TextInput
+        <form v-else class="auth-form" @submit.prevent="submit">
+            <div class="auth-field">
+                <label for="email" class="auth-label">Correo</label>
+                <input
                     id="email"
                     type="email"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.email"
                     required
                     autofocus
                     autocomplete="username"
                 />
-
-                <InputError class="mt-2" :message="form.errors.email" />
+                <p v-if="form.errors.email" class="auth-input-error">{{ form.errors.email }}</p>
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password" value="Contraseña" />
-
-                <TextInput
+            <div class="auth-field">
+                <label for="password" class="auth-label">Contraseña</label>
+                <input
                     id="password"
                     type="password"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.password"
                     required
                     autocomplete="current-password"
                 />
-
-                <InputError class="mt-2" :message="form.errors.password" />
+                <p v-if="form.errors.password" class="auth-input-error">{{ form.errors.password }}</p>
             </div>
 
-            <div class="mt-4 block">
-                <label class="flex items-center">
-                    <Checkbox name="remember" v-model:checked="form.remember" />
-                    <span class="ms-2 text-sm text-gray-600"
-                        >Recordarme</span
-                    >
+            <div class="auth-row-between">
+                <label class="auth-checkbox-label">
+                    <input type="checkbox" v-model="form.remember" />
+                    Recordarme
                 </label>
-            </div>
 
-            <div class="mt-4 flex items-center justify-end">
-                <Link
-                    v-if="canResetPassword"
-                    :href="route('password.request')"
-                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                >
+                <Link v-if="canResetPassword" :href="route('password.request')" class="auth-link">
                     ¿Olvidaste tu contraseña?
                 </Link>
-
-                <PrimaryButton
-                    class="ms-4"
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Entrar
-                </PrimaryButton>
             </div>
+
+            <button type="submit" class="auth-btn-secondary" :disabled="form.processing">
+                Entrar
+            </button>
         </form>
-    </GuestLayout>
+    </AuthCardLayout>
 </template>

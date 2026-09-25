@@ -1,9 +1,5 @@
 <script setup>
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import AuthCardLayout from '@/Layouts/AuthCardLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 
 // Segundo paso del login para metodo_auth=password (auth-prompt.md Fase 3)
@@ -20,36 +16,32 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
+    <AuthCardLayout>
         <Head title="Verificación en dos pasos" />
 
-        <p class="mb-4 text-sm text-gray-600">
-            Ingresá el código de tu app de autenticación, o un código de recuperación si perdiste acceso a ella.
-        </p>
+        <h1 class="auth-title">Verificación en dos pasos</h1>
 
-        <form @submit.prevent="submit">
-            <div>
-                <InputLabel for="codigo" value="Código" />
+        <p class="auth-status">Ingresá el código de tu app de autenticación, o un código de recuperación si perdiste acceso a ella.</p>
 
-                <TextInput
+        <form class="auth-form" @submit.prevent="submit">
+            <div class="auth-field">
+                <label for="codigo" class="auth-label">Código</label>
+                <input
                     id="codigo"
                     type="text"
                     inputmode="numeric"
                     autocomplete="one-time-code"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.codigo"
                     required
                     autofocus
                 />
-
-                <InputError class="mt-2" :message="form.errors.codigo" />
+                <p v-if="form.errors.codigo" class="auth-input-error">{{ form.errors.codigo }}</p>
             </div>
 
-            <div class="mt-4 flex items-center justify-end">
-                <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    Verificar
-                </PrimaryButton>
-            </div>
+            <button type="submit" class="auth-btn-secondary" :disabled="form.processing">
+                Verificar
+            </button>
         </form>
-    </GuestLayout>
+    </AuthCardLayout>
 </template>

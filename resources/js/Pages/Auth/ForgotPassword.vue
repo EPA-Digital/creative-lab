@@ -1,11 +1,13 @@
 <script setup>
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import AuthCardLayout from '@/Layouts/AuthCardLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 
+// Ruta sin uso real hoy -- el link que apunta acá está oculto
+// (canResetPassword=false, ver AuthenticatedSessionController::create())
+// porque sin SMTP real el correo nunca llega (ver docs/pendientes-datos.md).
+// La recuperación real es UsuariosController::resetearPassword() (un
+// admin genera el link a mano). Se rediseña igual, por consistencia, por
+// si algún día se reactiva con un proveedor de correo real.
 defineProps({
     status: {
         type: String,
@@ -22,47 +24,35 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
-        <Head title="Forgot Password" />
+    <AuthCardLayout>
+        <Head title="Olvidé mi contraseña" />
 
-        <div class="mb-4 text-sm text-gray-600">
-            Forgot your password? No problem. Just let us know your email
-            address and we will email you a password reset link that will allow
-            you to choose a new one.
-        </div>
+        <h1 class="auth-title">Olvidé mi contraseña</h1>
 
-        <div
-            v-if="status"
-            class="mb-4 text-sm font-medium text-green-600"
-        >
-            {{ status }}
-        </div>
+        <p class="auth-status">
+            Escribe tu correo, te haremos llegar un link para cambiar tu contraseña.
+        </p>
 
-        <form @submit.prevent="submit">
-            <div>
-                <InputLabel for="email" value="Email" />
+        <p v-if="status" class="auth-status">{{ status }}</p>
 
-                <TextInput
+        <form class="auth-form" @submit.prevent="submit">
+            <div class="auth-field">
+                <label for="email" class="auth-label">Correo</label>
+                <input
                     id="email"
                     type="email"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.email"
                     required
                     autofocus
                     autocomplete="username"
                 />
-
-                <InputError class="mt-2" :message="form.errors.email" />
+                <p v-if="form.errors.email" class="auth-input-error">{{ form.errors.email }}</p>
             </div>
 
-            <div class="mt-4 flex items-center justify-end">
-                <PrimaryButton
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Email Password Reset Link
-                </PrimaryButton>
-            </div>
+            <button type="submit" class="auth-btn-secondary" :disabled="form.processing">
+                Mandar link
+            </button>
         </form>
-    </GuestLayout>
+    </AuthCardLayout>
 </template>
