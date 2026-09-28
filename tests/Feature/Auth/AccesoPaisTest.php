@@ -44,16 +44,45 @@ class AccesoPaisTest extends TestCase
     public function test_un_cliente_solo_ve_los_paises_que_tiene_asignados_en_landing(): void
     {
         $ec = Pais::create(['codigo' => 'EC', 'nombre' => 'Ecuador']);
-        Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
+        $pa = Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
         $cliente = User::factory()->create(['rol' => 'cliente']);
-        $cliente->paises()->attach($ec->id);
+        $cliente->paises()->attach([$ec->id, $pa->id]);
 
         $response = $this->actingAs($cliente)->get('/');
 
         $response->assertInertia(fn ($page) => $page
             ->component('Landing')
-            ->has('paises', 1)
-            ->where('paises.0.codigo', 'EC'));
+            ->has('paises', 2));
+    }
+
+    public function test_un_usuario_con_un_solo_pais_asignado_se_salta_el_selector(): void
+    {
+        // Pedido explícito 2026-09-25: si solo tiene un país, el selector
+        // no aporta nada -- va directo a su análisis.
+        $ec = Pais::create(['codigo' => 'EC', 'nombre' => 'Ecuador']);
+        $cliente = User::factory()->create(['rol' => 'cliente']);
+        $cliente->paises()->attach($ec->id);
+
+        $this->actingAs($cliente)
+            ->get('/')
+            ->assertRedirect('/pais/ecuador/analisis');
+    }
+
+    public function test_un_solo_pais_asignado_pero_deshabilitado_si_muestra_el_selector(): void
+    {
+        // Perú está 'habilitado' => false en config/paises.php -- un
+        // único país asignado pero sin datos/cuenta conectada no debe
+        // redirigir a una pantalla vacía, se ve el selector con su
+        // tarjeta en "próximamente".
+        $pe = Pais::create(['codigo' => 'PE', 'nombre' => 'Perú']);
+        $cliente = User::factory()->create(['rol' => 'cliente']);
+        $cliente->paises()->attach($pe->id);
+
+        $response = $this->actingAs($cliente)->get('/');
+
+        $response->assertInertia(fn ($page) => $page
+            ->component('Landing')
+            ->has('paises', 1));
     }
 
     public function test_un_usuario_no_puede_gestionar_a_otro_de_su_mismo_nivel_o_mas_alto(): void

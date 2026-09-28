@@ -2341,3 +2341,322 @@ h1, h2, .num, .kpi-value {
         display: none;
     }
 }
+
+/* ---------- Login / auth (rediseño 2026-09-25, pedido explícito) ----------
+   Página de login + todo lo que viene de la misma "familia" (aceptar
+   invitación/reset de contraseña, verificar/enrolar TOTP, códigos de
+   recuperación) -- ver AuthCardLayout.vue. Paleta y tipografía fijas
+   (siempre oscuro, no sigue --theme de la app) a propósito: es la
+   pantalla ANTES de loguearse, no hay tema de usuario que aplicar
+   todavía. Inter ya se carga global vía bunny.net (ver app.blade.php) --
+   no se agrega fonts.googleapis.com aparte, ya está permitido por la CSP
+   (font-src) y es la fuente que pide el diseño.
+   Nunca mayúscula forzada en texto real (pedido explícito: "ningún texto
+   con peso mayor a 500"), ningún blanco/negro puro. */
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    padding: 40px 16px;
+    background: radial-gradient(60% 55% at 50% 38%, #2b2741 0%, #161826 70%);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    /* z-index:0 (no solo position:relative) fuerza a que ESTE sea el
+       contexto de apilamiento donde nidifica .auth-page-brillo (ver
+       z-index:-1 más abajo) -- sin esto, ese z-index negativo se escapa
+       hasta la raíz del documento entero y queda tapado por completo por
+       el propio fondo de .auth-page (que es opaco), invisible siempre. */
+    z-index: 0;
+    overflow: hidden;
+}
+.auth-page :focus-visible {
+    outline: 2px solid #9184d9;
+    outline-offset: 2px;
+}
+/* Spotlight que sigue al cursor por TODA la página (pedido explícito
+   2026-09-25: "no solo en ese cuadrito, sino en toda esa página") --
+   --brillo-x/--brillo-y los actualiza AuthCardLayout.vue en cada
+   mousemove, en coordenadas de viewport (fixed cubre la ventana entera).
+   pointer-events:none para que nunca capture el click que en realidad va
+   para el botón/input/link debajo.
+
+   z-index:-1 (NO z-index:1 en todo lo demás) a propósito -- el logo de
+   EPA usa mix-blend-mode: screen (ver .auth-logo-epa/.auth-footer-epa)
+   para que su fondo blanco se funda con el fondo oscuro de la página.
+   Ese blend necesita "ver" el fondo real detrás -- subir a z-index:1 a
+   .auth-logos/.auth-card/.auth-footer hacía que cada uno creara su
+   PROPIO contexto de apilamiento nuevo, y el blend dejaba de tener con
+   qué mezclarse (se veía un cuadro negro sólido en vez de transparentarse
+   -- confirmado, pedido explícito 2026-09-25 al ver el resultado). Con
+   z-index:-1 acá, el resto queda con z-index:auto/sin contexto propio y
+   el blend mode sigue viendo el fondo de .auth-page normalmente. */
+.auth-page-brillo {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: radial-gradient(600px circle at var(--brillo-x, 50%) var(--brillo-y, 30%), rgba(145, 132, 217, 0.16), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+.auth-page:hover .auth-page-brillo {
+    opacity: 1;
+}
+.auth-logos {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.auth-logo-tada {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    box-shadow: 0 0 40px #423a6a;
+    display: block;
+}
+.auth-logo-sep {
+    width: 2px;
+    height: 40px;
+    background: #9184d9;
+    border-radius: 1px;
+}
+.auth-logo-epa {
+    height: 32px;
+    width: auto;
+    filter: grayscale(1) invert(1);
+    mix-blend-mode: screen;
+    opacity: 0.9;
+}
+.auth-card {
+    width: 420px;
+    max-width: calc(100vw - 32px);
+    padding: 32px;
+    background: #232532;
+    border-radius: 14px;
+    box-shadow: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+.auth-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 500;
+    color: #e9e9ed;
+}
+.auth-status {
+    margin: -8px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #b9bbc4;
+    background: #2b2741;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+.auth-btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 46px;
+    width: 100%;
+    background: transparent;
+    border: 1px solid #9184d9;
+    border-radius: 8px;
+    color: #e9e9ed;
+    font-size: 15px;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.auth-btn-google:hover {
+    background: #2b2741;
+}
+.auth-btn-google:active {
+    border-color: #b5abfc;
+}
+.auth-btn-google-domain {
+    color: #8b8e99;
+}
+.auth-btn-ghost {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 40px;
+    width: 100%;
+    background: none;
+    border: none;
+    color: #b9bbc4;
+    font-size: 14px;
+    cursor: pointer;
+}
+.auth-btn-ghost:hover {
+    color: #e9e9ed;
+}
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.auth-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.auth-label {
+    font-size: 13px;
+    color: #b9bbc4;
+}
+.auth-input {
+    height: 44px;
+    padding: 0 12px;
+    background: #161826;
+    border: 1px solid #3f424d;
+    border-radius: 8px;
+    color: #e9e9ed;
+    font-size: 14px;
+    font-family: inherit;
+}
+.auth-input::placeholder {
+    color: #6b6e79;
+}
+.auth-input:focus {
+    outline: none;
+    border-color: #9184d9;
+    box-shadow: 0 0 0 2px #423a6a;
+}
+.auth-input-error {
+    margin: 0;
+    font-size: 12px;
+    color: #f2a7a7;
+}
+.auth-row-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.auth-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #b9bbc4;
+}
+.auth-checkbox-label input[type='checkbox'] {
+    accent-color: #9184d9;
+    width: 15px;
+    height: 15px;
+}
+.auth-link {
+    font-size: 13px;
+    color: #d2cefd;
+    text-decoration: none;
+}
+.auth-link:hover {
+    color: #e7e5fe;
+    text-decoration: underline;
+}
+.auth-btn-secondary {
+    height: 44px;
+    width: 100%;
+    background: transparent;
+    border: 1px solid #3f424d;
+    border-radius: 8px;
+    color: #e9e9ed;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+.auth-btn-secondary:hover {
+    background: #292b31;
+}
+.auth-btn-secondary:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+/* .auth-btn-secondary aplicado a un <Link> (CodigosRecuperacion.vue) en
+   vez de un <button> -- mismo look, centra el texto y saca el
+   subrayado default de un link. */
+.auth-btn-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+.auth-footer {
+    /* Centrado con left:0/right:0/margin:auto (no left:50%+transform) --
+       transform SIEMPRE crea un contexto de apilamiento nuevo, sin
+       importar z-index, y volvía a atrapar el mix-blend-mode del logo de
+       EPA de acá adentro (mismo problema que .auth-logos, confirmado
+       2026-09-25 -- ahí no había transform, por eso ese ya había
+       quedado bien y este no). width:fit-content para que margin:auto
+       tenga un ancho real que centrar. */
+    position: absolute;
+    bottom: 24px;
+    left: 0;
+    right: 0;
+    width: fit-content;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #6b6e79;
+    white-space: nowrap;
+}
+.auth-footer-epa {
+    height: 18px;
+    filter: grayscale(1) invert(1);
+    mix-blend-mode: screen;
+    opacity: 0.9;
+}
+.auth-recovery-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 16px;
+    background: #161826;
+    border: 1px solid #3f424d;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #e9e9ed;
+}
+.auth-qr-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 12px;
+    background: #e9e9ed;
+    border-radius: 8px;
+}
+.auth-qr-wrap svg {
+    width: 180px;
+    height: 180px;
+}
+.auth-secret {
+    text-align: center;
+    font-size: 12px;
+    color: #8b8e99;
+    word-break: break-all;
+}
+@media (max-width: 480px) {
+    .auth-card {
+        width: 100%;
+        margin: 0 16px;
+        padding: 24px;
+    }
+    .auth-logo-tada {
+        width: 52px;
+        height: 52px;
+    }
+    .auth-logo-epa {
+        height: 26px;
+    }
+}

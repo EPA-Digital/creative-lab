@@ -1,9 +1,11 @@
 <script setup>
 import { computed } from 'vue';
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
+import AuthCardLayout from '@/Layouts/AuthCardLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 
+// Sin uso real hoy -- User no implementa MustVerifyEmail (comentado a
+// propósito, ver app/Models/User.php), así que nada redirige acá. Se
+// rediseña igual por consistencia con el resto de la familia de auth.
 const props = defineProps({
     status: {
         type: String,
@@ -22,40 +24,27 @@ const verificationLinkSent = computed(
 </script>
 
 <template>
-    <GuestLayout>
-        <Head title="Email Verification" />
+    <AuthCardLayout>
+        <Head title="Verificar correo" />
 
-        <div class="mb-4 text-sm text-gray-600">
-            Thanks for signing up! Before getting started, could you verify your
-            email address by clicking on the link we just emailed to you? If you
-            didn't receive the email, we will gladly send you another.
-        </div>
+        <h1 class="auth-title">Verificá tu correo</h1>
 
-        <div
-            class="mb-4 text-sm font-medium text-green-600"
-            v-if="verificationLinkSent"
-        >
-            A new verification link has been sent to the email address you
-            provided during registration.
-        </div>
+        <p class="auth-status">
+            Antes de arrancar, confirmá tu correo haciendo clic en el link que te mandamos. Si no te llegó, te mandamos otro.
+        </p>
 
-        <form @submit.prevent="submit">
-            <div class="mt-4 flex items-center justify-between">
-                <PrimaryButton
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Resend Verification Email
-                </PrimaryButton>
+        <p v-if="verificationLinkSent" class="auth-status">
+            Te mandamos un link de verificación nuevo al correo que registraste.
+        </p>
 
-                <Link
-                    :href="route('logout')"
-                    method="post"
-                    as="button"
-                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                    >Log Out</Link
-                >
-            </div>
+        <form class="auth-form" @submit.prevent="submit">
+            <button type="submit" class="auth-btn-secondary" :disabled="form.processing">
+                Reenviar correo de verificación
+            </button>
+
+            <Link :href="route('logout')" method="post" as="button" class="auth-link auth-btn-link">
+                Cerrar sesión
+            </Link>
         </form>
-    </GuestLayout>
+    </AuthCardLayout>
 </template>

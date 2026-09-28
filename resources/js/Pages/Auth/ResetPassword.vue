@@ -1,11 +1,8 @@
 <script setup>
-import GuestLayout from '@/Layouts/GuestLayout.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import AuthCardLayout from '@/Layouts/AuthCardLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 
+// Ruta sin uso real hoy -- ver ForgotPassword.vue (sin uso, mismo motivo).
 const props = defineProps({
     email: {
         type: String,
@@ -32,70 +29,55 @@ const submit = () => {
 </script>
 
 <template>
-    <GuestLayout>
-        <Head title="Reset Password" />
+    <AuthCardLayout>
+        <Head title="Resetear contraseña" />
 
-        <form @submit.prevent="submit">
-            <div>
-                <InputLabel for="email" value="Email" />
+        <h1 class="auth-title">Elige una contraseña nueva</h1>
 
-                <TextInput
+        <form class="auth-form" @submit.prevent="submit">
+            <div class="auth-field">
+                <label for="email" class="auth-label">Correo</label>
+                <input
                     id="email"
                     type="email"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.email"
                     required
                     autofocus
                     autocomplete="username"
                 />
-
-                <InputError class="mt-2" :message="form.errors.email" />
+                <p v-if="form.errors.email" class="auth-input-error">{{ form.errors.email }}</p>
             </div>
 
-            <div class="mt-4">
-                <InputLabel for="password" value="Password" />
-
-                <TextInput
+            <div class="auth-field">
+                <label for="password" class="auth-label">Contraseña</label>
+                <input
                     id="password"
                     type="password"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.password"
                     required
                     autocomplete="new-password"
                 />
-
-                <InputError class="mt-2" :message="form.errors.password" />
+                <p v-if="form.errors.password" class="auth-input-error">{{ form.errors.password }}</p>
             </div>
 
-            <div class="mt-4">
-                <InputLabel
-                    for="password_confirmation"
-                    value="Confirm Password"
-                />
-
-                <TextInput
+            <div class="auth-field">
+                <label for="password_confirmation" class="auth-label">Confirmar contraseña</label>
+                <input
                     id="password_confirmation"
                     type="password"
-                    class="mt-1 block w-full"
+                    class="auth-input"
                     v-model="form.password_confirmation"
                     required
                     autocomplete="new-password"
                 />
-
-                <InputError
-                    class="mt-2"
-                    :message="form.errors.password_confirmation"
-                />
+                <p v-if="form.errors.password_confirmation" class="auth-input-error">{{ form.errors.password_confirmation }}</p>
             </div>
 
-            <div class="mt-4 flex items-center justify-end">
-                <PrimaryButton
-                    :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
-                >
-                    Reset Password
-                </PrimaryButton>
-            </div>
+            <button type="submit" class="auth-btn-secondary" :disabled="form.processing">
+                Resetear contraseña
+            </button>
         </form>
-    </GuestLayout>
+    </AuthCardLayout>
 </template>
