@@ -312,7 +312,7 @@ async function eliminarMes() {
                     nombres amigables y los otros meses no se tocan. No se puede deshacer; para recuperarlo hay que volver a
                     importar el mes.
                 </p>
-                <label for="confirmacionInput" class="filtro-label">Escribí {{ mes }} para confirmar</label>
+                <label for="confirmacionInput" class="filtro-label">Escribe {{ mes }} para confirmar</label>
                 <input id="confirmacionInput" v-model="confirmacion" type="text" :placeholder="mes" autocomplete="off" />
                 <p v-if="eliminarError" class="datos-error">{{ eliminarError }}</p>
                 <div class="import-actions">

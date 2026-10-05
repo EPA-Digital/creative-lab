@@ -204,7 +204,7 @@ async function guardar() {
 
                     <template v-if="puedeGestionarCuentas">
                         <h2 class="form-titulo">Agregar cuenta</h2>
-                        <p class="hint">Se verifica contra la API antes de guardar; si no escribís un nombre, se usa el de la plataforma.</p>
+                        <p class="hint">Se verifica contra la API antes de guardar; si no escribes un nombre, se usa el de la plataforma.</p>
                         <div class="import-grid">
                             <div class="import-col">
                                 <label for="cuentaPaisSelect">País</label>
