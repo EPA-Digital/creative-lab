@@ -4,9 +4,11 @@ namespace App\Services\Ingesta;
 
 use App\Models\AppsflyerApp;
 use App\Models\Creativo;
+use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
 use App\Models\Resultado;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -203,41 +205,47 @@ class ImportadorDatos
         $ordersRecalculados = 0;
         $sinActividadDescartados = 0;
 
-        if ($config['meta_ad_account_id'] && count($clasificados['meta']) > 0) {
-            $enriquecedorMeta = new EnriquecedorCostosMeta(MetaApiClient::fromConfig(), new ImagenCacheService);
-            $costosMeta = $enriquecedorMeta->enriquecer($config['meta_ad_account_id'], $desde, $hasta);
+        // Una o varias cuentas publicitarias por plataforma (tabla
+        // cuentas_publicitarias, administrada por superadmin desde Ajustes,
+        // 2026-10-05) -- antes una sola cuenta fija por país en
+        // config/paises.php. NC/Orders total real son POR PLATAFORMA: Meta
+        // y TikTok reparten cada una SU PROPIO total tecleado.
+        $totalesPorPlataforma = [
+            'meta' => [$ncTotalRealMeta, $ordersTotalRealMeta],
+            'tiktok' => [$ncTotalRealTiktok, $ordersTotalRealTiktok],
+        ];
+        $conciliacion = [];
 
-            $r = self::procesarPlataforma(
-                $pais, 'meta', $clasificados['meta'], $costosMeta,
-                $csv['columnaNC'], $csv['columnaOrders'], $desde, $hasta,
-                $esRangoParcial, $ncTotalRealMeta, $ordersTotalRealMeta,
+        foreach ($totalesPorPlataforma as $plataforma => [$ncTotalReal, $ordersTotalReal]) {
+            $cuentas = CuentaPublicitaria::activasPara($pais->id, $plataforma)->get();
+            if ($cuentas->isEmpty() || count($clasificados[$plataforma]) === 0) {
+                continue;
+            }
+
+            if ($plataforma === 'meta') {
+                $enriquecedor = new EnriquecedorCostosMeta(MetaApiClient::fromConfig(), new ImagenCacheService);
                 // Meta nunca confirma "eliminado" -- la señal equivalente es
                 // "sin ninguna actividad en los últimos 4 meses" (ver
                 // EnriquecedorCostosMeta::detectarSinActividadReciente).
-                fn (array $adIds) => $enriquecedorMeta->detectarSinActividadReciente($config['meta_ad_account_id'], $adIds, $hasta),
-            );
-            $totalCreativos += $r['creativosTocados'];
-            $totalResultados += $r['resultadosTocados'];
-            $tieneMetaTrue += $r['tieneMetaTrue'];
-            $ncPreservados += $r['ncPreservados'];
-            $ncRecalculados += $r['ncRecalculados'];
-            $ordersPreservados += $r['ordersPreservados'];
-            $ordersRecalculados += $r['ordersRecalculados'];
-            $sinActividadDescartados += $r['sinActividadDescartados'];
-        }
-
-        if ($config['tiktok_advertiser_id'] && count($clasificados['tiktok']) > 0) {
-            $enriquecedorTiktok = new EnriquecedorCostosTiktok(TiktokApiClient::fromConfig(), new ImagenCacheService);
-            $costosTiktok = $enriquecedorTiktok->enriquecer($config['tiktok_advertiser_id'], $desde, $hasta);
-
-            $r = self::procesarPlataforma(
-                $pais, 'tiktok', $clasificados['tiktok'], $costosTiktok,
-                $csv['columnaNC'], $csv['columnaOrders'], $desde, $hasta,
-                $esRangoParcial, $ncTotalRealTiktok, $ordersTotalRealTiktok,
+                $detectarPorCuenta = fn (string $cuentaId, array $adIds) => $enriquecedor->detectarSinActividadReciente($cuentaId, $adIds, $hasta);
+            } else {
+                $enriquecedor = new EnriquecedorCostosTiktok(TiktokApiClient::fromConfig(), new ImagenCacheService);
                 // TikTok SÍ confirma "eliminado" -- /ad/get/ filtrado por un
                 // ad_id borrado devuelve list:[] (ver
                 // EnriquecedorCostosTiktok::detectarEliminados).
-                fn (array $adIds) => $enriquecedorTiktok->detectarEliminados($config['tiktok_advertiser_id'], $adIds),
+                $detectarPorCuenta = fn (string $cuentaId, array $adIds) => $enriquecedor->detectarEliminados($cuentaId, $adIds);
+            }
+
+            $costos = self::traerCostosDeCuentas($cuentas, fn (string $cuentaId) => $enriquecedor->enriquecer($cuentaId, $desde, $hasta));
+
+            $r = self::procesarPlataforma(
+                $pais, $plataforma, $clasificados[$plataforma], $costos,
+                $csv['columnaNC'], $csv['columnaOrders'], $desde, $hasta,
+                $esRangoParcial, $ncTotalReal, $ordersTotalReal,
+                // Un ad sin costo no se sabe de qué cuenta es -- solo se
+                // confirma "sin actividad"/"eliminado" si lo es en TODAS.
+                fn (array $adIds) => self::confirmadosEnTodasLasCuentas($cuentas, $detectarPorCuenta, $adIds),
+                $cuentas,
             );
             $totalCreativos += $r['creativosTocados'];
             $totalResultados += $r['resultadosTocados'];
@@ -247,6 +255,7 @@ class ImportadorDatos
             $ordersPreservados += $r['ordersPreservados'];
             $ordersRecalculados += $r['ordersRecalculados'];
             $sinActividadDescartados += $r['sinActividadDescartados'];
+            $conciliacion[$plataforma] = $r['conciliacion'];
         }
 
         // Un solo lugar hace el trabajo -- importar() (CSV, consola + panel
@@ -277,6 +286,7 @@ class ImportadorDatos
             'orders_recalculados' => $ordersRecalculados,
             'excluidos' => count($clasificados['excluidos']),
             'sin_actividad_descartados' => $sinActividadDescartados,
+            'conciliacion' => $conciliacion,
         ];
         if ($importacionExistente) {
             $importacionExistente->update([...$datosImportacion, 'estado' => 'completado']);
@@ -293,11 +303,63 @@ class ImportadorDatos
             'problemas' => count($csv['problemas']),
             'excluidos' => count($clasificados['excluidos']),
             'sinActividadDescartados' => $sinActividadDescartados,
+            'conciliacion' => $conciliacion,
         ];
     }
 
     /**
-     * @return array{creativosTocados: int, resultadosTocados: int, tieneMetaTrue: int, ncPreservados: int, ncRecalculados: int, ordersPreservados: int, ordersRecalculados: int}
+     * Costos de TODAS las cuentas activas de una plataforma, cada fila
+     * etiquetada con la cuenta de la que vino. Un mismo ad_id no puede
+     * existir en dos cuentas -- si apareciera, se conserva el primero.
+     *
+     * @param  Collection<int, CuentaPublicitaria>  $cuentas
+     * @param  callable(string): list<array<string, mixed>>  $traer
+     * @return list<array<string, mixed>>
+     */
+    private static function traerCostosDeCuentas(Collection $cuentas, callable $traer): array
+    {
+        $filas = [];
+        $vistos = [];
+        foreach ($cuentas as $cuenta) {
+            foreach ($traer($cuenta->cuenta_id) as $fila) {
+                if (isset($vistos[$fila['adId']])) {
+                    continue;
+                }
+                $vistos[$fila['adId']] = true;
+                $filas[] = [...$fila, 'cuentaPublicitariaId' => $cuenta->id];
+            }
+        }
+
+        return $filas;
+    }
+
+    /**
+     * Subconjunto de $adIds que $detectar confirma en CADA cuenta (sin
+     * actividad en Meta / eliminado en TikTok). Un ad pertenece a una sola
+     * cuenta: en las demás también sale "sin actividad"/"no existe", así
+     * que la intersección deja exactamente los confirmados en su cuenta
+     * real. Se encadena para no re-consultar lo que ya se descartó.
+     *
+     * @param  Collection<int, CuentaPublicitaria>  $cuentas
+     * @param  list<string>  $adIds
+     * @return list<string>
+     */
+    private static function confirmadosEnTodasLasCuentas(Collection $cuentas, callable $detectar, array $adIds): array
+    {
+        $restantes = $adIds;
+        foreach ($cuentas as $cuenta) {
+            if ($restantes === []) {
+                break;
+            }
+            $restantes = array_values(array_intersect($restantes, $detectar($cuenta->cuenta_id, $restantes)));
+        }
+
+        return $restantes;
+    }
+
+    /**
+     * @param  Collection<int, CuentaPublicitaria>  $cuentas
+     * @return array{creativosTocados: int, resultadosTocados: int, tieneMetaTrue: int, ncPreservados: int, ncRecalculados: int, ordersPreservados: int, ordersRecalculados: int, sinActividadDescartados: int, conciliacion: array<string, mixed>}
      */
     private static function procesarPlataforma(
         Pais $pais,
@@ -312,6 +374,7 @@ class ImportadorDatos
         mixed $ncTotalReal,
         mixed $ordersTotalReal,
         \Closure $detectarSinClasificar,
+        Collection $cuentas,
     ): array {
         $acotados = CruceCostosAppsFlyer::acotarARango($clasificados, $desde, $hasta, $columnaNC, $columnaOrders);
         $cardsCrudas = CruceCostosAppsFlyer::cruzar($acotados, $costosApi, $plataforma, $esRangoParcial);
@@ -336,7 +399,31 @@ class ImportadorDatos
             $cards[] = $card;
         }
 
-        $cardsConVenta = VentaRealYAgrupacion::calcularVentaReal($cards, $ncTotalReal, $ordersTotalReal, $esRangoParcial);
+        // Quién entra al reparto del total real (pedido explícito
+        // 2026-10-05): todos los canales (BRD, DTC paid y no paid) de las
+        // cuentas marcadas "cuenta para venta real" por superadmin -- así
+        // cuadra exacto con el sheet de referencia. Un ad que solo está en
+        // AppsFlyer (sin costo, sin cuenta conocida) sigue entrando -- diluye
+        // el share igual que en el Excel de referencia, y aparece en la
+        // conciliación como "sin cuenta" para que se note. Los que quedan
+        // fuera reciben ncReal/ordersReal null ("—" en el dashboard), nunca
+        // un 0 que parezca real.
+        $cuentasPorId = $cuentas->keyBy('id');
+        $participantes = [];
+        $fueraDelReparto = [];
+        foreach ($cards as $card) {
+            if (self::participaEnVentaReal($card, $cuentasPorId)) {
+                $participantes[] = $card;
+            } else {
+                $fueraDelReparto[] = [...$card, 'ncReal' => null, 'ordersReal' => null, 'cac' => null, 'cpo' => null];
+            }
+        }
+
+        $cardsConVenta = [
+            ...VentaRealYAgrupacion::calcularVentaReal($participantes, $ncTotalReal, $ordersTotalReal, $esRangoParcial),
+            ...$fueraDelReparto,
+        ];
+        $conciliacion = new ConciliacionImportacion($cuentas, $ncTotalReal, $ordersTotalReal);
 
         // Solo se confirma "sin clasificar" (tipo_cuenta = null) para ads que
         // YA vinieron sin match de costo en el rango (tieneMeta=false) --
@@ -413,6 +500,9 @@ class ImportadorDatos
                     'tipo_cuenta' => $tipoCuenta,
                     'formato' => $card['formato'] ?? null,
                     'fecha_carga' => $desde,
+                    // Sin costo en esta corrida no se sabe la cuenta -- se
+                    // conserva la que ya tenía en vez de borrarla.
+                    ...(isset($card['cuentaPublicitariaId']) ? ['cuenta_publicitaria_id' => $card['cuentaPublicitariaId']] : []),
                 ]
             );
             $creativosTocados++;
@@ -461,6 +551,7 @@ class ImportadorDatos
                 ]
             );
             $resultadosTocados++;
+            $conciliacion->registrar($card, self::participaEnVentaReal($card, $cuentasPorId), $nc, $orders);
         }
 
         return [
@@ -472,7 +563,24 @@ class ImportadorDatos
             'ordersPreservados' => $ordersPreservados,
             'ordersRecalculados' => $ordersRecalculados,
             'sinActividadDescartados' => $sinActividadDescartados,
+            'conciliacion' => $conciliacion->toArray($sinActividadDescartados),
         ];
+    }
+
+    /**
+     * Ver el comentario en procesarPlataforma(): todos los canales entran
+     * (BRD, DTC paid y DTC no paid -- confirmado contra el sheet de
+     * referencia de Ecuador sept 2026); lo único que decide es la cuenta:
+     * un ad con costo entra si su cuenta está marcada "cuenta para venta
+     * real", un ad solo-AppsFlyer (sin cuenta conocida) entra.
+     *
+     * @param  Collection<int, CuentaPublicitaria>  $cuentasPorId
+     */
+    private static function participaEnVentaReal(array $card, Collection $cuentasPorId): bool
+    {
+        $cuentaId = $card['cuentaPublicitariaId'] ?? null;
+
+        return $cuentaId === null || (bool) ($cuentasPorId->get($cuentaId)?->cuenta_en_venta_real ?? true);
     }
 
     /**

@@ -37,6 +37,7 @@ class Importacion extends Model
         'csv_contenido',
         'excluidos',
         'sin_actividad_descartados',
+        'conciliacion',
     ];
 
     protected function casts(): array
@@ -49,6 +50,7 @@ class Importacion extends Model
             'nc_total_real_tiktok' => 'decimal:2',
             'orders_total_real_tiktok' => 'decimal:2',
             'es_rango_parcial' => 'boolean',
+            'conciliacion' => 'array',
         ];
     }
 

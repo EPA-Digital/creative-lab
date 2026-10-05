@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AjustesController;
 use App\Http\Controllers\AnalisisCreativoController;
+use App\Http\Controllers\DatosMensualesController;
 use App\Http\Controllers\EvaluacionCreativoController;
 use App\Http\Controllers\GestionNombresController;
 use App\Http\Controllers\ImportarDatosController;
@@ -50,8 +51,24 @@ Route::middleware('auth')->group(function () {
             Route::post('/importar/api', [ImportarDatosController::class, 'importarApi'])->name('importar-datos.importar-api');
             Route::get('/importar/resumen', [ImportarDatosController::class, 'resumenPorArte'])->name('importar-datos.resumen');
 
+            // Datos por mes (2026-10-05) -- ver/descargar es EPA, eliminar
+            // un mes es solo superadmin.
+            Route::get('/importar/mensual', [DatosMensualesController::class, 'index'])->name('importar-datos.mensual');
+            Route::delete('/importar/mensual/{mes}', [DatosMensualesController::class, 'destroy'])
+                ->middleware('can:eliminar-mes-importado')
+                ->name('importar-datos.mensual.destroy');
+
             Route::get('/ajustes', [AjustesController::class, 'index'])->name('ajustes');
             Route::post('/ajustes/appsflyer-apps', [AjustesController::class, 'storeAppsflyerApp'])->name('ajustes.appsflyer-apps.store');
+
+            // Cuentas publicitarias (2026-10-05) -- ver la lista es EPA,
+            // agregar/editar es solo superadmin.
+            Route::middleware('can:gestionar-cuentas-publicitarias')->group(function () {
+                Route::post('/ajustes/cuentas-publicitarias', [AjustesController::class, 'storeCuentaPublicitaria'])
+                    ->name('ajustes.cuentas-publicitarias.store');
+                Route::patch('/ajustes/cuentas-publicitarias/{cuenta}', [AjustesController::class, 'updateCuentaPublicitaria'])
+                    ->name('ajustes.cuentas-publicitarias.update');
+            });
         });
     });
 

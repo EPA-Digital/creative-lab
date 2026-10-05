@@ -65,13 +65,19 @@ class ProcesarImportacionCsv implements ShouldQueue
                 $importacion,
             );
         } catch (Throwable $e) {
-            $importacion->update([
+            // Query directa por id, NO $importacion->update() -- si lo que
+            // falló fue justo el update final del pipeline, el modelo queda
+            // con esos atributos "sucios" y un update() acá los reintenta
+            // (y vuelve a fallar), dejando la fila en 'procesando' para
+            // siempre y al panel haciendo polling sin fin (caso real local
+            // 2026-10-05, columna faltante).
+            Importacion::whereKey($this->importacionId)->update([
                 'estado' => 'error',
                 'error_mensaje' => $e->getMessage(),
             ]);
         } finally {
             @unlink($rutaTmp);
-            $importacion->update(['csv_contenido' => null]);
+            Importacion::whereKey($this->importacionId)->update(['csv_contenido' => null]);
         }
     }
 }

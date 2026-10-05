@@ -4,6 +4,8 @@ import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import TipoCuentaToggle from '@/Components/Creativo/TipoCuentaToggle.vue';
+import ConciliacionImportacion from '@/Components/ConciliacionImportacion.vue';
+import DatosMensuales from '@/Components/DatosMensuales.vue';
 import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
 
 // Puerto del import-panel de meta.html/tiktok.html ("Cargar datos") -- el
@@ -14,7 +16,45 @@ import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
 // comando de consola) -- nunca reimplementa el parseo/cruce/agrupación acá.
 const props = defineProps({
     pais: { type: String, required: true },
+    // YYYY-MM del mes más viejo importable; null = sin límite (superadmin).
+    // Solo UX -- el backend rechaza igual (ImportarDatosController::
+    // rechazarMesHistorico).
+    mesMinimoImportable: { type: String, default: null },
+    // Eliminar la data de un mes -- solo superadmin (Gate
+    // 'eliminar-mes-importado'); solo UX, el backend lo exige igual.
+    puedeEliminarMes: { type: Boolean, default: false },
 });
+
+// Los totales reales son conteos -- un decimal casi siempre es un separador
+// de miles mal escrito ("1.039" en vez de 1039), que reparte casi nada y
+// deja NC en 0 (caso real Ecuador sept 2026). El backend también exige
+// enteros; esto solo avisa antes de mandar.
+function avisoTotales(...valores) {
+    const decimal = valores.find((v) => v !== '' && v !== null && !Number.isInteger(Number(v)));
+    return decimal === undefined
+        ? ''
+        : `"${decimal}" no es un número entero. Escribí el total sin separador de miles (ej. 1039).`;
+}
+const apiTotalesInvalidos = computed(() =>
+    !!avisoTotales(apiNcTotalRealMeta.value, apiOrdersTotalRealMeta.value, apiNcTotalRealTiktok.value, apiOrdersTotalRealTiktok.value),
+);
+const csvTotalesInvalidos = computed(() =>
+    !!avisoTotales(ncTotalRealMeta.value, ordersTotalRealMeta.value, ncTotalRealTiktok.value, ordersTotalRealTiktok.value),
+);
+
+function esMesBloqueado(mes) {
+    return !!(props.mesMinimoImportable && mes && mes < props.mesMinimoImportable);
+}
+const fechaMinimaImportable = computed(() => (props.mesMinimoImportable ? `${props.mesMinimoImportable}-01` : null));
+const avisoMesBloqueado = computed(() =>
+    props.mesMinimoImportable
+        ? `Solo superadmin puede importar meses anteriores a ${formatMesLargo(props.mesMinimoImportable)}.`
+        : '',
+);
+function formatMesLargo(mes) {
+    const [anio, m] = mes.split('-').map(Number);
+    return new Date(anio, m - 1, 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' });
+}
 
 // Tab "api" es la vista por defecto (2026-08-12): reemplaza la subida de CSV
 // como forma principal de cargar datos -- trae AppsFlyer en vivo vía
@@ -22,6 +62,18 @@ const props = defineProps({
 // `importar:appsflyer-api` por consola. El tab "csv" es el flujo viejo,
 // intacto, que queda como fallback manual (API caída, corrección puntual).
 const tab = ref('api');
+
+// "Datos por mes" (2026-10-05) -- "Actualizar mes" lleva al tab "Por API"
+// con ese mes ya elegido (reimportar reemplaza la data del mes); la tabla
+// se recarga sola al terminar cualquier importación.
+const datosMensuales = ref(null);
+function actualizarMes(mes) {
+    tab.value = 'api';
+    apiMes.value = mes;
+    apiResumen.value = null;
+    apiImportError.value = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
 // --- Tab API ---------------------------------------------------------
 const apiMes = ref(mesAnteriorPorDefecto());
@@ -51,13 +103,14 @@ const apiHasta = computed(() => {
 });
 
 const apiEsMesActual = computed(() => apiMes.value === mesActualIso());
+const apiMesBloqueado = computed(() => esMesBloqueado(apiMes.value));
 function mesActualIso() {
     const hoy = new Date();
     return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
 }
 
 async function importarApi() {
-    if (!apiMes.value || apiImportando.value) return;
+    if (!apiMes.value || apiMesBloqueado.value || apiTotalesInvalidos.value || apiImportando.value) return;
     apiImportando.value = true;
     apiImportError.value = '';
     apiResumen.value = null;
@@ -72,6 +125,7 @@ async function importarApi() {
             orders_total_real_tiktok: apiOrdersTotalRealTiktok.value === '' ? null : apiOrdersTotalRealTiktok.value,
         });
         apiResumen.value = data;
+        datosMensuales.value?.recargar();
     } catch (err) {
         apiImportError.value = err.response?.data?.error || err.response?.data?.message || 'No se pudo importar.';
     } finally {
@@ -142,6 +196,9 @@ const rangoError = computed(() => {
     if (desde.value && hasta.value && desde.value > hasta.value) {
         return 'Desde no puede ser después de Hasta.';
     }
+    if (esMesBloqueado(desde.value.slice(0, 7))) {
+        return avisoMesBloqueado.value;
+    }
     return '';
 });
 
@@ -162,7 +219,7 @@ const esRangoParcialPreview = computed(() => {
 // estadoImportacion() hasta que termina, mismo shape final que antes
 // (resumen.value) para no tocar el resto de la plantilla.
 async function importar() {
-    if (rangoError.value || !token.value || importando.value) return;
+    if (rangoError.value || csvTotalesInvalidos.value || !token.value || importando.value) return;
     importando.value = true;
     importError.value = '';
     resumen.value = null;
@@ -211,6 +268,7 @@ function iniciarPollEstadoImportacion() {
                 return;
             }
             resumen.value = data;
+            datosMensuales.value?.recargar();
         } catch {
             detenerPollEstadoImportacion();
             importando.value = false;
@@ -318,12 +376,13 @@ onMounted(() => cargarResumen());
                         <div class="date-range-row">
                             <div class="date-field">
                                 <label for="apiMesInput">Mes</label>
-                                <input id="apiMesInput" v-model="apiMes" type="month" />
+                                <input id="apiMesInput" v-model="apiMes" type="month" :min="mesMinimoImportable" />
                             </div>
                             <span class="date-hint">
                                 Se importa el mes completo ({{ apiDesde }} a {{ apiHasta }}). Para corregir un mes a
                                 mano o un rango parcial, usá la pestaña "Subir CSV".
                             </span>
+                            <span v-if="apiMesBloqueado" class="date-range-error">{{ avisoMesBloqueado }}</span>
                             <span v-if="apiEsMesActual" class="date-range-nota">
                                 Mes en curso: los últimos días pueden estar subcontados -- AppsFlyer todavía está
                                 recibiendo conversiones de esos días.
@@ -338,8 +397,9 @@ onMounted(() => cargarResumen());
                                     entre los ads de Meta según su participación en AppsFlyer. CAC/CPO salen de acá,
                                     nunca del crudo de AppsFlyer.
                                 </span>
-                                <input id="apiNcTotalRealMetaInput" v-model="apiNcTotalRealMeta" type="number" placeholder="NC total real (Meta)" min="0" />
-                                <input id="apiOrdersTotalRealMetaInput" v-model="apiOrdersTotalRealMeta" type="number" placeholder="Orders total real (Meta)" min="0" style="margin-top: 8px" />
+                                <input id="apiNcTotalRealMetaInput" v-model="apiNcTotalRealMeta" type="number" placeholder="NC total real (Meta)" min="0" step="1" />
+                                <input id="apiOrdersTotalRealMetaInput" v-model="apiOrdersTotalRealMeta" type="number" placeholder="Orders total real (Meta)" min="0" step="1" style="margin-top: 8px" />
+                                <span class="date-range-error">{{ avisoTotales(apiNcTotalRealMeta, apiOrdersTotalRealMeta) }}</span>
                             </div>
                             <div class="import-col">
                                 <label for="apiNcTotalRealTiktokInput">Venta real — TikTok</label>
@@ -347,13 +407,14 @@ onMounted(() => cargarResumen());
                                     Mismo criterio, para los ads de TikTok -- Meta y TikTok son cuentas distintas,
                                     cada una reparte SU PROPIO total, nunca uno compartido entre las dos.
                                 </span>
-                                <input id="apiNcTotalRealTiktokInput" v-model="apiNcTotalRealTiktok" type="number" placeholder="NC total real (TikTok)" min="0" />
-                                <input id="apiOrdersTotalRealTiktokInput" v-model="apiOrdersTotalRealTiktok" type="number" placeholder="Orders total real (TikTok)" min="0" style="margin-top: 8px" />
+                                <input id="apiNcTotalRealTiktokInput" v-model="apiNcTotalRealTiktok" type="number" placeholder="NC total real (TikTok)" min="0" step="1" />
+                                <input id="apiOrdersTotalRealTiktokInput" v-model="apiOrdersTotalRealTiktok" type="number" placeholder="Orders total real (TikTok)" min="0" step="1" style="margin-top: 8px" />
+                                <span class="date-range-error">{{ avisoTotales(apiNcTotalRealTiktok, apiOrdersTotalRealTiktok) }}</span>
                             </div>
                         </div>
 
                         <div class="import-actions">
-                            <button type="button" class="btn-primary" :disabled="!apiMes || apiImportando" @click="importarApi">
+                            <button type="button" class="btn-primary" :disabled="!apiMes || apiMesBloqueado || apiTotalesInvalidos || apiImportando" @click="importarApi">
                                 {{ apiImportando ? 'Importando…' : 'Importar' }}
                             </button>
                             <span class="import-status">
@@ -372,6 +433,10 @@ onMounted(() => cargarResumen());
                             <span v-if="apiResumen.excluidos > 0" class="pill"><span class="dot" style="background: var(--text-faint)" /> {{ apiResumen.excluidos }} excluido(s)</span>
                             <span v-if="apiResumen.sinActividadDescartados > 0" class="pill"><span class="dot" style="background: var(--text-faint)" /> {{ apiResumen.sinActividadDescartados }} sin actividad (descartado)</span>
                         </div>
+                        <div v-if="apiResumen?.conciliacion" class="conciliacion-wrap">
+                            <h2>Double check de la importación</h2>
+                            <ConciliacionImportacion :conciliacion="apiResumen.conciliacion" />
+                        </div>
                     </template>
 
                     <template v-else>
@@ -384,11 +449,11 @@ onMounted(() => cargarResumen());
                     <div class="date-range-row">
                         <div class="date-field">
                             <label for="desdeInput">Desde</label>
-                            <input id="desdeInput" v-model="desde" type="date" :disabled="!preview" />
+                            <input id="desdeInput" v-model="desde" type="date" :min="fechaMinimaImportable" :disabled="!preview" />
                         </div>
                         <div class="date-field">
                             <label for="hastaInput">Hasta</label>
-                            <input id="hastaInput" v-model="hasta" type="date" :disabled="!preview" />
+                            <input id="hastaInput" v-model="hasta" type="date" :min="fechaMinimaImportable" :disabled="!preview" />
                         </div>
                         <span class="date-hint">
                             Se autocompleta con el rango de fechas del CSV. Solo filtra instalaciones/nuevos
@@ -441,8 +506,9 @@ onMounted(() => cargarResumen());
                                 entre los ads de Meta según su participación en AppsFlyer. CAC/CPO salen de acá,
                                 nunca del crudo de AppsFlyer.
                             </span>
-                            <input id="ncTotalRealMetaInput" v-model="ncTotalRealMeta" type="number" placeholder="NC total real (Meta)" min="0" />
-                            <input id="ordersTotalRealMetaInput" v-model="ordersTotalRealMeta" type="number" placeholder="Orders total real (Meta)" min="0" style="margin-top: 8px" />
+                            <input id="ncTotalRealMetaInput" v-model="ncTotalRealMeta" type="number" placeholder="NC total real (Meta)" min="0" step="1" />
+                            <input id="ordersTotalRealMetaInput" v-model="ordersTotalRealMeta" type="number" placeholder="Orders total real (Meta)" min="0" step="1" style="margin-top: 8px" />
+                            <span class="date-range-error">{{ avisoTotales(ncTotalRealMeta, ordersTotalRealMeta) }}</span>
                         </div>
                         <div class="import-col">
                             <label for="ncTotalRealTiktokInput">Venta real — TikTok</label>
@@ -450,8 +516,9 @@ onMounted(() => cargarResumen());
                                 Mismo criterio, para los ads de TikTok -- Meta y TikTok son cuentas distintas, cada
                                 una reparte SU PROPIO total, nunca uno compartido entre las dos.
                             </span>
-                            <input id="ncTotalRealTiktokInput" v-model="ncTotalRealTiktok" type="number" placeholder="NC total real (TikTok)" min="0" />
-                            <input id="ordersTotalRealTiktokInput" v-model="ordersTotalRealTiktok" type="number" placeholder="Orders total real (TikTok)" min="0" style="margin-top: 8px" />
+                            <input id="ncTotalRealTiktokInput" v-model="ncTotalRealTiktok" type="number" placeholder="NC total real (TikTok)" min="0" step="1" />
+                            <input id="ordersTotalRealTiktokInput" v-model="ordersTotalRealTiktok" type="number" placeholder="Orders total real (TikTok)" min="0" step="1" style="margin-top: 8px" />
+                            <span class="date-range-error">{{ avisoTotales(ncTotalRealTiktok, ordersTotalRealTiktok) }}</span>
                         </div>
                     </div>
 
@@ -459,7 +526,7 @@ onMounted(() => cargarResumen());
                         <button
                             type="button"
                             class="btn-primary"
-                            :disabled="!token || !!rangoError || importando"
+                            :disabled="!token || !!rangoError || csvTotalesInvalidos || importando"
                             @click="importar"
                         >
                             {{ procesando ? 'Procesando…' : importando ? 'Importando…' : 'Limpiar y cargar' }}
@@ -482,7 +549,20 @@ onMounted(() => cargarResumen());
                         <span v-if="resumen.excluidos > 0" class="pill"><span class="dot" style="background: var(--text-faint)" /> {{ resumen.excluidos }} excluido(s)</span>
                         <span v-if="resumen.sinActividadDescartados > 0" class="pill"><span class="dot" style="background: var(--text-faint)" /> {{ resumen.sinActividadDescartados }} sin actividad (descartado)</span>
                     </div>
+                    <div v-if="resumen?.conciliacion" class="conciliacion-wrap">
+                        <h2>Double check de la importación</h2>
+                        <ConciliacionImportacion :conciliacion="resumen.conciliacion" />
+                    </div>
                     </template>
+                </section>
+
+                <section class="import-panel">
+                    <h2>Datos por mes</h2>
+                    <p class="hint">
+                        Lo que está guardado de cada mes importado, con las mismas columnas que el sheet de QA. Se puede
+                        filtrar, ordenar (clic en la columna) y descargar en CSV para abrir en Excel.
+                    </p>
+                    <DatosMensuales ref="datosMensuales" :pais="pais" :puede-eliminar="puedeEliminarMes" @actualizar="actualizarMes" />
                 </section>
 
                 <section class="resumen-comparacion">
@@ -594,6 +674,14 @@ onMounted(() => cargarResumen());
 </template>
 
 <style scoped>
+.conciliacion-wrap {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border);
+}
+.conciliacion-wrap > h2 {
+    margin-bottom: 16px;
+}
 .page {
     min-height: 100vh;
     background: var(--bg);

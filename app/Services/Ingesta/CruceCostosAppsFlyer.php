@@ -193,6 +193,10 @@ class CruceCostosAppsFlyer
                 // $costos de arriba, ANTES de que cost/impressions/clicks se
                 // pisen con `?? 0` al persistir.
                 'tieneMeta' => $costos !== null,
+                // De qué cuenta publicitaria vino el costo (ver
+                // ImportadorDatos::traerCostosDeCuentas) -- null si el ad
+                // solo existe en AppsFlyer.
+                'cuentaPublicitariaId' => $costos['cuentaPublicitariaId'] ?? null,
                 'etapaFunnel' => $af ? $af['etapaFunnel'] : ($apiInfo['funnel'] ?? 'Sin clasificar'),
                 'tipoCuenta' => $af ? $af['tipoCuenta'] : ($apiInfo['tipoCuenta'] ?? null),
                 'arte' => $arte,

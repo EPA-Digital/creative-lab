@@ -24,6 +24,7 @@ class Creativo extends Model
 
     protected $fillable = [
         'pais_id',
+        'cuenta_publicitaria_id',
         'ad_id',
         'nombre_comun',
         'nombre_completo',
@@ -54,6 +55,11 @@ class Creativo extends Model
     public function pais(): BelongsTo
     {
         return $this->belongsTo(Pais::class);
+    }
+
+    public function cuentaPublicitaria(): BelongsTo
+    {
+        return $this->belongsTo(CuentaPublicitaria::class);
     }
 
     public function resultados(): HasMany

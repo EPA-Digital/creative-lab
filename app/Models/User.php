@@ -192,6 +192,38 @@ class User extends Authenticatable
     }
 
     /**
+     * Importar un mes de más de 2 meses atrás (pedido explícito
+     * 2026-10-01) -- exclusivo de superadmin. Un re-import viejo "Por API"
+     * pisa con 0 el costo de los creativos que ya se eliminaron en TikTok
+     * (la API deja de devolverlos) y los deja "sin clasificar"; ese
+     * histórico lo cuadra superadmin a mano contra la plataforma.
+     */
+    public function puedeImportarMesHistorico(): bool
+    {
+        return $this->esSuperadmin();
+    }
+
+    /**
+     * Agregar/editar las cuentas publicitarias de un país y elegir cuáles
+     * entran al reparto de venta real (pedido explícito 2026-10-05) --
+     * exclusivo de superadmin.
+     */
+    public function puedeGestionarCuentasPublicitarias(): bool
+    {
+        return $this->esSuperadmin();
+    }
+
+    /**
+     * Borrar los resultados importados de un mes completo de un país
+     * (pedido explícito 2026-10-05) -- irreversible, exclusivo de
+     * superadmin. Ver/descargar/reimportar sigue abierto a EPA.
+     */
+    public function puedeEliminarMesImportado(): bool
+    {
+        return $this->esSuperadmin();
+    }
+
+    /**
      * Aprobar una invitación pendiente (ver
      * UsuariosController::store()/aprobar()) -- gerente/director/
      * superadmin. Un junior/senior puede INVITAR y proponer países, pero
