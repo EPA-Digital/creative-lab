@@ -79,8 +79,8 @@ class DatosMensualesController extends Controller
         abort_unless(preg_match('/^\d{4}-\d{2}$/', $mes) === 1, 404);
 
         $request->validate(['confirmacion' => ['required', 'in:'.$mes]], [
-            'confirmacion.in' => "Para eliminar, escribí exactamente {$mes}.",
-            'confirmacion.required' => "Para eliminar, escribí exactamente {$mes}.",
+            'confirmacion.in' => "Para eliminar, escribe exactamente {$mes}.",
+            'confirmacion.required' => "Para eliminar, escribe exactamente {$mes}.",
         ]);
 
         $creativoIds = DB::table('creativos')->where('pais_id', $paisModelo->id)->pluck('id');

@@ -43,6 +43,7 @@ RUN mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cac
     && mkdir -p /var/lib/nginx/tmp/client_body \
     && chown -R www-data:www-data /var/lib/nginx
 
+COPY docker/php.ini /usr/local/etc/php/conf.d/zz-tada.ini
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisor.d/app.ini
 COPY docker/start.sh /start.sh

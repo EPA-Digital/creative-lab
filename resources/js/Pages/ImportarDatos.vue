@@ -33,7 +33,7 @@ function avisoTotales(...valores) {
     const decimal = valores.find((v) => v !== '' && v !== null && !Number.isInteger(Number(v)));
     return decimal === undefined
         ? ''
-        : `"${decimal}" no es un número entero. Escribí el total sin separador de miles (ej. 1039).`;
+        : `"${decimal}" no es un número entero. Escribe el total sin separador de miles (ej. 1039).`;
 }
 const apiTotalesInvalidos = computed(() =>
     !!avisoTotales(apiNcTotalRealMeta.value, apiOrdersTotalRealMeta.value, apiNcTotalRealTiktok.value, apiOrdersTotalRealTiktok.value),
@@ -161,6 +161,8 @@ let pollHandle = null;
 const importError = ref('');
 const resumen = ref(null);
 
+const TAMANIO_MAXIMO_CSV = 30 * 1024 * 1024;
+
 async function onArchivoSeleccionado(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -173,6 +175,13 @@ async function onArchivoSeleccionado(e) {
     importError.value = '';
     desde.value = '';
     hasta.value = '';
+
+    // Mismo límite que el servidor (30 MB, ver docker/php.ini) -- avisar
+    // antes de subir, en vez de esperar la subida completa para fallar.
+    if (file.size > TAMANIO_MAXIMO_CSV) {
+        previewError.value = `El archivo pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el máximo es 30 MB. Exporta el CSV por un rango más corto o filtrado por país.`;
+        return;
+    }
     cargandoPreview.value = true;
 
     try {
@@ -184,7 +193,9 @@ async function onArchivoSeleccionado(e) {
         desde.value = data.rangoMin || '';
         hasta.value = data.rangoMax || '';
     } catch (err) {
-        previewError.value = err.response?.data?.message || 'No se pudo leer el CSV.';
+        previewError.value = err.response?.status === 413
+            ? 'El archivo pesa más de 30 MB. Exporta el CSV por un rango más corto o filtrado por país.'
+            : err.response?.data?.message || 'No se pudo leer el CSV.';
     } finally {
         cargandoPreview.value = false;
     }

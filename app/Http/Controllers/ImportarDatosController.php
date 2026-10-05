@@ -93,8 +93,16 @@ class ImportarDatosController extends Controller
         $config = config("paises.{$pais}");
         abort_unless($config, 404, "País \"{$pais}\" no existe en config/paises.php.");
 
+        // 30 MB, alineado con docker/php.ini (upload_max_filesize) y
+        // client_max_body_size de docker/nginx.conf.
         $request->validate([
-            'archivo' => ['required', 'file', 'mimes:csv,txt'],
+            'archivo' => ['required', 'file', 'mimes:csv,txt', 'max:30720'],
+        ], [
+            'archivo.required' => 'Selecciona el CSV de AppsFlyer.',
+            'archivo.uploaded' => 'No se pudo subir el archivo. Si pesa más de 30 MB, exporta el CSV por un rango más corto o filtrado por país.',
+            'archivo.file' => 'No se pudo subir el archivo. Vuelve a seleccionarlo.',
+            'archivo.mimes' => 'El archivo tiene que ser un CSV (.csv). Si lo abriste en Excel, guárdalo como "CSV UTF-8".',
+            'archivo.max' => 'El archivo pesa más de 30 MB. Exporta el CSV por un rango más corto o filtrado por país.',
         ]);
 
         $token = (string) Str::uuid();

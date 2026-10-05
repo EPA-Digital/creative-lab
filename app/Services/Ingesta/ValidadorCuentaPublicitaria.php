@@ -47,7 +47,7 @@ class ValidadorCuentaPublicitaria
 
             return null;
         } catch (Throwable $e) {
-            throw new InvalidArgumentException("No se pudo leer la cuenta {$cuentaId} en ".self::etiqueta($plataforma)." con el token del proyecto -- revisá el ID o que el token tenga acceso ({$e->getMessage()}).");
+            throw new InvalidArgumentException("No se pudo leer la cuenta {$cuentaId} en ".self::etiqueta($plataforma)." con el token del proyecto -- revisa el ID o que el token tenga acceso ({$e->getMessage()}).");
         }
     }
 
