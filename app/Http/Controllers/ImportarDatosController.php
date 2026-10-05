@@ -25,12 +25,63 @@ use InvalidArgumentException;
  */
 class ImportarDatosController extends Controller
 {
-    public function show(string $pais): Response
+    /**
+     * Cuántos meses hacia atrás (además del mes en curso) puede importar
+     * cualquier EPA -- pedido explícito 2026-10-01. Más atrás es
+     * exclusivo de superadmin (Gate 'importar-mes-historico'): TikTok deja
+     * de devolver métricas de los creativos eliminados, y re-importar ese
+     * mes "Por API" pisaría su costo con 0.
+     */
+    private const MESES_ATRAS_PERMITIDOS = 2;
+
+    /**
+     * Los totales reales son conteos enteros -- un decimal casi siempre es
+     * un separador de miles mal escrito ("1.039" en vez de 1039), que
+     * reparte casi nada y deja NC en 0 (caso real Ecuador sept 2026).
+     */
+    private const MENSAJES_TOTALES = [
+        'integer' => 'Los totales de venta real deben ser números enteros, sin separador de miles (ej. 1039).',
+        'min' => 'Los totales de venta real no pueden ser negativos.',
+    ];
+
+    public function show(Request $request, string $pais): Response
     {
         $config = config("paises.{$pais}");
         abort_unless($config, 404, "País \"{$pais}\" no existe en config/paises.php.");
 
-        return Inertia::render('ImportarDatos', ['pais' => $pais]);
+        return Inertia::render('ImportarDatos', [
+            'pais' => $pais,
+            // null = sin límite (superadmin). Solo UX -- la guardia real
+            // es rechazarMesHistorico() en importar()/importarApi().
+            'mesMinimoImportable' => $request->user()->can('importar-mes-historico') ? null : self::mesMinimoImportable(),
+            'puedeEliminarMes' => $request->user()->can('eliminar-mes-importado'),
+        ]);
+    }
+
+    /**
+     * YYYY-MM del mes más viejo que puede importar un EPA que no es
+     * superadmin (hoy octubre -> agosto).
+     */
+    private static function mesMinimoImportable(): string
+    {
+        return now()->startOfMonth()->subMonths(self::MESES_ATRAS_PERMITIDOS)->format('Y-m');
+    }
+
+    private function rechazarMesHistorico(Request $request, string $desde): ?JsonResponse
+    {
+        if ($request->user()->can('importar-mes-historico')) {
+            return null;
+        }
+
+        $minimo = self::mesMinimoImportable();
+        if (substr($desde, 0, 7) >= $minimo) {
+            return null;
+        }
+
+        return response()->json([
+            'error' => 'Solo superadmin puede importar meses anteriores a '.Carbon::createFromFormat('Y-m', $minimo)->locale('es')->translatedFormat('F Y')
+                .'. Esos meses pueden tener creativos ya eliminados en TikTok, y re-importarlos por API pondría su costo en 0.',
+        ], 403);
     }
 
     /**
@@ -79,11 +130,15 @@ class ImportarDatosController extends Controller
             'nombre_archivo' => ['required', 'string'],
             'desde' => ['required', 'date'],
             'hasta' => ['required', 'date'],
-            'nc_total_real_meta' => ['nullable', 'numeric', 'min:0'],
-            'orders_total_real_meta' => ['nullable', 'numeric', 'min:0'],
-            'nc_total_real_tiktok' => ['nullable', 'numeric', 'min:0'],
-            'orders_total_real_tiktok' => ['nullable', 'numeric', 'min:0'],
-        ]);
+            'nc_total_real_meta' => ['nullable', 'integer', 'min:0'],
+            'orders_total_real_meta' => ['nullable', 'integer', 'min:0'],
+            'nc_total_real_tiktok' => ['nullable', 'integer', 'min:0'],
+            'orders_total_real_tiktok' => ['nullable', 'integer', 'min:0'],
+        ], self::MENSAJES_TOTALES);
+
+        if ($rechazo = $this->rechazarMesHistorico($request, $data['desde'])) {
+            return $rechazo;
+        }
 
         $rutaRelativa = "imports/{$data['token']}.csv";
         abort_unless(Storage::exists($rutaRelativa), 404, 'El archivo ya no está disponible -- volvé a subirlo.');
@@ -154,6 +209,7 @@ class ImportarDatosController extends Controller
             'problemas' => $importacion->problemas,
             'excluidos' => $importacion->excluidos,
             'sinActividadDescartados' => $importacion->sin_actividad_descartados,
+            'conciliacion' => $importacion->conciliacion,
         ]);
     }
 
@@ -175,11 +231,15 @@ class ImportarDatosController extends Controller
         $data = $request->validate([
             'desde' => ['required', 'date'],
             'hasta' => ['required', 'date'],
-            'nc_total_real_meta' => ['nullable', 'numeric', 'min:0'],
-            'orders_total_real_meta' => ['nullable', 'numeric', 'min:0'],
-            'nc_total_real_tiktok' => ['nullable', 'numeric', 'min:0'],
-            'orders_total_real_tiktok' => ['nullable', 'numeric', 'min:0'],
-        ]);
+            'nc_total_real_meta' => ['nullable', 'integer', 'min:0'],
+            'orders_total_real_meta' => ['nullable', 'integer', 'min:0'],
+            'nc_total_real_tiktok' => ['nullable', 'integer', 'min:0'],
+            'orders_total_real_tiktok' => ['nullable', 'integer', 'min:0'],
+        ], self::MENSAJES_TOTALES);
+
+        if ($rechazo = $this->rechazarMesHistorico($request, $data['desde'])) {
+            return $rechazo;
+        }
 
         try {
             $resumen = ImportadorDatos::importarDesdeApi(

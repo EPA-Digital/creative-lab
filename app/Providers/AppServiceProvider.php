@@ -108,5 +108,17 @@ class AppServiceProvider extends ServiceProvider
         // /usuarios (editar rol/países según jerarquía, desactivar, etc.)
         // -- ver routes/web.php.
         Gate::define('ver-usuarios', fn (User $user) => $user->puedeVerUsuarios());
+
+        // Importar meses de más de 2 meses atrás -- solo superadmin (ver
+        // User::puedeImportarMesHistorico() e ImportarDatosController).
+        Gate::define('importar-mes-historico', fn (User $user) => $user->puedeImportarMesHistorico());
+
+        // Cuentas publicitarias por país -- solo superadmin (ver
+        // User::puedeGestionarCuentasPublicitarias() y AjustesController).
+        Gate::define('gestionar-cuentas-publicitarias', fn (User $user) => $user->puedeGestionarCuentasPublicitarias());
+
+        // Eliminar la data importada de un mes -- solo superadmin (ver
+        // User::puedeEliminarMesImportado() y DatosMensualesController).
+        Gate::define('eliminar-mes-importado', fn (User $user) => $user->puedeEliminarMesImportado());
     }
 }

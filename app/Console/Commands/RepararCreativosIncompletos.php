@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Creativo;
+use App\Models\CuentaPublicitaria;
 use App\Models\Pais;
 use App\Services\Ingesta\EnriquecedorCostosMeta;
 use App\Services\Ingesta\EnriquecedorCostosTiktok;
@@ -62,14 +63,20 @@ class RepararCreativosIncompletos extends Command
 
         $imagenesRecuperadas = 0;
 
+        // Todas las cuentas activas del país (ver CuentaPublicitaria) -- un
+        // ad solo existe en una, en las demás simplemente no aparece.
+        $cuentasMeta = CuentaPublicitaria::activasPara($pais->id, 'meta')->pluck('cuenta_id');
         $meta = $incompletos->where('plataforma', 'meta');
-        if ($meta->isNotEmpty() && $config['meta_ad_account_id']) {
+        if ($meta->isNotEmpty() && $cuentasMeta->isNotEmpty()) {
             $this->line("Meta: reintentando {$meta->count()} ad(s)...");
             $enriquecedor = new EnriquecedorCostosMeta(MetaApiClient::fromConfig(), new ImagenCacheService);
-            [, $imagenPorAdId, $copyPorAdId] = $enriquecedor->reintentarImagenYCopy(
-                $config['meta_ad_account_id'],
-                $meta->pluck('ad_id')->all(),
-            );
+            $imagenPorAdId = [];
+            $copyPorAdId = [];
+            foreach ($cuentasMeta as $cuentaId) {
+                [, $imagenes, $copys] = $enriquecedor->reintentarImagenYCopy($cuentaId, $meta->pluck('ad_id')->all());
+                $imagenPorAdId += $imagenes;
+                $copyPorAdId += $copys;
+            }
 
             foreach ($meta as $creativo) {
                 $imagen = $imagenPorAdId[$creativo->ad_id] ?? null;
@@ -89,14 +96,22 @@ class RepararCreativosIncompletos extends Command
             }
         }
 
+        $cuentasTiktok = CuentaPublicitaria::activasPara($pais->id, 'tiktok')->pluck('cuenta_id');
         $tiktok = $incompletos->where('plataforma', 'tiktok');
-        if ($tiktok->isNotEmpty() && $config['tiktok_advertiser_id']) {
+        if ($tiktok->isNotEmpty() && $cuentasTiktok->isNotEmpty()) {
             $this->line("TikTok: reintentando {$tiktok->count()} ad(s)...");
             $enriquecedor = new EnriquecedorCostosTiktok(TiktokApiClient::fromConfig(), new ImagenCacheService);
-            $resultado = $enriquecedor->reintentarNombreImagenYCopy(
-                $config['tiktok_advertiser_id'],
-                $tiktok->pluck('ad_id')->all(),
-            );
+            $resultado = [];
+            foreach ($cuentasTiktok as $cuentaId) {
+                // reintentarNombreImagenYCopy devuelve TODOS los ad_id pedidos
+                // (con nulls si no son de esta cuenta) -- solo se conserva lo
+                // que trajo algo real.
+                foreach ($enriquecedor->reintentarNombreImagenYCopy($cuentaId, $tiktok->pluck('ad_id')->all()) as $adId => $datos) {
+                    if (! isset($resultado[$adId]) && ($datos['imagenUrl'] || $datos['copy'] || $datos['campaignName'])) {
+                        $resultado[$adId] = $datos;
+                    }
+                }
+            }
 
             foreach ($tiktok as $creativo) {
                 $datos = $resultado[$creativo->ad_id] ?? null;

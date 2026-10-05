@@ -70,10 +70,12 @@ class AccesoPaisTest extends TestCase
 
     public function test_un_solo_pais_asignado_pero_deshabilitado_si_muestra_el_selector(): void
     {
-        // Perú está 'habilitado' => false en config/paises.php -- un
-        // único país asignado pero sin datos/cuenta conectada no debe
-        // redirigir a una pantalla vacía, se ve el selector con su
-        // tarjeta en "próximamente".
+        // Un único país asignado pero deshabilitado (sin datos/cuenta
+        // conectada) no debe redirigir a una pantalla vacía, se ve el
+        // selector con su tarjeta en "próximamente". Se deshabilita acá a
+        // propósito -- Perú ya está habilitado en config/paises.php
+        // (2026-10-05), el test no debe depender de qué país esté apagado.
+        config(['paises.peru.habilitado' => false]);
         $pe = Pais::create(['codigo' => 'PE', 'nombre' => 'Perú']);
         $cliente = User::factory()->create(['rol' => 'cliente']);
         $cliente->paises()->attach($pe->id);

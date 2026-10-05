@@ -58,7 +58,10 @@ return [
     'peru' => [
         'codigo' => 'PE',
         'nombre' => 'Perú',
-        'habilitado' => false,
+        // Habilitado 2026-10-05 (pedido explícito). Sus cuentas de Meta/
+        // TikTok y apps de AppsFlyer se cargan desde Ajustes (tablas
+        // cuentas_publicitarias / appsflyer_apps), no acá.
+        'habilitado' => true,
         'meta_ad_account_id' => null,
         'tiktok_advertiser_id' => null,
         'bandera_gradiente' => 'linear-gradient(to right, #D91023 0% 25%, #FFFFFF 25% 75%, #D91023 75% 100%)',

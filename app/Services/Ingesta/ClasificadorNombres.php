@@ -312,6 +312,23 @@ class ClasificadorNombres
     }
 
     /**
+     * DTC que NO es paid de TaDa -- lo paga otra marca/área (segmento "MLM"
+     * en vez de "TAD" como pagador, y "NON" donde lo paid lleva "TAD"),
+     * ej. "ECU_DTC_MLM_AON_AON_NON_CON_EPA_TKT-INSTALL-AND-VOLUME" o
+     * "MEX_DTC_MLM_TADABI_ALWAYSON_NON_CNV_ZNT_...". Solo informativo --
+     * se muestra aparte en la conciliación (ConciliacionImportacion); SÍ
+     * entra al reparto de venta real como todos los canales (confirmado
+     * 2026-10-05 contra el sheet de referencia).
+     */
+    public static function esDtcNoPaid(?string $campaignRaw): bool
+    {
+        $segmentos = explode('_', mb_strtoupper((string) $campaignRaw));
+
+        return in_array('DTC', $segmentos, true)
+            && (in_array('MLM', $segmentos, true) || in_array('NON', $segmentos, true));
+    }
+
+    /**
      * Fallback puro por segmento explícito (sin pasar por el mapa de
      * patrones) -- expuesto igual que en Node aunque parsearNombre() ya lo
      * usa internamente, por si se necesita el segmento solo.
