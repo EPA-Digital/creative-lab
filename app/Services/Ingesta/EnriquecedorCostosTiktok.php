@@ -58,6 +58,7 @@ class EnriquecedorCostosTiktok
             $fila['imageUrl'] = $imagenRemotaPorAdId[$fila['adId']] ?? '';
             $fila['campaignName'] = $campaignNombrePorAdId[$fila['adId']] ?? '';
             $fila['copy'] = $copyPorAdId[$fila['adId']] ?? null;
+            $fila['videoId'] = $videoIdPorAdId[$fila['adId']] ?? null;
         }
         unset($fila);
 

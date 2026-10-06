@@ -216,6 +216,8 @@ class CruceCostosAppsFlyer
                 // TikTok: ad_text) -- AppsFlyer nunca trae texto de anuncio.
                 'copy' => $costos['copy'] ?? null,
                 'imageUrl' => $costos['imageUrl'] ?? '',
+                // id del video en TikTok (ver VideoCreativoService) -- Meta no lo trae.
+                'videoId' => $costos['videoId'] ?? null,
                 'status' => $costos['status'] ?? '',
                 'impressions' => $impressions,
                 'clicks' => $clicks,

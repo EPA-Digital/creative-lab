@@ -10,6 +10,7 @@ use App\Http\Controllers\InteligenciaController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UsuariosController;
+use App\Http\Controllers\VideoCreativoController;
 use Illuminate\Support\Facades\Route;
 
 // Todo el negocio detrás de login (2026-09-23) -- antes nada tenía
@@ -32,6 +33,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/analisis/{plataforma?}', [AnalisisCreativoController::class, 'index'])
             ->name('analisis-creativo');
         Route::get('/inteligencia', [InteligenciaController::class, 'index'])->name('inteligencia');
+        // Video del creativo para el modal (2026-10-06) -- ver VideoCreativoController.
+        Route::get('/creativos/{creativo}/video', [VideoCreativoController::class, 'show'])->name('creativos.video');
 
         // Escritura / herramientas de gestión -- EPA únicamente (Gate
         // 'epa', ver AppServiceProvider). Un 'cliente' nunca llega acá ni
