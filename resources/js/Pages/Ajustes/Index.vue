@@ -4,6 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import ConciliacionImportacion from '@/Components/ConciliacionImportacion.vue';
+import CampaniasPais from '@/Components/CampaniasPais.vue';
 
 // Gestión de apps de AppsFlyer por país (tabla appsflyer_apps, 2026-08-12) --
 // antes solo se podían cargar por seeder/tinker. Mismo patrón de axios+JSON
@@ -15,6 +16,7 @@ const props = defineProps({
     cuentasPublicitarias: { type: Array, default: () => [] },
     puedeGestionarCuentas: { type: Boolean, default: false },
     conciliaciones: { type: Array, default: () => [] },
+    campanias: { type: Array, default: () => [] },
 });
 
 // --- Cuentas publicitarias (2026-10-05) ---------------------------------
@@ -257,6 +259,15 @@ async function guardar() {
                             </span>
                         </div>
                     </template>
+                </section>
+
+                <section class="import-panel">
+                    <h2>Campañas</h2>
+                    <p class="hint">
+                        Las campañas de este país tal como quedaron en los datos importados: de qué cuenta vienen, etapa,
+                        tipo, anuncios, gasto total y en qué meses aparecen.
+                    </p>
+                    <CampaniasPais :campanias="campanias" />
                 </section>
 
                 <section class="import-panel">

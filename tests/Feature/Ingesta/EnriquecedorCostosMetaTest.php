@@ -26,15 +26,17 @@ it('recupera la mitad liviana de una tanda cuando Meta rechaza la tanda completa
 
     Http::fake([
         'graph.facebook.com/*/act_1/ads*' => Http::sequence()
-            // tanda completa de 6 -- falla los 4 intentos (1 inicial + 3
-            // reintentos del retry/backoff ya existente en MetaApiClient)
-            // antes de que procesarTandaAds la parta a la mitad.
-            ->push($body500, 500)->push($body500, 500)->push($body500, 500)->push($body500, 500)
+            // tanda completa de 6 en paralelo (Http::pool) -- falla.
+            ->push($body500, 500)
+            // reintento secuencial de la misma tanda -- falla UNA vez: desde
+            // 2026-10-06 "reduce the amount of data" ya no se reintenta (es
+            // determinístico), procesarTandaAds la parte de inmediato.
+            ->push($body500, 500)
             // mitad 1 (3 ads) -- funciona al primer intento
             ->push(['data' => [adMeta('1', 'ACTIVE', 'https://img/1.jpg'), adMeta('2', 'ACTIVE', 'https://img/2.jpg'), adMeta('3', 'ACTIVE', 'https://img/3.jpg')]])
-            // mitad 2 (3 ads) -- sigue fallando los 4 intentos; 3 <= piso de
-            // 5, así que ahí sí se da por vencida (no se parte más).
-            ->push($body500, 500)->push($body500, 500)->push($body500, 500)->push($body500, 500),
+            // mitad 2 (3 ads) -- falla; 3 <= piso de 5, así que ahí sí se
+            // da por vencida (no se parte más).
+            ->push($body500, 500),
     ]);
 
     $enriquecedor = new EnriquecedorCostosMeta(new MetaApiClient('token'), new ImagenCacheService);

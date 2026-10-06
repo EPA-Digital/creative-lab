@@ -2,6 +2,7 @@
 
 namespace App\Services\Ingesta;
 
+use Closure;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -23,27 +24,35 @@ use Throwable;
  */
 class EnriquecedorCostosMeta
 {
+    private const TAMANIO_TANDA = 25;
+
+    private const TANDAS_EN_PARALELO = 4;
+
+    private const TODOS_LOS_ESTADOS = ['ACTIVE', 'PAUSED', 'DELETED', 'ARCHIVED', 'PENDING_REVIEW', 'DISAPPROVED', 'PREAPPROVED', 'PENDING_BILLING_INFO', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'IN_PROCESS', 'WITH_ISSUES'];
+
     public function __construct(
         private readonly MetaApiClient $meta,
         private readonly ImagenCacheService $imagenes,
     ) {}
 
     /**
+     * imageUrl es la URL REMOTA del CDN de Meta (firmada, expira en horas)
+     * -- desde 2026-10-06 la importación ya no descarga imágenes acá: las
+     * guarda en el bucket el Job CachearImagenesCreativos en background,
+     * solo las que todavía no están (ver ImportadorDatos::procesarPlataforma).
+     *
+     * @param  ?Closure  $avance  fn (float $fraccion 0..1, string $etapa)
      * @return list<array{adId: string, adName: string, campaignName: string, cost: float, impressions: int, clicks: int, status: string, imageUrl: string}>
      */
-    public function enriquecer(string $adAccountId, string $desde, string $hasta): array
+    public function enriquecer(string $adAccountId, string $desde, string $hasta, ?Closure $avance = null): array
     {
+        $avance?->__invoke(0.0, 'Trayendo costos de Meta');
         $filas = $this->traerCostos($adAccountId, $desde, $hasta);
-        [$statusPorAdId, $imagenRemotaPorAdId, $copyPorAdId] = $this->traerStatusEImagen($adAccountId, $filas);
-
-        $imagenLocalPorAdId = $this->imagenes->cachearVarias(
-            $imagenRemotaPorAdId,
-            fn (string $adId) => "meta-costo-{$adId}"
-        );
+        [$statusPorAdId, $imagenRemotaPorAdId, $copyPorAdId] = $this->traerStatusEImagen($adAccountId, $filas, $avance);
 
         foreach ($filas as &$fila) {
             $fila['status'] = $statusPorAdId[$fila['adId']] ?? '';
-            $fila['imageUrl'] = $imagenLocalPorAdId[$fila['adId']] ?? '';
+            $fila['imageUrl'] = $imagenRemotaPorAdId[$fila['adId']] ?? '';
             $fila['copy'] = $copyPorAdId[$fila['adId']] ?? null;
         }
         unset($fila);
@@ -104,11 +113,11 @@ class EnriquecedorCostosMeta
      * @param  list<array<string, mixed>>  $filas
      * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, array{titulo: ?string, texto: ?string}>} [statusPorAdId, imagenRemotaPorAdId, copyPorAdId]
      */
-    private function traerStatusEImagen(string $adAccountId, array $filas): array
+    private function traerStatusEImagen(string $adAccountId, array $filas, ?Closure $avance = null): array
     {
         $adIdsEnRango = array_values(array_unique(array_column($filas, 'adId')));
 
-        return $this->traerStatusEImagenParaIds($adAccountId, $adIdsEnRango);
+        return $this->traerStatusEImagenParaIds($adAccountId, $adIdsEnRango, $avance);
     }
 
     /**
@@ -140,7 +149,7 @@ class EnriquecedorCostosMeta
      * @param  list<string>  $adIds
      * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, array{titulo: ?string, texto: ?string}>}
      */
-    private function traerStatusEImagenParaIds(string $adAccountId, array $adIds): array
+    private function traerStatusEImagenParaIds(string $adAccountId, array $adIds, ?Closure $avance = null): array
     {
         $statusPorAdId = [];
         $imagenRemotaPorAdId = [];
@@ -149,15 +158,32 @@ class EnriquecedorCostosMeta
         $thumbnailPorAdId = [];
         $hashesUnicos = [];
 
-        foreach (array_chunk($adIds, 50) as $chunk) {
-            $r = $this->procesarTandaAds($adAccountId, $chunk);
-            $statusPorAdId += $r['status'];
-            $imagenRemotaPorAdId += $r['imagenRemota'];
-            $copyPorAdId += $r['copy'];
-            $hashPorAdId += $r['hashPorAdId'];
-            $thumbnailPorAdId += $r['thumbnailPorAdId'];
-            foreach ($r['hashPorAdId'] as $hash) {
-                $hashesUnicos[$hash] = true;
+        // Tandas de 25 (antes 50: Meta rechazaba seguido las de 50 con
+        // "reduce the amount of data") pedidas de a TANDAS_EN_PARALELO a la
+        // vez (2026-10-06, antes una por una). Una tanda que falla en
+        // paralelo se reintenta secuencial con el split de procesarTandaAds.
+        $tandas = array_chunk($adIds, self::TAMANIO_TANDA);
+        $grupos = array_chunk($tandas, self::TANDAS_EN_PARALELO, preserve_keys: true);
+        foreach ($grupos as $g => $grupo) {
+            $revisados = min($g * self::TANDAS_EN_PARALELO * self::TAMANIO_TANDA, count($adIds));
+            $avance?->__invoke(0.3 + 0.7 * ($g / count($grupos)), 'Trayendo estado e imágenes de Meta: '.number_format($revisados).' de '.number_format(count($adIds)));
+
+            $respuestas = $this->meta->getVarios(array_map(
+                fn (array $tanda) => ["act_{$adAccountId}/ads", self::paramsTandaAds($tanda)],
+                $grupo,
+            ));
+            foreach ($grupo as $k => $tanda) {
+                $r = $respuestas[$k] instanceof Throwable
+                    ? $this->procesarTandaAds($adAccountId, $tanda)
+                    : self::parsearTandaAds($respuestas[$k]);
+                $statusPorAdId += $r['status'];
+                $imagenRemotaPorAdId += $r['imagenRemota'];
+                $copyPorAdId += $r['copy'];
+                $hashPorAdId += $r['hashPorAdId'];
+                $thumbnailPorAdId += $r['thumbnailPorAdId'];
+                foreach ($r['hashPorAdId'] as $hash) {
+                    $hashesUnicos[$hash] = true;
+                }
             }
         }
 
@@ -171,6 +197,85 @@ class EnriquecedorCostosMeta
         }
 
         return [$statusPorAdId, $imagenRemotaPorAdId, $copyPorAdId];
+    }
+
+    /**
+     * Petición de status/imagen/copy para una tanda de ads (ver
+     * procesarTandaAds / traerStatusEImagenParaIds).
+     *
+     * body/title del creative viajan GRATIS en esta misma llamada -- ya se
+     * pedía status/imagen por acá, no hace falta una segunda pasada solo
+     * para el copy (confirmado 2026-08-04: creative{body,title} funciona en
+     * el mismo campo singular, no el edge adcreatives{}). Para ads
+     * Advantage+ (asset_feed_spec.ad_formats=AUTOMATIC_FORMAT, ~70% de esta
+     * cuenta) creative.body/title vienen null -- el texto real vive en
+     * asset_feed_spec.bodies[0].text/titles[0].text, mismo objeto que ya se
+     * pedía para la imagen (verificado 2026-08-04 contra la API real).
+     *
+     * effective_status explícito (2026-10-06): /act_X/ads EXCLUYE por
+     * default los ads ARCHIVED/DELETED aunque se los pida por ad.id --
+     * verificado contra México mayo 2026: 0 de 5 ads sin foto devueltos sin
+     * el filtro, 5 de 5 con él. Por eso las campañas ya archivadas (ej.
+     * Conversión de meses pasados) quedaban sin imagen ni copy.
+     *
+     * @param  list<string>  $tanda
+     * @return array<string, string>
+     */
+    private static function paramsTandaAds(array $tanda): array
+    {
+        return [
+            'fields' => 'id,effective_status,creative{body,title,image_url,thumbnail_url,asset_feed_spec{bodies,titles,images{hash,adlabels},asset_customization_rules{priority,image_label}}}',
+            'filtering' => json_encode([
+                ['field' => 'ad.id', 'operator' => 'IN', 'value' => array_values($tanda)],
+                ['field' => 'effective_status', 'operator' => 'IN', 'value' => self::TODOS_LOS_ESTADOS],
+            ]),
+            'limit' => (string) self::TAMANIO_TANDA,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data  respuesta de /act_X/ads
+     * @return array{status: array<string, string>, imagenRemota: array<string, string>, copy: array<string, array{titulo: ?string, texto: ?string}>, hashPorAdId: array<string, string>, thumbnailPorAdId: array<string, string>}
+     */
+    private static function parsearTandaAds(array $data): array
+    {
+        $statusPorAdId = [];
+        $imagenRemotaPorAdId = [];
+        $copyPorAdId = [];
+        $hashPorAdId = [];
+        $thumbnailPorAdId = [];
+
+        foreach ($data['data'] ?? [] as $ad) {
+            $statusPorAdId[$ad['id']] = $ad['effective_status'] ?? '';
+            $titulo = $ad['creative']['title'] ?? ($ad['creative']['asset_feed_spec']['titles'][0]['text'] ?? null);
+            $texto = $ad['creative']['body'] ?? ($ad['creative']['asset_feed_spec']['bodies'][0]['text'] ?? null);
+            if ($titulo || $texto) {
+                $copyPorAdId[$ad['id']] = ['titulo' => $titulo, 'texto' => $texto];
+            }
+            $imagenRemota = $ad['creative']['image_url'] ?? null;
+            if ($imagenRemota) {
+                $imagenRemotaPorAdId[$ad['id']] = $imagenRemota;
+
+                continue;
+            }
+            $hash = self::elegirHashAssetFeedSpec($ad['creative']['asset_feed_spec'] ?? null);
+            if ($hash) {
+                $hashPorAdId[$ad['id']] = $hash;
+                if (! empty($ad['creative']['thumbnail_url'])) {
+                    $thumbnailPorAdId[$ad['id']] = $ad['creative']['thumbnail_url'];
+                }
+            } elseif (! empty($ad['creative']['thumbnail_url'])) {
+                $imagenRemotaPorAdId[$ad['id']] = $ad['creative']['thumbnail_url'];
+            }
+        }
+
+        return [
+            'status' => $statusPorAdId,
+            'imagenRemota' => $imagenRemotaPorAdId,
+            'copy' => $copyPorAdId,
+            'hashPorAdId' => $hashPorAdId,
+            'thumbnailPorAdId' => $thumbnailPorAdId,
+        ];
     }
 
     /**
@@ -189,60 +294,9 @@ class EnriquecedorCostosMeta
     private function procesarTandaAds(string $adAccountId, array $chunk, int $tamanioMinimo = 5): array
     {
         try {
-            // body/title del creative viajan GRATIS en esta misma llamada --
-            // ya se pedía status/imagen por acá, no hace falta una segunda
-            // pasada solo para el copy (confirmado 2026-08-04:
-            // creative{body,title} funciona en el mismo campo singular, no
-            // el edge adcreatives{}). Para ads Advantage+
-            // (asset_feed_spec.ad_formats=AUTOMATIC_FORMAT, ~70% de esta
-            // cuenta) creative.body/title vienen null -- el texto real vive
-            // en asset_feed_spec.bodies[0].text/titles[0].text, mismo objeto
-            // que ya se pedía para la imagen (verificado 2026-08-04 contra
-            // la API real).
-            $params = [
-                'fields' => 'id,effective_status,creative{body,title,image_url,thumbnail_url,asset_feed_spec{bodies,titles,images{hash,adlabels},asset_customization_rules{priority,image_label}}}',
-                'filtering' => json_encode([['field' => 'ad.id', 'operator' => 'IN', 'value' => $chunk]]),
-                'limit' => '50',
-            ];
-            $data = $this->meta->get("act_{$adAccountId}/ads", $params);
+            $data = $this->meta->get("act_{$adAccountId}/ads", self::paramsTandaAds($chunk));
 
-            $statusPorAdId = [];
-            $imagenRemotaPorAdId = [];
-            $copyPorAdId = [];
-            $hashPorAdId = [];
-            $thumbnailPorAdId = [];
-
-            foreach ($data['data'] ?? [] as $ad) {
-                $statusPorAdId[$ad['id']] = $ad['effective_status'] ?? '';
-                $titulo = $ad['creative']['title'] ?? ($ad['creative']['asset_feed_spec']['titles'][0]['text'] ?? null);
-                $texto = $ad['creative']['body'] ?? ($ad['creative']['asset_feed_spec']['bodies'][0]['text'] ?? null);
-                if ($titulo || $texto) {
-                    $copyPorAdId[$ad['id']] = ['titulo' => $titulo, 'texto' => $texto];
-                }
-                $imagenRemota = $ad['creative']['image_url'] ?? null;
-                if ($imagenRemota) {
-                    $imagenRemotaPorAdId[$ad['id']] = $imagenRemota;
-
-                    continue;
-                }
-                $hash = self::elegirHashAssetFeedSpec($ad['creative']['asset_feed_spec'] ?? null);
-                if ($hash) {
-                    $hashPorAdId[$ad['id']] = $hash;
-                    if (! empty($ad['creative']['thumbnail_url'])) {
-                        $thumbnailPorAdId[$ad['id']] = $ad['creative']['thumbnail_url'];
-                    }
-                } elseif (! empty($ad['creative']['thumbnail_url'])) {
-                    $imagenRemotaPorAdId[$ad['id']] = $ad['creative']['thumbnail_url'];
-                }
-            }
-
-            return [
-                'status' => $statusPorAdId,
-                'imagenRemota' => $imagenRemotaPorAdId,
-                'copy' => $copyPorAdId,
-                'hashPorAdId' => $hashPorAdId,
-                'thumbnailPorAdId' => $thumbnailPorAdId,
-            ];
+            return self::parsearTandaAds($data);
         } catch (Throwable $e) {
             if (count($chunk) > $tamanioMinimo) {
                 $mitad = (int) ceil(count($chunk) / 2);

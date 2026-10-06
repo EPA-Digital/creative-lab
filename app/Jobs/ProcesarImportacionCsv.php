@@ -30,7 +30,7 @@ class ProcesarImportacionCsv implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 1800;
+    public int $timeout = 3500;
 
     public function __construct(
         public readonly int $importacionId,

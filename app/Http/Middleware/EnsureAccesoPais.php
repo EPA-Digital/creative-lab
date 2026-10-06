@@ -22,6 +22,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureAccesoPais
 {
+    public const SESION_PAIS_ACTUAL = 'pais_actual';
+
     public function handle(Request $request, Closure $next): Response
     {
         $slug = $request->route('pais');
@@ -33,6 +35,11 @@ class EnsureAccesoPais
 
         // Auditoría (Fase 5) -- solo la primera vez por sesión, no en cada
         // request dentro del mismo país (sería demasiado ruido).
+        // Último país visitado (pedido explícito 2026-10-06) -- las pantallas
+        // transversales (Usuarios) lo usan como contexto del rail, para no
+        // "cambiar de país" al entrar a ellas (ver UsuariosController::index).
+        $request->session()->put(self::SESION_PAIS_ACTUAL, $slug);
+
         $marca = "auditoria.pais_visitado.{$config['codigo']}";
         if (! $request->session()->get($marca)) {
             $request->session()->put($marca, true);

@@ -36,6 +36,13 @@ class ImportarDatosController extends Controller
     private const MESES_ATRAS_PERMITIDOS = 2;
 
     /**
+     * Una importación "procesando" con más de esto ya la cortó el worker
+     * (Cloud Run Job con task-timeout de 60 min, ver deploy.yml) -- se
+     * marca como error en estadoImportacion().
+     */
+    private const MINUTOS_MAXIMOS_IMPORTACION = 70;
+
+    /**
      * Los totales reales son conteos enteros -- un decimal casi siempre es
      * un separador de miles mal escrito ("1.039" en vez de 1039), que
      * reparte casi nada y deja NC en 0 (caso real Ecuador sept 2026).
@@ -200,6 +207,16 @@ class ImportarDatosController extends Controller
         $paisModelo = Pais::where('codigo', $config['codigo'])->firstOrFail();
 
         $importacion = Importacion::where('pais_id', $paisModelo->id)->findOrFail($id);
+
+        // Colgada: el worker (Cloud Run Job, task-timeout 60 min) ya la
+        // cortó sin poder marcarla -- sin esto quedaba "procesando" para
+        // siempre y el panel haciendo polling sin fin (2026-10-06).
+        if ($importacion->estado === 'procesando' && $importacion->creado_en?->lt(now()->subMinutes(self::MINUTOS_MAXIMOS_IMPORTACION))) {
+            $importacion->update([
+                'estado' => 'error',
+                'error_mensaje' => 'La importación se detuvo: tardó más de '.self::MINUTOS_MAXIMOS_IMPORTACION.' minutos. Vuelve a intentarlo; si se repite, avísale al equipo de desarrollo.',
+            ]);
+        }
 
         if ($importacion->estado === 'error') {
             return response()->json(['estado' => 'error', 'error' => $importacion->error_mensaje], 422);
