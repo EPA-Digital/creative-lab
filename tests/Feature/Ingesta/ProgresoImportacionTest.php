@@ -70,6 +70,9 @@ it('el reportero escribe como mucho una vez por segundo por etapa', function () 
 });
 
 it('el pipeline reporta un avance que siempre sube, de la lectura al guardado', function () {
+    // Tokens de mentira -- las APIs están simuladas abajo, pero los clientes
+    // exigen token configurado (en CI no hay .env con tokens reales).
+    config(['services.meta.access_token' => 'token-test', 'services.tiktok.access_token' => 'token-test']);
     paisPeruConCuentas();
     // Sin costo en el mes, pero "vivos": Meta devuelve actividad histórica
     // y TikTok devuelve los ads que se le preguntan -- así ninguno queda
