@@ -8,6 +8,7 @@ use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
 use App\Models\Resultado;
+use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -30,7 +31,7 @@ class ImportadorDatos
      *
      * @return array{rangoMin: ?string, rangoMax: ?string, totalAdIds: int, subtotales: int, problemas: int, meta: int, tiktok: int, excluidos: int, tipoCuentaCounts: array{DTC: int, BRD: int, SIN_CLASIFICAR: int}}
      */
-    public static function previsualizar(string $archivo): array
+    public static function previsualizar(string $archivo, ?string $paisSlug = null): array
     {
         $csv = AppsFlyerCsvParser::parse(file_get_contents($archivo));
         $clasificados = CruceCostosAppsFlyer::clasificarPorPlataforma($csv['limpias']);
@@ -56,6 +57,9 @@ class ImportadorDatos
             'tiktok' => count($clasificados['tiktok']),
             'excluidos' => count($clasificados['excluidos']),
             'tipoCuentaCounts' => $tipoCuentaCounts,
+            // Aviso ANTES de importar: plataformas con anuncios en el CSV
+            // pero sin cuenta publicitaria activa (no se van a importar).
+            'plataformasSinCuenta' => $paisSlug ? self::plataformasSinCuenta(self::resolverPais($paisSlug)[1], $clasificados) : [],
         ];
     }
 
@@ -85,10 +89,14 @@ class ImportadorDatos
         // actualiza la fila que ya existe (creada en estado=procesando ANTES
         // de despachar el Job) en vez de duplicarla.
         ?Importacion $importacionExistente = null,
+        // fn (int $porcentaje, string $etapa) -- avance para el panel (ver
+        // ProcesarImportacion). Opcional: consola y tests no lo pasan.
+        ?Closure $progreso = null,
     ): array {
         [$config, $pais] = self::resolverPais($paisSlug);
         self::validarRango($desde, $hasta);
 
+        self::avisar($progreso, 3, 'Leyendo el archivo de AppsFlyer');
         $csv = AppsFlyerCsvParser::parse(file_get_contents($archivo));
 
         return self::ejecutarPipeline(
@@ -96,6 +104,7 @@ class ImportadorDatos
             $ncTotalRealMeta, $ordersTotalRealMeta, $ncTotalRealTiktok, $ordersTotalRealTiktok,
             'csv', $nombreArchivo ?? $archivo,
             $importacionExistente,
+            $progreso,
         );
     }
 
@@ -116,15 +125,19 @@ class ImportadorDatos
         mixed $ordersTotalRealMeta,
         mixed $ncTotalRealTiktok,
         mixed $ordersTotalRealTiktok,
+        // Ver importar(): fila ya creada por el panel (import async) y avance.
+        ?Importacion $importacionExistente = null,
+        ?Closure $progreso = null,
     ): array {
         [$config, $pais] = self::resolverPais($paisSlug);
         self::validarRango($desde, $hasta);
 
         $appIds = AppsflyerApp::where('pais_id', $pais->id)->pluck('app_id')->all();
         if (empty($appIds)) {
-            throw new InvalidArgumentException("País \"{$paisSlug}\" no tiene apps de AppsFlyer configuradas (tabla appsflyer_apps) -- no se puede traer AppsFlyer vía API para este país todavía.");
+            throw new InvalidArgumentException("{$pais->nombre} no tiene apps de AppsFlyer configuradas -- agrégalas en Ajustes para poder importar por API.");
         }
 
+        self::avisar($progreso, 3, 'Trayendo instalaciones y conversiones de AppsFlyer');
         $enriquecedorAppsFlyer = new EnriquecedorAppsFlyerApi(AppsFlyerApiClient::fromConfig());
         $csv = $enriquecedorAppsFlyer->enriquecer($appIds, $desde, $hasta);
 
@@ -132,7 +145,19 @@ class ImportadorDatos
             $config, $pais, $csv, $desde, $hasta,
             $ncTotalRealMeta, $ordersTotalRealMeta, $ncTotalRealTiktok, $ordersTotalRealTiktok,
             'appsflyer_api', "AppsFlyer API {$desde}..{$hasta}",
+            $importacionExistente,
+            $progreso,
         );
+    }
+
+    /**
+     * Reporta avance si hay a quién (ver $progreso en importar()).
+     */
+    private static function avisar(?Closure $progreso, int|float $porcentaje, string $etapa): void
+    {
+        if ($progreso) {
+            $progreso((int) max(0, min(99, round($porcentaje))), $etapa);
+        }
     }
 
     /**
@@ -185,7 +210,9 @@ class ImportadorDatos
         string $origen,
         string $nombreArchivo,
         ?Importacion $importacionExistente = null,
+        ?Closure $progreso = null,
     ): array {
+        self::avisar($progreso, 10, 'Clasificando '.number_format(count($csv['limpias'])).' anuncios por plataforma y etapa');
         $clasificados = CruceCostosAppsFlyer::clasificarPorPlataforma($csv['limpias']);
 
         // esRangoParcial se calcula SOLO, comparando desde/hasta contra el
@@ -216,7 +243,33 @@ class ImportadorDatos
         ];
         $conciliacion = [];
 
+        // Sin cuenta publicitaria activa no hay costo con qué cruzar esa
+        // plataforma -- antes se saltaba en silencio y el panel decía
+        // "Importación completa" con 0 creativos (caso real Perú
+        // 2026-10-06, país recién habilitado sin cuentas). Si NINGUNA
+        // plataforma con anuncios tiene cuenta, se corta con un error
+        // claro; si falta solo una (ej. Panamá sin TikTok), se importa el
+        // resto y la conciliación marca la plataforma omitida.
+        $sinCuenta = self::plataformasSinCuenta($pais, $clasificados);
+        $conAnuncios = array_keys(array_filter(['meta' => $clasificados['meta'], 'tiktok' => $clasificados['tiktok']], fn (array $ads) => $ads !== []));
+        if ($conAnuncios !== [] && count($sinCuenta) === count($conAnuncios)) {
+            throw new InvalidArgumentException(self::mensajeSinCuentas($pais, $sinCuenta));
+        }
+
+        // Avance: 12% -> 95% repartido en partes iguales entre las
+        // plataformas que sí se procesan; dentro de cada una, ~40% para
+        // traer costos (por cuenta) y el resto para guardar creativos.
+        $aProcesar = array_values(array_diff($conAnuncios, $sinCuenta));
+        $tramo = $aProcesar === [] ? 0 : (95 - 12) / count($aProcesar);
+
         foreach ($totalesPorPlataforma as $plataforma => [$ncTotalReal, $ordersTotalReal]) {
+            $inicio = 12 + $tramo * max(0, (int) array_search($plataforma, $aProcesar, true));
+            $etiqueta = $plataforma === 'meta' ? 'Meta' : 'TikTok';
+            if (in_array($plataforma, $sinCuenta, true)) {
+                $conciliacion[$plataforma] = ['omitida' => true, 'anuncios' => count($clasificados[$plataforma])];
+
+                continue;
+            }
             $cuentas = CuentaPublicitaria::activasPara($pais->id, $plataforma)->get();
             if ($cuentas->isEmpty() || count($clasificados[$plataforma]) === 0) {
                 continue;
@@ -236,7 +289,15 @@ class ImportadorDatos
                 $detectarPorCuenta = fn (string $cuentaId, array $adIds) => $enriquecedor->detectarEliminados($cuentaId, $adIds);
             }
 
-            $costos = self::traerCostosDeCuentas($cuentas, fn (string $cuentaId) => $enriquecedor->enriquecer($cuentaId, $desde, $hasta));
+            $costos = self::traerCostosDeCuentas(
+                $cuentas,
+                fn (string $cuentaId) => $enriquecedor->enriquecer($cuentaId, $desde, $hasta),
+                fn (CuentaPublicitaria $cuenta, int $i) => self::avisar(
+                    $progreso,
+                    $inicio + $tramo * 0.4 * ($i / $cuentas->count()),
+                    "Trayendo costos e imágenes de {$etiqueta}".($cuenta->nombre ? " · {$cuenta->nombre}" : ''),
+                ),
+            );
 
             $r = self::procesarPlataforma(
                 $pais, $plataforma, $clasificados[$plataforma], $costos,
@@ -246,6 +307,7 @@ class ImportadorDatos
                 // confirma "sin actividad"/"eliminado" si lo es en TODAS.
                 fn (array $adIds) => self::confirmadosEnTodasLasCuentas($cuentas, $detectarPorCuenta, $adIds),
                 $cuentas,
+                fn (float $fraccion, string $etapa) => self::avisar($progreso, $inicio + $tramo * (0.4 + 0.6 * $fraccion), $etapa),
             );
             $totalCreativos += $r['creativosTocados'];
             $totalResultados += $r['resultadosTocados'];
@@ -257,6 +319,8 @@ class ImportadorDatos
             $sinActividadDescartados += $r['sinActividadDescartados'];
             $conciliacion[$plataforma] = $r['conciliacion'];
         }
+
+        self::avisar($progreso, 97, 'Guardando el resumen y el double check');
 
         // Un solo lugar hace el trabajo -- importar() (CSV, consola + panel
         // web) e importarDesdeApi() llaman las dos a ejecutarPipeline(), así
@@ -289,7 +353,7 @@ class ImportadorDatos
             'conciliacion' => $conciliacion,
         ];
         if ($importacionExistente) {
-            $importacionExistente->update([...$datosImportacion, 'estado' => 'completado']);
+            $importacionExistente->update([...$datosImportacion, 'estado' => 'completado', 'progreso' => 100, 'etapa' => null]);
         } else {
             Importacion::create($datosImportacion);
         }
@@ -308,6 +372,33 @@ class ImportadorDatos
     }
 
     /**
+     * Plataformas que traen anuncios en el CSV/pull de AppsFlyer pero no
+     * tienen ninguna cuenta publicitaria activa en el país.
+     *
+     * @param  array{meta: list<array<string, mixed>>, tiktok: list<array<string, mixed>>}  $clasificados
+     * @return list<string>
+     */
+    private static function plataformasSinCuenta(Pais $pais, array $clasificados): array
+    {
+        return array_values(array_filter(
+            ['meta', 'tiktok'],
+            fn (string $plataforma) => $clasificados[$plataforma] !== []
+                && CuentaPublicitaria::activasPara($pais->id, $plataforma)->doesntExist(),
+        ));
+    }
+
+    /**
+     * @param  list<string>  $plataformas
+     */
+    private static function mensajeSinCuentas(Pais $pais, array $plataformas): string
+    {
+        $nombres = implode(' ni de ', array_map(fn (string $p) => $p === 'meta' ? 'Meta' : 'TikTok', $plataformas));
+
+        return "{$pais->nombre} no tiene cuentas publicitarias activas de {$nombres}, así que no hay costo con qué cruzar los datos y no se importó nada. "
+            .'Un superadmin las agrega en Ajustes → Cuentas publicitarias; después vuelve a importar.';
+    }
+
+    /**
      * Costos de TODAS las cuentas activas de una plataforma, cada fila
      * etiquetada con la cuenta de la que vino. Un mismo ad_id no puede
      * existir en dos cuentas -- si apareciera, se conserva el primero.
@@ -316,11 +407,14 @@ class ImportadorDatos
      * @param  callable(string): list<array<string, mixed>>  $traer
      * @return list<array<string, mixed>>
      */
-    private static function traerCostosDeCuentas(Collection $cuentas, callable $traer): array
+    private static function traerCostosDeCuentas(Collection $cuentas, callable $traer, ?callable $alEmpezarCuenta = null): array
     {
         $filas = [];
         $vistos = [];
-        foreach ($cuentas as $cuenta) {
+        foreach ($cuentas->values() as $i => $cuenta) {
+            if ($alEmpezarCuenta) {
+                $alEmpezarCuenta($cuenta, $i);
+            }
             foreach ($traer($cuenta->cuenta_id) as $fila) {
                 if (isset($vistos[$fila['adId']])) {
                     continue;
@@ -373,9 +467,13 @@ class ImportadorDatos
         bool $esRangoParcial,
         mixed $ncTotalReal,
         mixed $ordersTotalReal,
-        \Closure $detectarSinClasificar,
+        Closure $detectarSinClasificar,
         Collection $cuentas,
+        // fn (float $fraccion 0..1, string $etapa) -- avance dentro de esta
+        // plataforma (ver ejecutarPipeline).
+        ?Closure $avance = null,
     ): array {
+        $etiqueta = $plataforma === 'meta' ? 'Meta' : 'TikTok';
         $acotados = CruceCostosAppsFlyer::acotarARango($clasificados, $desde, $hasta, $columnaNC, $columnaOrders);
         $cardsCrudas = CruceCostosAppsFlyer::cruzar($acotados, $costosApi, $plataforma, $esRangoParcial);
 
@@ -435,9 +533,14 @@ class ImportadorDatos
                 $adIdsSinMatch[] = $card['adId'];
             }
         }
+        if ($avance && $adIdsSinMatch !== []) {
+            $avance(0.0, 'Revisando '.number_format(count($adIdsSinMatch))." anuncios de {$etiqueta} sin costo");
+        }
         $confirmadosSinClasificar = array_flip($detectarSinClasificar($adIdsSinMatch));
 
         $mes = substr($desde, 0, 7);
+        $totalAGuardar = count($cardsConVenta);
+        $guardados = 0;
         $creativosTocados = 0;
         $resultadosTocados = 0;
         $tieneMetaTrue = 0;
@@ -456,6 +559,13 @@ class ImportadorDatos
             ->pluck('imagen_url', 'ad_id');
 
         foreach ($cardsConVenta as $card) {
+            // Cada 20 creativos (y el último) -- suficiente para que la barra
+            // se mueva sin escribir en BD por cada uno.
+            $guardados++;
+            if ($avance && ($guardados % 20 === 0 || $guardados === $totalAGuardar)) {
+                $avance($guardados / $totalAGuardar, "Guardando creativos de {$etiqueta}: ".number_format($guardados).' de '.number_format($totalAGuardar));
+            }
+
             // Guarda defensiva agregada 2026-08-12: detectamos un caso real
             // donde resultadosTocados (677) no coincidía con las filas
             // realmente persistidas (148) para el mismo país+mes+plataforma,

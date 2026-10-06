@@ -45,6 +45,13 @@ function adsTotales(p) {
         <section v-for="p in plataformas" :key="p.key" class="conciliacion-plataforma">
             <h3 class="conciliacion-titulo">{{ p.label }}</h3>
 
+            <p v-if="p.omitida" class="conciliacion-omitida">
+                No se importó: {{ n(p.anuncios) }} anuncio(s) de {{ p.label }} en el archivo, pero el país no tiene ninguna
+                cuenta publicitaria activa de {{ p.label }}. Un superadmin la agrega en Ajustes → Cuentas publicitarias y se
+                vuelve a importar.
+            </p>
+            <template v-else>
+
             <div class="modal-kpis conciliacion-kpis">
                 <div class="modal-kpi">
                     <span class="modal-kpi-label">NC tecleado → repartido</span>
@@ -147,6 +154,7 @@ function adsTotales(p) {
             <p v-if="p.sin_actividad_descartados" class="date-hint conciliacion-nota">
                 {{ n(p.sin_actividad_descartados) }} anuncio(s) descartado(s) por no tener ninguna actividad en el mes.
             </p>
+            </template>
         </section>
 
         <p v-if="!plataformas.length" class="empty-note">Esta importación no tiene conciliación.</p>
@@ -158,6 +166,14 @@ function adsTotales(p) {
     display: flex;
     flex-direction: column;
     gap: 28px;
+}
+.conciliacion-omitida {
+    color: var(--coral);
+    font-size: 0.85rem;
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid color-mix(in srgb, var(--coral) 40%, transparent);
+    border-radius: 10px;
 }
 .conciliacion-titulo {
     font-family: 'Space Grotesk', 'Inter', sans-serif;

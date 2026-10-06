@@ -6,6 +6,7 @@ import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import TipoCuentaToggle from '@/Components/Creativo/TipoCuentaToggle.vue';
 import ConciliacionImportacion from '@/Components/ConciliacionImportacion.vue';
 import DatosMensuales from '@/Components/DatosMensuales.vue';
+import ProgresoImportacion from '@/Components/ProgresoImportacion.vue';
 import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
 
 // Puerto del import-panel de meta.html/tiktok.html ("Cargar datos") -- el
@@ -116,6 +117,8 @@ async function importarApi() {
     apiResumen.value = null;
 
     try {
+        // Corre en background (ProcesarImportacionApi, 2026-10-06): el POST
+        // solo encola y devuelve el id; el avance se sigue con polling.
         const { data } = await axios.post(`/pais/${props.pais}/importar/api`, {
             desde: apiDesde.value,
             hasta: apiHasta.value,
@@ -124,11 +127,18 @@ async function importarApi() {
             nc_total_real_tiktok: apiNcTotalRealTiktok.value === '' ? null : apiNcTotalRealTiktok.value,
             orders_total_real_tiktok: apiOrdersTotalRealTiktok.value === '' ? null : apiOrdersTotalRealTiktok.value,
         });
-        apiResumen.value = data;
-        datosMensuales.value?.recargar();
+        seguirImportacion(data.importacionId, {
+            alTerminar: (resultado) => {
+                apiResumen.value = resultado;
+                apiImportando.value = false;
+            },
+            alFallar: (mensaje) => {
+                apiImportError.value = mensaje;
+                apiImportando.value = false;
+            },
+        });
     } catch (err) {
         apiImportError.value = err.response?.data?.error || err.response?.data?.message || 'No se pudo importar.';
-    } finally {
         apiImportando.value = false;
     }
 }
@@ -246,16 +256,32 @@ async function importar() {
             nc_total_real_tiktok: ncTotalRealTiktok.value === '' ? null : ncTotalRealTiktok.value,
             orders_total_real_tiktok: ordersTotalRealTiktok.value === '' ? null : ordersTotalRealTiktok.value,
         });
-        importacionId.value = data.importacionId;
         procesando.value = true;
         token.value = null; // el archivo temporal ya se borró en el server
         if (archivoInput.value) archivoInput.value.value = '';
-        iniciarPollEstadoImportacion();
+        seguirImportacion(data.importacionId, {
+            alTerminar: (resultado) => {
+                resumen.value = resultado;
+                importando.value = false;
+                procesando.value = false;
+            },
+            alFallar: (mensaje) => {
+                importError.value = mensaje;
+                importando.value = false;
+                procesando.value = false;
+            },
+        });
     } catch (err) {
         importError.value = err.response?.data?.error || err.response?.data?.message || 'No se pudo importar.';
         importando.value = false;
     }
 }
+
+// --- Progreso de importación (2026-10-06) -------------------------------
+// Compartido por "Por API" y "Subir CSV": los dos corren en un Job y se
+// siguen con polling de estadoImportacion(), que devuelve el avance real
+// (progreso/etapa) mientras procesa. ProgresoImportacion lo muestra.
+const progreso = ref({ activo: false, visible: false, porcentaje: 0, etapa: null, inicio: 0, terminado: false });
 
 function detenerPollEstadoImportacion() {
     if (pollHandle) {
@@ -264,29 +290,44 @@ function detenerPollEstadoImportacion() {
     }
 }
 
-function iniciarPollEstadoImportacion() {
+function cerrarProgreso() {
+    progreso.value = { ...progreso.value, activo: false, visible: false };
+}
+
+function seguirImportacion(id, { alTerminar, alFallar }) {
     detenerPollEstadoImportacion();
+    importacionId.value = id;
+    progreso.value = { activo: true, visible: true, porcentaje: 0, etapa: null, inicio: Date.now(), terminado: false };
+
+    const fallar = (mensaje) => {
+        detenerPollEstadoImportacion();
+        cerrarProgreso();
+        alFallar(mensaje);
+    };
+
     pollHandle = setInterval(async () => {
         try {
-            const { data } = await axios.get(`/pais/${props.pais}/importar/estado/${importacionId.value}`);
-            if (data.estado === 'procesando') return;
-
-            detenerPollEstadoImportacion();
-            importando.value = false;
-            procesando.value = false;
-            if (data.estado === 'error') {
-                importError.value = data.error || 'No se pudo importar.';
+            const { data } = await axios.get(`/pais/${props.pais}/importar/estado/${id}`);
+            if (data.estado === 'procesando') {
+                progreso.value.porcentaje = data.progreso ?? 0;
+                progreso.value.etapa = data.etapa ?? null;
                 return;
             }
-            resumen.value = data;
-            datosMensuales.value?.recargar();
-        } catch {
+
             detenerPollEstadoImportacion();
-            importando.value = false;
-            procesando.value = false;
-            importError.value = 'No se pudo consultar el estado de la importación.';
+            progreso.value.porcentaje = 100;
+            progreso.value.terminado = true;
+            alTerminar(data);
+            datosMensuales.value?.recargar();
+            setTimeout(cerrarProgreso, 1200);
+        } catch (err) {
+            // estadoImportacion() responde 422 cuando la importación falló --
+            // ese mensaje es el que importa mostrar, no uno genérico.
+            fallar(err.response?.data?.estado === 'error'
+                ? err.response.data.error || 'No se pudo importar.'
+                : 'No se pudo consultar el estado de la importación.');
         }
-    }, 3000);
+    }, 2000);
 }
 
 onUnmounted(() => detenerPollEstadoImportacion());
@@ -430,6 +471,10 @@ onMounted(() => cargarResumen());
                             </button>
                             <span class="import-status">
                                 <template v-if="apiImportError">{{ apiImportError }}</template>
+                                <template v-else-if="progreso.activo && !progreso.visible">
+                                    Importando en segundo plano ({{ progreso.porcentaje }}%{{ progreso.etapa ? ` · ${progreso.etapa}` : '' }}).
+                                    <button type="button" class="link-progreso" @click="progreso.visible = true">Ver progreso</button>
+                                </template>
                                 <template v-else-if="!apiResumen">Listo para importar.</template>
                                 <template v-else>Importación completa.</template>
                             </span>
@@ -509,6 +554,11 @@ onMounted(() => cargarResumen());
                                 <template v-if="preview.problemas > 0">· {{ preview.problemas }} problema(s)</template>
                             </span>
                             <span v-else class="cols-hint">Sin archivos seleccionados.</span>
+                            <span v-if="preview?.plataformasSinCuenta?.length" class="cols-hint aviso-sin-cuenta">
+                                Este país no tiene cuenta publicitaria activa de
+                                {{ preview.plataformasSinCuenta.map((p) => (p === 'meta' ? 'Meta' : 'TikTok')).join(' ni de ') }}:
+                                esos anuncios no se van a importar. Un superadmin las agrega en Ajustes → Cuentas publicitarias.
+                            </span>
                         </div>
                         <div class="import-col">
                             <label for="ncTotalRealMetaInput">Venta real — Meta</label>
@@ -544,6 +594,10 @@ onMounted(() => cargarResumen());
                         </button>
                         <span class="import-status">
                             <template v-if="importError">{{ importError }}</template>
+                            <template v-else-if="progreso.activo && !progreso.visible">
+                                Importando en segundo plano ({{ progreso.porcentaje }}%{{ progreso.etapa ? ` · ${progreso.etapa}` : '' }}).
+                                <button type="button" class="link-progreso" @click="progreso.visible = true">Ver progreso</button>
+                            </template>
                             <template v-else-if="procesando">Procesando en background -- esto puede tardar unos minutos…</template>
                             <template v-else-if="!preview">Aún no se ha cargado nada.</template>
                             <template v-else-if="!resumen">Listo para importar.</template>
@@ -681,10 +735,32 @@ onMounted(() => cargarResumen());
                 </section>
             </div>
         </div>
+
+        <ProgresoImportacion
+            v-if="progreso.activo && progreso.visible"
+            :porcentaje="progreso.porcentaje"
+            :etapa="progreso.etapa"
+            :inicio="progreso.inicio"
+            :terminado="progreso.terminado"
+            @ocultar="progreso.visible = false"
+        />
     </DashboardLayout>
 </template>
 
 <style scoped>
+.link-progreso {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--amber);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.aviso-sin-cuenta {
+    color: var(--coral) !important;
+    margin-top: 8px;
+}
 .conciliacion-wrap {
     margin-top: 28px;
     padding-top: 22px;

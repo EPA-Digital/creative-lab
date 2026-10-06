@@ -38,6 +38,8 @@ class Importacion extends Model
         'excluidos',
         'sin_actividad_descartados',
         'conciliacion',
+        'progreso',
+        'etapa',
     ];
 
     protected function casts(): array
@@ -57,5 +59,30 @@ class Importacion extends Model
     public function pais(): BelongsTo
     {
         return $this->belongsTo(Pais::class);
+    }
+
+    /**
+     * fn (int $porcentaje, string $etapa) que guarda el avance de una
+     * importación en curso (ver ImportadorDatos::importar/importarDesdeApi)
+     * -- el panel lo lee al hacer polling. Como mucho una escritura por
+     * segundo, salvo cambio de etapa (ej. de Meta a TikTok), para no
+     * martillar la BD guardando creativos.
+     */
+    public static function reporteroDeProgreso(int $importacionId): \Closure
+    {
+        $ultimaEscritura = 0.0;
+        $ultimaEtapaBase = null;
+
+        return function (int $porcentaje, string $etapa) use ($importacionId, &$ultimaEscritura, &$ultimaEtapaBase): void {
+            // "Guardando creativos de Meta: 40 de 790" -> "Guardando creativos de Meta"
+            $etapaBase = preg_replace('/:\s.*$/', '', $etapa);
+            $ahora = microtime(true);
+            if ($etapaBase === $ultimaEtapaBase && $ahora - $ultimaEscritura < 1.0) {
+                return;
+            }
+            static::whereKey($importacionId)->update(['progreso' => $porcentaje, 'etapa' => mb_substr($etapa, 0, 160)]);
+            $ultimaEscritura = $ahora;
+            $ultimaEtapaBase = $etapaBase;
+        };
     }
 }

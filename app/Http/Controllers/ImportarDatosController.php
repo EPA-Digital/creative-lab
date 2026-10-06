@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProcesarImportacionApi;
 use App\Jobs\ProcesarImportacionCsv;
+use App\Models\AppsflyerApp;
 use App\Models\Importacion;
 use App\Models\Pais;
 use App\Services\Ingesta\ImportadorDatos;
@@ -14,7 +16,6 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
-use InvalidArgumentException;
 
 /**
  * Puerto del panel "Cargar datos" (import-panel) de meta.html/tiktok.html --
@@ -109,7 +110,7 @@ class ImportarDatosController extends Controller
         $rutaRelativa = "imports/{$token}.csv";
         $request->file('archivo')->storeAs('imports', "{$token}.csv");
 
-        $resumen = ImportadorDatos::previsualizar(Storage::path($rutaRelativa));
+        $resumen = ImportadorDatos::previsualizar(Storage::path($rutaRelativa), $pais);
 
         return response()->json([
             ...$resumen,
@@ -205,7 +206,12 @@ class ImportarDatosController extends Controller
         }
 
         if ($importacion->estado === 'procesando') {
-            return response()->json(['estado' => 'procesando']);
+            // progreso 0 sin etapa = todavía en cola (el worker no la tomó).
+            return response()->json([
+                'estado' => 'procesando',
+                'progreso' => $importacion->progreso,
+                'etapa' => $importacion->etapa,
+            ]);
         }
 
         return response()->json([
@@ -229,12 +235,9 @@ class ImportarDatosController extends Controller
      */
     public function importarApi(Request $request, string $pais): JsonResponse
     {
-        // Misma razón que importar(): llamadas reales a Meta/TikTok/
-        // AppsFlyer tardan más que el timeout de 30s de PHP-FPM.
-        set_time_limit(0);
-        // Ver nota en ImportarAppsFlyerApi::handle() (consola) -- el 128M
-        // default también aplica acá, mismo pipeline de caché de imágenes.
-        ini_set('memory_limit', '512M');
+        $config = config("paises.{$pais}");
+        abort_unless($config, 404, "País \"{$pais}\" no existe en config/paises.php.");
+        $paisModelo = Pais::where('codigo', $config['codigo'])->firstOrFail();
 
         $data = $request->validate([
             'desde' => ['required', 'date'],
@@ -249,23 +252,43 @@ class ImportarDatosController extends Controller
             return $rechazo;
         }
 
-        try {
-            $resumen = ImportadorDatos::importarDesdeApi(
-                $pais,
-                $data['desde'],
-                $data['hasta'],
-                $data['nc_total_real_meta'] ?? null,
-                $data['orders_total_real_meta'] ?? null,
-                $data['nc_total_real_tiktok'] ?? null,
-                $data['orders_total_real_tiktok'] ?? null,
-            );
-        } catch (InvalidArgumentException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
+        // Errores que se saben ANTES de encolar -- no tiene sentido esperar
+        // al worker para descubrirlos.
+        if (substr($data['desde'], 0, 7) !== substr($data['hasta'], 0, 7) || $data['desde'] > $data['hasta']) {
+            return response()->json(['error' => 'Desde y hasta deben caer en el mismo mes, y desde no puede ser después de hasta.'], 422);
+        }
+        if (AppsflyerApp::where('pais_id', $paisModelo->id)->doesntExist()) {
+            return response()->json(['error' => "{$paisModelo->nombre} no tiene apps de AppsFlyer configuradas -- agrégalas en Ajustes para poder importar por API."], 422);
         }
 
-        unset($resumen['pais']);
+        // Background, igual que el CSV (2026-10-06): un país grande puede
+        // pasar el timeout de Cloud Run. El panel hace polling de
+        // estadoImportacion() y muestra el avance (ver ProcesarImportacionApi).
+        $importacion = Importacion::create([
+            'pais_id' => $paisModelo->id,
+            'origen' => 'appsflyer_api',
+            'nombre_archivo' => "AppsFlyer API {$data['desde']}..{$data['hasta']}",
+            'desde' => $data['desde'],
+            'hasta' => $data['hasta'],
+            'nc_total_real_meta' => $data['nc_total_real_meta'] ?? null,
+            'orders_total_real_meta' => $data['orders_total_real_meta'] ?? null,
+            'nc_total_real_tiktok' => $data['nc_total_real_tiktok'] ?? null,
+            'orders_total_real_tiktok' => $data['orders_total_real_tiktok'] ?? null,
+            'estado' => 'procesando',
+        ]);
 
-        return response()->json($resumen);
+        ProcesarImportacionApi::dispatch(
+            $importacion->id,
+            $pais,
+            $data['desde'],
+            $data['hasta'],
+            $data['nc_total_real_meta'] ?? null,
+            $data['orders_total_real_meta'] ?? null,
+            $data['nc_total_real_tiktok'] ?? null,
+            $data['orders_total_real_tiktok'] ?? null,
+        );
+
+        return response()->json(['importacionId' => $importacion->id, 'estado' => 'procesando'], 202);
     }
 
     /**
