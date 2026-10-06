@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\EnsureAccesoPais;
 use App\Models\Pais;
 use App\Models\User;
 use App\Services\Auditoria;
@@ -65,17 +66,35 @@ class UsuariosController extends Controller
 
         $paises = Pais::orderBy('nombre')->get(['id', 'codigo', 'nombre']);
 
-        // '/usuarios' es transversal a países, pero DashboardLayout.vue
-        // (el rail de nav) necesita un país de contexto para armar sus
-        // hrefs -- primer país habilitado, sin significado especial acá.
-        $paisContexto = collect(config('paises'))->firstWhere('habilitado', true);
-
         return Inertia::render('Usuarios/Index', [
             'usuarios' => $usuarios,
             'paises' => $paises,
             'roles' => self::ROLES,
-            'pais' => array_search($paisContexto, config('paises'), true) ?: 'ecuador',
+            'pais' => $this->paisDeContexto($request),
         ]);
+    }
+
+    /**
+     * '/usuarios' es transversal a países, pero DashboardLayout.vue (el rail
+     * de nav) necesita un país de contexto para armar sus hrefs. Antes era
+     * siempre el primer país habilitado (Ecuador), así que entrar a
+     * Usuarios desde Perú "cambiaba de país" (pedido explícito
+     * 2026-10-06). Ahora: el último país visitado en la sesión (lo guarda
+     * EnsureAccesoPais), si el usuario todavía tiene acceso; si no, el
+     * primer país habilitado que sí tenga asignado.
+     */
+    private function paisDeContexto(Request $request): string
+    {
+        $codigosConAcceso = $request->user()->paises()->pluck('codigo')->all();
+        $habilitados = collect(config('paises'))->filter(fn (array $c) => $c['habilitado'] ?? false);
+        $conAcceso = $habilitados->filter(fn (array $c) => in_array($c['codigo'], $codigosConAcceso, true));
+
+        $ultimo = $request->session()->get(EnsureAccesoPais::SESION_PAIS_ACTUAL);
+        if ($ultimo && $conAcceso->has($ultimo)) {
+            return $ultimo;
+        }
+
+        return $conAcceso->keys()->first() ?? $habilitados->keys()->first() ?? 'ecuador';
     }
 
     public function store(Request $request): JsonResponse

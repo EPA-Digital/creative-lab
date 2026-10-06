@@ -2,6 +2,7 @@
 
 namespace App\Services\Ingesta;
 
+use Closure;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -24,31 +25,37 @@ class EnriquecedorCostosTiktok
     /**
      * @return list<array{adId: string, adName: string, cost: float, impressions: int, clicks: int, imageUrl: string}>
      */
-    public function enriquecer(string $advertiserId, string $desde, string $hasta): array
+    public function enriquecer(string $advertiserId, string $desde, string $hasta, ?Closure $avance = null): array
     {
+        $avance?->__invoke(0.0, 'Trayendo costos de TikTok');
         $filas = $this->traerCostos($advertiserId, $desde, $hasta);
 
-        [$nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId] = $this->traerNombreYVideoId($advertiserId);
+        // Nombre/video/copy e imagen SOLO de los ads con actividad en el
+        // rango (2026-10-06) -- antes se traían de la cuenta entera y se
+        // descargaban las portadas de miles de videos históricos.
+        // El reporte trae también miles de ads en 0 (México sept: 2,998 vs
+        // ~250 con gasto) -- sin actividad se descartan después igual
+        // (ImportadorDatos::esSinActividad), no vale la pena buscarles nombre
+        // ni portada.
+        $adIds = array_column(array_filter($filas, fn (array $f) => $f['cost'] > 0 || $f['impressions'] > 0 || $f['clicks'] > 0), 'adId');
+        $avance?->__invoke(0.4, 'Trayendo nombres y videos de TikTok: '.number_format(count($adIds)).' anuncios');
+        [$nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId] = $this->traerNombreYVideoId($advertiserId, $adIds);
+        $avance?->__invoke(0.75, 'Trayendo portadas de los videos de TikTok');
         $imagenRemotaPorVideoId = $this->traerThumbnailsDeVideo($advertiserId, array_values(array_unique($videoIdPorAdId)));
 
-        // Se cachea por Ad ID (no por video_id) porque 2 ads distintos
-        // pueden compartir el mismo video reusado -- cada uno necesita su
-        // propio archivo cacheado con su propio Ad ID en el nombre.
-        $urlPorAdId = [];
+        // URL REMOTA de la portada -- la guarda en el bucket el Job
+        // CachearImagenesCreativos en background (ver
+        // ImportadorDatos::procesarPlataforma), no la importación.
+        $imagenRemotaPorAdId = [];
         foreach ($videoIdPorAdId as $adId => $videoId) {
-            $remota = $imagenRemotaPorVideoId[$videoId] ?? null;
-            if ($remota) {
-                $urlPorAdId[$adId] = $remota;
+            if (isset($imagenRemotaPorVideoId[$videoId])) {
+                $imagenRemotaPorAdId[$adId] = $imagenRemotaPorVideoId[$videoId];
             }
         }
-        $imagenLocalPorAdId = $this->imagenes->cachearVarias(
-            $urlPorAdId,
-            fn (string $adId) => "tiktok-costo-{$adId}"
-        );
 
         foreach ($filas as &$fila) {
             $fila['adName'] = $nombrePorAdId[$fila['adId']] ?? '';
-            $fila['imageUrl'] = $imagenLocalPorAdId[$fila['adId']] ?? '';
+            $fila['imageUrl'] = $imagenRemotaPorAdId[$fila['adId']] ?? '';
             $fila['campaignName'] = $campaignNombrePorAdId[$fila['adId']] ?? '';
             $fila['copy'] = $copyPorAdId[$fila['adId']] ?? null;
         }
@@ -195,12 +202,36 @@ class EnriquecedorCostosTiktok
      *
      * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, string>, 3: array<string, array{titulo: ?string, texto: ?string}>} [nombrePorAdId, videoIdPorAdId, campaignNombrePorAdId, copyPorAdId]
      */
-    private function traerNombreYVideoId(string $advertiserId): array
+    private function traerNombreYVideoId(string $advertiserId, ?array $soloAdIds = null): array
     {
         $nombrePorAdId = [];
         $videoIdPorAdId = [];
         $campaignNombrePorAdId = [];
         $copyPorAdId = [];
+
+        // Solo los ads pedidos (2026-10-06): antes se paginaba la cuenta
+        // ENTERA -- miles de ads históricos en cuentas grandes -- aunque el
+        // mes importado solo use unos cientos. filtering.ad_ids en tandas
+        // de 100, mismo patrón que detectarEliminados; cada tanda en su
+        // propio try/catch.
+        if ($soloAdIds !== null) {
+            foreach (array_chunk(array_values(array_unique($soloAdIds)), 100) as $tanda) {
+                try {
+                    $data = $this->tiktok->get('/ad/get/', [
+                        'advertiser_id' => $advertiserId,
+                        'filtering' => ['ad_ids' => array_map('strval', $tanda)],
+                        'page_size' => 100,
+                    ]);
+                    foreach ($data['list'] ?? [] as $ad) {
+                        self::acumularAd($ad, $nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId);
+                    }
+                } catch (Throwable $e) {
+                    Log::warning('No se pudo traer nombre/video para una tanda de '.count($tanda)." ad(s) -- el costo se guarda igual: {$e->getMessage()}");
+                }
+            }
+
+            return [$nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId];
+        }
 
         $page = 1;
         $totalPage = null;
@@ -213,18 +244,7 @@ class EnriquecedorCostosTiktok
                 ]);
 
                 foreach ($data['list'] ?? [] as $ad) {
-                    if (! empty($ad['ad_name'])) {
-                        $nombrePorAdId[$ad['ad_id']] = $ad['ad_name'];
-                    }
-                    if (! empty($ad['video_id'])) {
-                        $videoIdPorAdId[$ad['ad_id']] = $ad['video_id'];
-                    }
-                    if (! empty($ad['campaign_name'])) {
-                        $campaignNombrePorAdId[$ad['ad_id']] = $ad['campaign_name'];
-                    }
-                    if (! empty($ad['ad_text'])) {
-                        $copyPorAdId[$ad['ad_id']] = ['titulo' => null, 'texto' => $ad['ad_text']];
-                    }
+                    self::acumularAd($ad, $nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId);
                 }
 
                 $totalPage = $data['page_info']['total_page'] ?? 1;
@@ -242,6 +262,25 @@ class EnriquecedorCostosTiktok
         }
 
         return [$nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ad  un elemento de /ad/get/
+     */
+    private static function acumularAd(array $ad, array &$nombrePorAdId, array &$videoIdPorAdId, array &$campaignNombrePorAdId, array &$copyPorAdId): void
+    {
+        if (! empty($ad['ad_name'])) {
+            $nombrePorAdId[$ad['ad_id']] = $ad['ad_name'];
+        }
+        if (! empty($ad['video_id'])) {
+            $videoIdPorAdId[$ad['ad_id']] = $ad['video_id'];
+        }
+        if (! empty($ad['campaign_name'])) {
+            $campaignNombrePorAdId[$ad['ad_id']] = $ad['campaign_name'];
+        }
+        if (! empty($ad['ad_text'])) {
+            $copyPorAdId[$ad['ad_id']] = ['titulo' => null, 'texto' => $ad['ad_text']];
+        }
     }
 
     /**

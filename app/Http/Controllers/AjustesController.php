@@ -6,9 +6,11 @@ use App\Models\AppsflyerApp;
 use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
+use App\Services\Ingesta\ClasificadorNombres;
 use App\Services\Ingesta\ValidadorCuentaPublicitaria;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -47,6 +49,7 @@ class AjustesController extends Controller
             'puedeGestionarCuentas' => $request->user()->can('gestionar-cuentas-publicitarias'),
             // Double check (2026-10-05) -- las últimas importaciones de ESTE
             // país con conciliación, la más nueva primero.
+            'campanias' => $paisActualId ? self::campaniasDelPais($paisActualId) : [],
             'conciliaciones' => Importacion::where('pais_id', $paisActualId)
                 ->whereNotNull('conciliacion')
                 ->where(fn ($q) => $q->whereNull('estado')->orWhere('estado', 'completado'))
@@ -54,6 +57,51 @@ class AjustesController extends Controller
                 ->limit(12)
                 ->get(['id', 'origen', 'desde', 'hasta', 'creado_en', 'conciliacion']),
         ]);
+    }
+
+    /**
+     * Campañas que usa el país (pedido explícito 2026-10-06), tal como
+     * quedaron en los creativos importados: de qué cuenta vienen, etapa,
+     * tipo (DTC/BRD, paid o no), cuántos anuncios, gasto total y en qué
+     * meses aparecen. Solo lectura -- sirve para revisar que las cuentas y
+     * nomenclaturas cuadren con lo que se está pautando.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function campaniasDelPais(int $paisId): array
+    {
+        return DB::table('creativos')
+            ->join('resultados', 'resultados.creativo_id', '=', 'creativos.id')
+            ->leftJoin('cuentas_publicitarias', 'cuentas_publicitarias.id', '=', 'creativos.cuenta_publicitaria_id')
+            ->where('creativos.pais_id', $paisId)
+            ->whereNotNull('creativos.nombre_campania')
+            ->groupBy('creativos.nombre_campania', 'creativos.plataforma')
+            ->orderByDesc(DB::raw('MAX(resultados.mes)'))
+            ->orderByDesc(DB::raw('SUM(resultados.cost)'))
+            ->get([
+                'creativos.nombre_campania',
+                'creativos.plataforma',
+                DB::raw('MIN(creativos.funnel) as funnel'),
+                DB::raw('MIN(creativos.tipo_cuenta) as tipo_cuenta'),
+                DB::raw('MIN(cuentas_publicitarias.nombre) as cuenta'),
+                DB::raw('COUNT(DISTINCT creativos.id) as anuncios'),
+                DB::raw('SUM(resultados.cost) as costo'),
+                DB::raw('MIN(resultados.mes) as primer_mes'),
+                DB::raw('MAX(resultados.mes) as ultimo_mes'),
+            ])
+            ->map(fn ($c) => [
+                'campania' => $c->nombre_campania,
+                'plataforma' => $c->plataforma,
+                'funnel' => $c->funnel,
+                'tipoCuenta' => $c->tipo_cuenta,
+                'paid' => ! ClasificadorNombres::esDtcNoPaid($c->nombre_campania),
+                'cuenta' => $c->cuenta,
+                'anuncios' => (int) $c->anuncios,
+                'costo' => round((float) $c->costo, 2),
+                'primerMes' => $c->primer_mes,
+                'ultimoMes' => $c->ultimo_mes,
+            ])
+            ->all();
     }
 
     /**

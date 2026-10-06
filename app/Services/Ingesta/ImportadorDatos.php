@@ -2,6 +2,7 @@
 
 namespace App\Services\Ingesta;
 
+use App\Jobs\CachearImagenesCreativos;
 use App\Models\AppsflyerApp;
 use App\Models\Creativo;
 use App\Models\CuentaPublicitaria;
@@ -242,6 +243,7 @@ class ImportadorDatos
             'tiktok' => [$ncTotalRealTiktok, $ordersTotalRealTiktok],
         ];
         $conciliacion = [];
+        $imagenesPendientes = [];
 
         // Sin cuenta publicitaria activa no hay costo con qué cruzar esa
         // plataforma -- antes se saltaba en silencio y el panel decía
@@ -289,13 +291,20 @@ class ImportadorDatos
                 $detectarPorCuenta = fn (string $cuentaId, array $adIds) => $enriquecedor->detectarEliminados($cuentaId, $adIds);
             }
 
+            // Traer costos/estado/imágenes = el primer 40% del tramo de la
+            // plataforma, repartido entre sus cuentas; cada enriquecedor
+            // reporta su avance interno (tandas de Meta, nombres/portadas de
+            // TikTok) para que la barra no se quede fija en este paso.
+            $nCuentas = $cuentas->count();
             $costos = self::traerCostosDeCuentas(
                 $cuentas,
-                fn (string $cuentaId) => $enriquecedor->enriquecer($cuentaId, $desde, $hasta),
-                fn (CuentaPublicitaria $cuenta, int $i) => self::avisar(
-                    $progreso,
-                    $inicio + $tramo * 0.4 * ($i / $cuentas->count()),
-                    "Trayendo costos e imágenes de {$etiqueta}".($cuenta->nombre ? " · {$cuenta->nombre}" : ''),
+                fn (string $cuentaId, int $i, CuentaPublicitaria $cuenta) => $enriquecedor->enriquecer(
+                    $cuentaId, $desde, $hasta,
+                    fn (float $fraccion, string $etapa) => self::avisar(
+                        $progreso,
+                        $inicio + $tramo * 0.4 * (($i + $fraccion) / $nCuentas),
+                        $etapa.($nCuentas > 1 && $cuenta->nombre ? " ({$cuenta->nombre})" : ''),
+                    ),
                 ),
             );
 
@@ -318,6 +327,7 @@ class ImportadorDatos
             $ordersRecalculados += $r['ordersRecalculados'];
             $sinActividadDescartados += $r['sinActividadDescartados'];
             $conciliacion[$plataforma] = $r['conciliacion'];
+            $imagenesPendientes += $r['imagenesPendientes'];
         }
 
         self::avisar($progreso, 97, 'Guardando el resumen y el double check');
@@ -358,6 +368,12 @@ class ImportadorDatos
             Importacion::create($datosImportacion);
         }
 
+        // Las imágenes que todavía no están en el bucket se guardan en
+        // background, después de los datos (ver CachearImagenesCreativos).
+        if ($imagenesPendientes !== []) {
+            CachearImagenesCreativos::dispatch($imagenesPendientes);
+        }
+
         return [
             'pais' => $pais,
             'esRangoParcial' => $esRangoParcial,
@@ -368,6 +384,7 @@ class ImportadorDatos
             'excluidos' => count($clasificados['excluidos']),
             'sinActividadDescartados' => $sinActividadDescartados,
             'conciliacion' => $conciliacion,
+            'imagenesEnCola' => count($imagenesPendientes),
         ];
     }
 
@@ -404,18 +421,15 @@ class ImportadorDatos
      * existir en dos cuentas -- si apareciera, se conserva el primero.
      *
      * @param  Collection<int, CuentaPublicitaria>  $cuentas
-     * @param  callable(string): list<array<string, mixed>>  $traer
+     * @param  callable(string, int, CuentaPublicitaria): list<array<string, mixed>>  $traer
      * @return list<array<string, mixed>>
      */
-    private static function traerCostosDeCuentas(Collection $cuentas, callable $traer, ?callable $alEmpezarCuenta = null): array
+    private static function traerCostosDeCuentas(Collection $cuentas, callable $traer): array
     {
         $filas = [];
         $vistos = [];
         foreach ($cuentas->values() as $i => $cuenta) {
-            if ($alEmpezarCuenta) {
-                $alEmpezarCuenta($cuenta, $i);
-            }
-            foreach ($traer($cuenta->cuenta_id) as $fila) {
+            foreach ($traer($cuenta->cuenta_id, $i, $cuenta) as $fila) {
                 if (isset($vistos[$fila['adId']])) {
                     continue;
                 }
@@ -539,6 +553,7 @@ class ImportadorDatos
         $confirmadosSinClasificar = array_flip($detectarSinClasificar($adIdsSinMatch));
 
         $mes = substr($desde, 0, 7);
+        $imagenesPendientes = [];
         $totalAGuardar = count($cardsConVenta);
         $guardados = 0;
         $creativosTocados = 0;
@@ -592,10 +607,17 @@ class ImportadorDatos
             $funnel = in_array($card['etapaFunnel'], ['AWA', 'CONS', 'CNV', 'LOY'], true) ? $card['etapaFunnel'] : null;
             $tipoCuenta = isset($confirmadosSinClasificar[$card['adId']]) ? null : ($card['tipoCuenta'] ?? 'DTC');
 
+            // Imágenes en background (2026-10-06): si ya está en el bucket
+            // (cacheada antes o curada a mano) se deja como está, sin volver
+            // a descargarla; si no, la URL remota se encola para
+            // CachearImagenesCreativos y mientras tanto se conserva lo que
+            // había. Nunca se guarda la URL remota (expira y la CSP no la
+            // deja mostrar).
             $imagenActual = $imagenActualPorAdId[$card['adId']] ?? null;
-            $imagenUrl = ImagenCacheService::esImagenCurada($imagenActual)
-                ? $imagenActual
-                : ($card['imageUrl'] !== '' ? $card['imageUrl'] : null);
+            $imagenUrl = $imagenActual;
+            $imagenPorCachear = ! ImagenCacheService::esImagenEnBucket($imagenActual) && ($card['imageUrl'] ?? '') !== ''
+                ? $card['imageUrl']
+                : null;
 
             $creativo = Creativo::updateOrCreate(
                 ['ad_id' => $card['adId'], 'pais_id' => $pais->id],
@@ -616,6 +638,9 @@ class ImportadorDatos
                 ]
             );
             $creativosTocados++;
+            if ($imagenPorCachear) {
+                $imagenesPendientes[$creativo->id] = ['url' => $imagenPorCachear, 'nombre' => "{$plataforma}-costo-{$card['adId']}"];
+            }
 
             $existente = $creativo->resultados()->where('mes', $mes)->first();
             $ventaReal = self::resolverNcOrdersFinal($existente, $card, $esRangoParcial, $ncTotalReal, $ordersTotalReal);
@@ -674,6 +699,7 @@ class ImportadorDatos
             'ordersRecalculados' => $ordersRecalculados,
             'sinActividadDescartados' => $sinActividadDescartados,
             'conciliacion' => $conciliacion->toArray($sinActividadDescartados),
+            'imagenesPendientes' => $imagenesPendientes,
         ];
     }
 

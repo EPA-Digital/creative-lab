@@ -63,6 +63,20 @@ class ImagenCacheService
     }
 
     /**
+     * true si la imagen ya vive en nuestro bucket (cacheada por una
+     * importación anterior o curada a mano) -- no hace falta volver a
+     * descargarla ni subirla (2026-10-06: cada reimportación re-descargaba
+     * y re-subía TODAS las imágenes, minutos perdidos por corrida).
+     */
+    public static function esImagenEnBucket(?string $imagenUrl): bool
+    {
+        $bucket = (string) config('filesystems.disks.gcs.bucket');
+
+        return $imagenUrl !== null && $bucket !== ''
+            && str_starts_with($imagenUrl, "https://storage.googleapis.com/{$bucket}/creative-images/");
+    }
+
+    /**
      * Descarga y cachea EN PARALELO por tandas (Http::pool, equivalente a
      * Promise.all de Node pero acotado -- ver TANDA_DESCARGAS) -- no es la
      * API de Graph/TikTok, es el CDN de la imagen, no cuenta contra el rate

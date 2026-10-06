@@ -40,7 +40,13 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // 3600 (antes 90): las importaciones (ProcesarImportacion*,
+            // CachearImagenesCreativos) tardan minutos, y Cloud Scheduler
+            // arranca un worker nuevo cada minuto -- con 90 s el worker
+            // siguiente veía el job "vencido" y lo marcaba fallido mientras
+            // el primero seguía corriendo. Tiene que ser mayor que el
+            // $timeout de los jobs (3500 s).
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 3600),
             'after_commit' => false,
         ],
 

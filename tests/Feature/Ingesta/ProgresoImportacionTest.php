@@ -109,6 +109,6 @@ it('el pipeline reporta un avance que siempre sube, de la lectura al guardado', 
         ->and($etapas[0])->toBe('Leyendo el archivo de AppsFlyer')
         ->and(end($porcentajes))->toBe(97)
         ->and($porcentajes)->toBe(collect($porcentajes)->sort()->values()->all(), 'el avance nunca retrocede')
-        ->and(collect($etapas)->contains(fn ($e) => str_starts_with($e, 'Trayendo costos e imágenes de Meta · Perú Meta')))->toBeTrue()
+        ->and($etapas)->toContain('Trayendo costos de Meta', 'Trayendo costos de TikTok')
         ->and(collect($etapas)->contains(fn ($e) => str_starts_with($e, 'Guardando creativos de TikTok:')))->toBeTrue();
 });
