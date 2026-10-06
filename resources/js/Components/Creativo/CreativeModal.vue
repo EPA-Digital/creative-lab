@@ -41,6 +41,32 @@ const esEpa = computed(() => usePage().props.auth?.user?.rol !== 'cliente');
 const card = computed(() => cardDesdeCreativo(props.creativo));
 const esTikTok = computed(() => card.value.plataforma === 'tiktok');
 const ph = computed(() => placeholderPorTipo(card.value.tipoCreativo));
+
+// Video (2026-10-06, ver VideoCreativoController) -- se pide al hacer clic
+// en ▶, no al abrir el modal (resolverlo llama a TikTok/Meta). TikTok se
+// reproduce acá mismo (guardado en el bucket, o directo de TikTok mientras
+// se guarda); Meta solo da el enlace a Facebook.
+const esVideo = computed(() => card.value.tipoCreativo === 'VIDEO');
+const video = ref(null); // { tipo: 'archivo'|'directo'|'enlace', url }
+const videoCargando = ref(false);
+const videoError = ref('');
+watch(() => props.creativo?.id, () => {
+    video.value = null;
+    videoError.value = '';
+});
+async function cargarVideo() {
+    if (videoCargando.value || !props.pais || !props.creativo?.id) return;
+    videoCargando.value = true;
+    videoError.value = '';
+    try {
+        const { data } = await axios.get(`/pais/${props.pais}/creativos/${props.creativo.id}/video`);
+        video.value = data;
+    } catch (err) {
+        videoError.value = err.response?.data?.message || 'No se pudo cargar el video.';
+    } finally {
+        videoCargando.value = false;
+    }
+}
 const stageColor = computed(() => FUNNEL_COLOR_VAR[card.value.etapaFunnel] || 'var(--text-faint)');
 
 // "País · tipo de cuenta" del header -- pais llega como slug simple
@@ -339,15 +365,33 @@ watch(() => props.creativo?.id, () => {
             <button class="modal-close" type="button" aria-label="Cerrar" @click="$emit('cerrar')">✕</button>
 
             <div class="modal-image-wrap">
-                <template v-if="card.tipoCreativo === 'VIDEO' && card.videoUrl">
-                    <div class="no-image" :style="card.imageUrl ? { display: 'none' } : {}">
-                        <span class="glyph">{{ ph.glyph }}</span>{{ ph.texto }}
-                    </div>
-                    <img v-if="card.imageUrl" :src="card.imageUrl" alt="" />
-                    <a class="video-play-overlay" :href="card.videoUrl" target="_blank" rel="noopener noreferrer">
-                        <span class="video-play-circle">▶</span>
-                        <span class="video-play-label">Ver video en Facebook</span>
-                    </a>
+                <template v-if="esVideo">
+                    <video
+                        v-if="video && video.tipo !== 'enlace'"
+                        class="modal-video"
+                        :src="video.url"
+                        :poster="card.imageUrl || undefined"
+                        controls
+                        autoplay
+                        muted
+                        loop
+                        playsinline
+                        @error="videoError = 'El video no se pudo reproducir.'; video = null"
+                    />
+                    <template v-else>
+                        <div class="no-image" :style="card.imageUrl ? { display: 'none' } : {}">
+                            <span class="glyph">{{ ph.glyph }}</span>{{ ph.texto }}
+                        </div>
+                        <img v-if="card.imageUrl" :src="card.imageUrl" alt="" />
+                        <a v-if="video?.tipo === 'enlace'" class="video-play-overlay" :href="video.url" target="_blank" rel="noopener noreferrer">
+                            <span class="video-play-circle">▶</span>
+                            <span class="video-play-label">Ver video en Facebook ↗</span>
+                        </a>
+                        <button v-else type="button" class="video-play-overlay" :disabled="videoCargando" @click="cargarVideo">
+                            <span class="video-play-circle">{{ videoCargando ? '…' : '▶' }}</span>
+                            <span class="video-play-label">{{ videoError || (videoCargando ? 'Cargando video…' : 'Reproducir video') }}</span>
+                        </button>
+                    </template>
                 </template>
                 <template v-else>
                     <div class="no-image" :style="card.imageUrl ? { display: 'none' } : {}">

@@ -3,6 +3,7 @@
 namespace App\Services\Ingesta;
 
 use App\Jobs\CachearImagenesCreativos;
+use App\Jobs\GuardarVideoCreativo;
 use App\Models\AppsflyerApp;
 use App\Models\Creativo;
 use App\Models\CuentaPublicitaria;
@@ -373,6 +374,7 @@ class ImportadorDatos
         if ($imagenesPendientes !== []) {
             CachearImagenesCreativos::dispatch($imagenesPendientes);
         }
+        self::encolarVideosConMasGasto($pais, substr($desde, 0, 7));
 
         return [
             'pais' => $pais,
@@ -386,6 +388,33 @@ class ImportadorDatos
             'conciliacion' => $conciliacion,
             'imagenesEnCola' => count($imagenesPendientes),
         ];
+    }
+
+    /**
+     * Videos de TikTok de mayor gasto del mes que todavía no están
+     * guardados (pedido explícito 2026-10-06): se guardan en background
+     * para que queden aunque TikTok borre el anuncio. El resto se guarda al
+     * abrirlo en el modal (ver VideoCreativoController). Cuántos:
+     * config('videos.top_por_mes'), 0 lo desactiva.
+     */
+    private static function encolarVideosConMasGasto(Pais $pais, string $mes): void
+    {
+        $cuantos = (int) config('videos.top_por_mes');
+        if ($cuantos <= 0) {
+            return;
+        }
+
+        Creativo::query()
+            ->join('resultados', 'resultados.creativo_id', '=', 'creativos.id')
+            ->where('creativos.pais_id', $pais->id)
+            ->where('creativos.plataforma', 'tiktok')
+            ->whereNotNull('creativos.video_id')
+            ->whereNull('creativos.video_url')
+            ->where('resultados.mes', $mes)
+            ->orderByDesc('resultados.cost')
+            ->limit($cuantos)
+            ->pluck('creativos.id')
+            ->each(fn (int $id) => GuardarVideoCreativo::dispatch($id));
     }
 
     /**
@@ -632,6 +661,7 @@ class ImportadorDatos
                     'tipo_cuenta' => $tipoCuenta,
                     'formato' => $card['formato'] ?? null,
                     'fecha_carga' => $desde,
+                    ...(! empty($card['videoId']) ? ['video_id' => $card['videoId']] : []),
                     // Sin costo en esta corrida no se sabe la cuenta -- se
                     // conserva la que ya tenía en vez de borrarla.
                     ...(isset($card['cuentaPublicitariaId']) ? ['cuenta_publicitaria_id' => $card['cuentaPublicitariaId']] : []),

@@ -978,6 +978,15 @@ h1, h2, .num, .kpi-value {
     object-fit: contain;
     display: block;
 }
+/* Video del creativo (2026-10-06, ver VideoCreativoController) -- ocupa
+   el mismo lugar que la imagen; arranca en silencio con controles. */
+.modal-image-wrap .modal-video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #000;
+}
 @media (max-width: 720px) {
     .modal {
         flex-direction: column;
@@ -1006,6 +1015,17 @@ h1, h2, .num, .kpi-value {
     text-decoration: none;
     background: rgba(0, 0, 0, 0.35);
     transition: background 0.15s ease;
+}
+button.video-play-overlay {
+    width: 100%;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+}
+button.video-play-overlay:disabled {
+    cursor: progress;
 }
 .video-play-overlay:hover {
     background: rgba(0, 0, 0, 0.5);

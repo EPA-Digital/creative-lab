@@ -38,6 +38,9 @@ class SecurityHeaders
             "frame-ancestors 'none'",
             "img-src 'self' data: https://storage.googleapis.com",
             "font-src 'self' https://fonts.bunny.net",
+            // Videos de creativos (2026-10-06): los guardados en el bucket y,
+            // mientras no estén guardados, directo del CDN de TikTok.
+            "media-src 'self' https://storage.googleapis.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com",
             "style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
             "script-src 'self' 'unsafe-inline'",
             "connect-src 'self'",
