@@ -6,6 +6,7 @@ use App\Models\Pais;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,7 @@ class ErroresEnEspanolTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake();
         $pe = Pais::create(['codigo' => 'PE', 'nombre' => 'Perú']);
         $this->user = User::factory()->create(['rol' => 'gerente']);
         $this->user->paises()->attach($pe->id);

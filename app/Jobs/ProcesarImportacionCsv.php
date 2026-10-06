@@ -63,6 +63,7 @@ class ProcesarImportacionCsv implements ShouldQueue
                 $this->ordersTotalRealTiktok,
                 $this->nombreArchivo,
                 $importacion,
+                Importacion::reporteroDeProgreso($this->importacionId),
             );
         } catch (Throwable $e) {
             // Query directa por id, NO $importacion->update() -- si lo que
