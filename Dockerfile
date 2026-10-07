@@ -29,9 +29,12 @@ RUN npm run build
 # --- Stage final: php-fpm + nginx, un solo contenedor, un solo puerto -----
 FROM php:8.4-fpm-alpine
 
-# ffmpeg: versión ligera de los videos de TikTok (VideoCreativoService).
+# ffmpeg: versión ligera de los videos (VideoCreativoService).
+# gd + zip: reportes en Excel/PDF con imágenes (ReporteCreativosService).
 RUN apk add --no-cache nginx supervisor icu-dev libzip-dev oniguruma-dev ffmpeg \
-    && docker-php-ext-install pdo_mysql mbstring bcmath opcache intl \
+        libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev \
+    && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
+    && docker-php-ext-install pdo_mysql mbstring bcmath opcache intl gd zip \
     && rm -rf /var/cache/apk/*
 
 WORKDIR /var/www/html

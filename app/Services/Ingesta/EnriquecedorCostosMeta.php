@@ -121,6 +121,20 @@ class EnriquecedorCostosMeta
     }
 
     /**
+     * URL remota (CDN de Meta, expira en horas) de la imagen de cada ad --
+     * SIN guardarla en el bucket ni tocar nada. Para el reporte de
+     * creativos (ReporteCreativosService) cuando un creativo no tiene la
+     * imagen guardada.
+     *
+     * @param  list<string>  $adIds
+     * @return array<string, string> ad_id => URL remota
+     */
+    public function imagenesRemotas(string $adAccountId, array $adIds): array
+    {
+        return $this->traerStatusEImagenParaIds($adAccountId, array_values(array_unique($adIds)))[1];
+    }
+
+    /**
      * Wrapper público sobre traerStatusEImagen para el comando de reparación
      * (2026-08-12) -- acepta una lista de ad_id directa (no derivada de
      * filas de costo), para poder re-consultar solo los creativos que ya

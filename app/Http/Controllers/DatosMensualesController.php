@@ -5,9 +5,14 @@ namespace App\Http\Controllers;
 use App\Jobs\RecuperarImagenesMes;
 use App\Models\Pais;
 use App\Services\Auditoria;
+use App\Services\Reportes\ExportadorExcelCreativos;
+use App\Services\Reportes\ExportadorPdfCreativos;
+use App\Services\Reportes\ReporteCreativosService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * "Datos por mes" en Cargar datos (pedido explícito 2026-10-05) -- la data
@@ -106,6 +111,43 @@ class DatosMensualesController extends Controller
         ]);
 
         return response()->json(['mes' => $mes, 'resultados' => $resultados, 'resultadosDiarios' => $diarios]);
+    }
+
+    /**
+     * Reporte del mes en Excel o PDF (pedido explícito 2026-10-07): lo que
+     * se ve en la tabla (por arte/anuncio, mismos filtros) + imagen,
+     * campaña, copy, formato y cuenta. Síncrono: con miniaturas y ~cientos
+     * de filas tarda segundos, no minutos.
+     */
+    public function exportar(Request $request, string $pais, string $mes, ReporteCreativosService $reporte): BinaryFileResponse
+    {
+        $paisModelo = $this->paisDesdeSlug($pais);
+        abort_unless(preg_match('/^\d{4}-\d{2}$/', $mes) === 1, 404);
+        $datos = $request->validate([
+            'formato' => ['required', 'in:xlsx,pdf'],
+            'agrupar' => ['nullable', 'in:arte,anuncio'],
+            'plataforma' => ['nullable', 'string', 'max:10'],
+            'funnel' => ['nullable', 'string', 'max:10'],
+            'q' => ['nullable', 'string', 'max:200'],
+        ]);
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+
+        $agrupar = $datos['agrupar'] ?? 'arte';
+        $filas = $reporte->filas($paisModelo->id, $mes, $agrupar, $datos);
+        $miniaturas = $reporte->miniaturas($paisModelo->id, $filas);
+
+        $etiquetaMes = Carbon::createFromFormat('Y-m', $mes)->locale('es')->translatedFormat('F Y');
+        $titulo = "Reporte de creativos — {$paisModelo->nombre} · {$etiquetaMes}";
+        $subtitulo = ($agrupar === 'arte' ? 'Por arte' : 'Por anuncio').' · '.count($filas).' creativo(s) · generado el '.now()->locale('es')->translatedFormat('j \d\e F Y, H:i');
+
+        $archivo = "reporte-creativos-{$pais}-{$mes}.{$datos['formato']}";
+        $ruta = tempnam(sys_get_temp_dir(), 'reporte-');
+        $datos['formato'] === 'xlsx'
+            ? (new ExportadorExcelCreativos)->generar($filas, $miniaturas, $titulo, $subtitulo, $ruta)
+            : (new ExportadorPdfCreativos)->generar($filas, $miniaturas, $titulo, $subtitulo, $ruta);
+
+        return response()->download($ruta, $archivo)->deleteFileAfterSend();
     }
 
     private function paisDesdeSlug(string $pais): Pais
