@@ -10,6 +10,7 @@ use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
 use App\Models\Resultado;
+use App\Models\TareaMedios;
 use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -365,16 +366,32 @@ class ImportadorDatos
         ];
         if ($importacionExistente) {
             $importacionExistente->update([...$datosImportacion, 'estado' => 'completado', 'progreso' => 100, 'etapa' => null]);
+            $importacion = $importacionExistente;
         } else {
-            Importacion::create($datosImportacion);
+            $importacion = Importacion::create($datosImportacion);
         }
 
-        // Las imágenes que todavía no están en el bucket se guardan en
-        // background, después de los datos (ver CachearImagenesCreativos).
-        if ($imagenesPendientes !== []) {
-            CachearImagenesCreativos::dispatch($imagenesPendientes);
+        // Imágenes que todavía no están en el bucket + videos de mayor gasto:
+        // se guardan en background, después de los datos. La tarea permite
+        // que el panel avise cuando estén listos (o muestre el error real).
+        $mes = substr($desde, 0, 7);
+        $videosPorGuardar = self::videosConMasGasto($pais, $mes);
+        $tarea = null;
+        if ($imagenesPendientes !== [] || $videosPorGuardar !== []) {
+            $tarea = TareaMedios::create([
+                'pais_id' => $pais->id,
+                'mes' => $mes,
+                'origen' => 'importacion',
+                'importacion_id' => $importacion->id,
+                'total' => count($imagenesPendientes) + count($videosPorGuardar),
+            ]);
         }
-        self::encolarVideosConMasGasto($pais, substr($desde, 0, 7));
+        if ($imagenesPendientes !== []) {
+            CachearImagenesCreativos::dispatch($imagenesPendientes, $tarea?->id);
+        }
+        foreach ($videosPorGuardar as $creativoId) {
+            GuardarVideoCreativo::dispatch($creativoId, $tarea?->id);
+        }
 
         return [
             'pais' => $pais,
@@ -387,34 +404,40 @@ class ImportadorDatos
             'sinActividadDescartados' => $sinActividadDescartados,
             'conciliacion' => $conciliacion,
             'imagenesEnCola' => count($imagenesPendientes),
+            'tareaMediosId' => $tarea?->id,
         ];
     }
 
     /**
-     * Videos de TikTok de mayor gasto del mes que todavía no están
-     * guardados (pedido explícito 2026-10-06): se guardan en background
-     * para que queden aunque TikTok borre el anuncio. El resto se guarda al
-     * abrirlo en el modal (ver VideoCreativoController). Cuántos:
-     * config('videos.top_por_mes'), 0 lo desactiva.
+     * ids de los creativos de video (TikTok y Meta) de mayor gasto del mes
+     * que todavía no están guardados (pedido explícito 2026-10-06): se
+     * guardan en background para que queden aunque la plataforma borre el
+     * anuncio. El resto se guarda al abrirlo en el modal (ver
+     * VideoCreativoController). Cuántos: config('videos.top_por_mes'), 0
+     * lo desactiva.
+     *
+     * @return list<int>
      */
-    private static function encolarVideosConMasGasto(Pais $pais, string $mes): void
+    private static function videosConMasGasto(Pais $pais, string $mes): array
     {
         $cuantos = (int) config('videos.top_por_mes');
         if ($cuantos <= 0) {
-            return;
+            return [];
         }
 
-        Creativo::query()
+        return Creativo::query()
             ->join('resultados', 'resultados.creativo_id', '=', 'creativos.id')
             ->where('creativos.pais_id', $pais->id)
-            ->where('creativos.plataforma', 'tiktok')
-            ->whereNotNull('creativos.video_id')
+            ->whereIn('creativos.plataforma', ['tiktok', 'meta'])
+            // TikTok trae el video_id al importar; Meta no (se resuelve al
+            // guardar), así que ahí alcanza con que el formato sea video.
+            ->where(fn ($q) => $q->whereNotNull('creativos.video_id')->orWhere('creativos.formato', 'VIDEO'))
             ->whereNull('creativos.video_url')
             ->where('resultados.mes', $mes)
             ->orderByDesc('resultados.cost')
             ->limit($cuantos)
             ->pluck('creativos.id')
-            ->each(fn (int $id) => GuardarVideoCreativo::dispatch($id));
+            ->all();
     }
 
     /**

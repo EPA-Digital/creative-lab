@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\RecuperarImagenesMes;
 use App\Models\Pais;
 use App\Services\Auditoria;
 use Illuminate\Http\JsonResponse;
@@ -56,6 +57,8 @@ class DatosMensualesController extends Controller
                 'nc' => $filas->whereNotNull('nc')->isEmpty() ? null : $filas->sum('nc'),
                 'orders' => $filas->whereNotNull('orders')->isEmpty() ? null : $filas->sum('orders'),
             ]),
+            // Para el aviso "X creativos sin imagen" + "Recuperar imágenes".
+            'sinImagen' => $mes ? RecuperarImagenesMes::creativosSinImagen($paisModelo->id, $mes)->count() : 0,
             'importaciones' => $mes ? DB::table('importaciones')
                 ->where('pais_id', $paisModelo->id)
                 ->where('desde', '>=', "{$mes}-01")

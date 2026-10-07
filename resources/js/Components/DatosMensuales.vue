@@ -3,6 +3,8 @@ import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
 import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
+import { notificar } from '@/avisos';
+import { seguirTareaMedios } from '@/seguimientoMedios';
 
 // "Datos por mes" (2026-10-05, pedido explícito) -- la data importada de un
 // mes como si fuera un Excel: mismas columnas que el sheet de QA, por arte
@@ -20,6 +22,7 @@ const mes = ref(null);
 const agrupar = ref('arte');
 const filas = ref([]);
 const importaciones = ref([]);
+const sinImagen = ref(0);
 const cargando = ref(false);
 const error = ref('');
 
@@ -39,6 +42,7 @@ async function cargar() {
         mes.value = data.mes;
         filas.value = data.filas;
         importaciones.value = data.importaciones || [];
+        sinImagen.value = data.sinImagen || 0;
     } catch (err) {
         error.value = err.response?.data?.message || 'No se pudo cargar la data del mes.';
     } finally {
@@ -196,6 +200,28 @@ function descargarCsv() {
     URL.revokeObjectURL(url);
 }
 
+// --- Recuperar imágenes (2026-10-07) ---------------------------------------
+// Vuelve a pedir a Meta/TikTok las imágenes que faltan del mes y las guarda
+// en background; llega un aviso al terminar (o con el error real).
+const recuperando = ref(false);
+async function recuperarImagenes() {
+    if (recuperando.value || !mes.value) return;
+    recuperando.value = true;
+    try {
+        const { data } = await axios.post(`/pais/${props.pais}/importar/mensual/${mes.value}/recuperar-imagenes`);
+        seguirTareaMedios({ pais: props.pais, id: data.tareaMediosId });
+        notificar({
+            tipo: 'info',
+            titulo: `Recuperando ${formatNumeroExacto(data.total)} imágenes de ${etiquetaMes(mes.value)}`,
+            texto: 'Puedes seguir trabajando; te avisamos cuando estén listas.',
+        });
+    } catch (err) {
+        notificar({ tipo: 'error', titulo: 'No se pudo recuperar', texto: err.response?.data?.message || 'Ocurrió un error inesperado.' });
+    } finally {
+        recuperando.value = false;
+    }
+}
+
 // --- Eliminar mes (solo superadmin) --------------------------------------
 const modalEliminar = ref(false);
 const confirmacion = ref('');
@@ -250,6 +276,10 @@ async function eliminarMes() {
                 </template>
             </span>
             <div class="datos-botones">
+                <span v-if="sinImagen" class="datos-sin-imagen">{{ formatNumeroExacto(sinImagen) }} creativo(s) sin imagen</span>
+                <button v-if="sinImagen" type="button" class="modal-copy-btn" :disabled="recuperando" @click="recuperarImagenes">
+                    {{ recuperando ? 'Iniciando…' : 'Recuperar imágenes' }}
+                </button>
                 <button type="button" class="modal-copy-btn" :disabled="!filasFiltradas.length" @click="descargarCsv">Descargar CSV</button>
                 <button type="button" class="modal-copy-btn" @click="emit('actualizar', mes)">Actualizar mes</button>
                 <button v-if="puedeEliminar" type="button" class="btn-eliminar" @click="abrirEliminar">Eliminar mes</button>
@@ -368,7 +398,14 @@ async function eliminarMes() {
 }
 .datos-botones {
     display: flex;
+    align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+}
+.datos-sin-imagen {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--coral);
 }
 .datos-botones .modal-copy-btn {
     font-size: 0.75rem;

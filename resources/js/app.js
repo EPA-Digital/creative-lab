@@ -7,6 +7,8 @@ import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import CargandoOverlay from './Components/CargandoOverlay.vue';
 import { iniciarSeguimientoCarga } from './loadingState';
+import Avisos from './Components/Avisos.vue';
+import { iniciarSeguimientoMedios } from './seguimientoMedios';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -20,6 +22,15 @@ iniciarSeguimientoCarga();
 const overlayHost = document.createElement('div');
 document.body.appendChild(overlayHost);
 createApp(CargandoOverlay).mount(overlayHost);
+
+// Avisos globales (2026-10-07, estilo SweetAlert) + seguimiento de
+// imágenes/videos en background -- mismo criterio que el overlay: su propia
+// mini-app fuera del árbol de Inertia, para que un aviso de "ya están las
+// imágenes" llegue aunque se haya cambiado de página.
+const avisosHost = document.createElement('div');
+document.body.appendChild(avisosHost);
+createApp(Avisos).mount(avisosHost);
+iniciarSeguimientoMedios();
 
 createInertiaApp({
     title: (title) => `${title} - ${appName}`,

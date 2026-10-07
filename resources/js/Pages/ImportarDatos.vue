@@ -7,6 +7,8 @@ import TipoCuentaToggle from '@/Components/Creativo/TipoCuentaToggle.vue';
 import ConciliacionImportacion from '@/Components/ConciliacionImportacion.vue';
 import DatosMensuales from '@/Components/DatosMensuales.vue';
 import ProgresoImportacion from '@/Components/ProgresoImportacion.vue';
+import { mostrarAlerta } from '@/avisos';
+import { etiquetaMes, seguirTareaMedios } from '@/seguimientoMedios';
 import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
 
 // Puerto del import-panel de meta.html/tiktok.html ("Cargar datos") -- el
@@ -136,7 +138,7 @@ async function importarApi() {
                 apiImportError.value = mensaje;
                 apiImportando.value = false;
             },
-        });
+        }, apiMes.value);
     } catch (err) {
         apiImportError.value = err.response?.data?.error || err.response?.data?.message || 'No se pudo importar.';
         apiImportando.value = false;
@@ -270,7 +272,7 @@ async function importar() {
                 importando.value = false;
                 procesando.value = false;
             },
-        });
+        }, desde.value.slice(0, 7));
     } catch (err) {
         importError.value = err.response?.data?.error || err.response?.data?.message || 'No se pudo importar.';
         importando.value = false;
@@ -294,7 +296,24 @@ function cerrarProgreso() {
     progreso.value = { ...progreso.value, activo: false, visible: false };
 }
 
-function seguirImportacion(id, { alTerminar, alFallar }) {
+// Aviso al terminar (2026-10-07, estilo SweetAlert): los datos ya están;
+// imágenes y videos siguen guardándose en background -- se sigue esa tarea
+// y llega otro aviso cuando estén listos (ver seguimientoMedios.js).
+function avisarImportacionCompleta(data, mes) {
+    const etiqueta = etiquetaMes(mes);
+    if (data.tareaMediosId) {
+        seguirTareaMedios({ pais: props.pais, id: data.tareaMediosId });
+    }
+    mostrarAlerta({
+        tipo: 'exito',
+        titulo: 'Importación completa',
+        texto: data.tareaMediosId
+            ? `Los datos de ${etiqueta} ya están cargados y correctos. Las imágenes y videos pueden tardar unos minutos en aparecer; te avisamos cuando estén listos.`
+            : `Los datos de ${etiqueta} ya están cargados y correctos.`,
+    });
+}
+
+function seguirImportacion(id, { alTerminar, alFallar }, mesDeImportacion) {
     detenerPollEstadoImportacion();
     importacionId.value = id;
     progreso.value = { activo: true, visible: true, porcentaje: 0, etapa: null, inicio: Date.now(), terminado: false };
@@ -319,7 +338,10 @@ function seguirImportacion(id, { alTerminar, alFallar }) {
             progreso.value.terminado = true;
             alTerminar(data);
             datosMensuales.value?.recargar();
-            setTimeout(cerrarProgreso, 1200);
+            setTimeout(() => {
+                cerrarProgreso();
+                avisarImportacionCompleta(data, mesDeImportacion);
+            }, 1200);
         } catch (err) {
             // estadoImportacion() responde 422 cuando la importación falló --
             // ese mensaje es el que importa mostrar, no uno genérico.
