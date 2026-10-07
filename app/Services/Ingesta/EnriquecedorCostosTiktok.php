@@ -66,6 +66,23 @@ class EnriquecedorCostosTiktok
     }
 
     /**
+     * URL remota de la portada del video de cada ad (expira en horas) --
+     * SIN guardarla en el bucket ni tocar nada. Para el reporte de
+     * creativos (ReporteCreativosService) cuando un creativo no tiene la
+     * imagen guardada.
+     *
+     * @param  list<string>  $adIds
+     * @return array<string, string> ad_id => URL remota
+     */
+    public function portadasRemotas(string $advertiserId, array $adIds): array
+    {
+        [, $videoIdPorAdId] = $this->traerNombreYVideoId($advertiserId, $adIds);
+        $portadaPorVideoId = $this->traerThumbnailsDeVideo($advertiserId, array_values(array_unique($videoIdPorAdId)));
+
+        return array_filter(array_map(fn (string $videoId) => $portadaPorVideoId[$videoId] ?? null, $videoIdPorAdId));
+    }
+
+    /**
      * Reparación dirigida por Ad ID (2026-08-12, comando
      * `reparar:creativos-incompletos`) -- a diferencia de
      * traerNombreYVideoId (que pagina la cuenta COMPLETA), esto solo pide

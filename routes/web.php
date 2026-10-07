@@ -58,6 +58,8 @@ Route::middleware('auth')->group(function () {
             // Datos por mes (2026-10-05) -- ver/descargar es EPA, eliminar
             // un mes es solo superadmin.
             Route::get('/importar/mensual', [DatosMensualesController::class, 'index'])->name('importar-datos.mensual');
+            // Reporte del mes en Excel/PDF con imágenes (2026-10-07).
+            Route::get('/importar/mensual/{mes}/exportar', [DatosMensualesController::class, 'exportar'])->name('importar-datos.mensual.exportar');
             // Imágenes/videos en background (2026-10-07) -- avance de una
             // tarea y "Recuperar imágenes" de un mes.
             Route::get('/medios/tareas/{tarea}', [TareaMediosController::class, 'show'])->name('medios.tareas.show');

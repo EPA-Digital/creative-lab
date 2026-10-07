@@ -200,6 +200,39 @@ function descargarCsv() {
     URL.revokeObjectURL(url);
 }
 
+// --- Reporte en Excel/PDF (2026-10-07) -------------------------------------
+// Lo mismo que se ve en la tabla (vista + filtros) más imagen, campaña,
+// copy, formato y cuenta (ver DatosMensualesController::exportar). Se pide
+// como blob para poder mostrar "Generando…" y avisar si falla.
+const generando = ref(null); // 'xlsx' | 'pdf' | null
+async function descargarReporte(formato) {
+    if (generando.value || !mes.value) return;
+    generando.value = formato;
+    try {
+        const { data, headers } = await axios.get(`/pais/${props.pais}/importar/mensual/${mes.value}/exportar`, {
+            params: { formato, agrupar: agrupar.value, plataforma: plataforma.value, funnel: funnel.value, q: busqueda.value || undefined },
+            responseType: 'blob',
+        });
+        const nombre = /filename="?([^";]+)"?/.exec(headers['content-disposition'] || '')?.[1] || `reporte-creativos-${props.pais}-${mes.value}.${formato}`;
+        const url = URL.createObjectURL(data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombre;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        let mensaje = 'No se pudo generar el reporte.';
+        try {
+            mensaje = JSON.parse(await err.response?.data?.text())?.message || mensaje;
+        } catch {
+            /* la respuesta de error no era JSON */
+        }
+        notificar({ tipo: 'error', titulo: 'No se pudo generar el reporte', texto: mensaje });
+    } finally {
+        generando.value = null;
+    }
+}
+
 // --- Recuperar imágenes (2026-10-07) ---------------------------------------
 // Vuelve a pedir a Meta/TikTok las imágenes que faltan del mes y las guarda
 // en background; llega un aviso al terminar (o con el error real).
@@ -280,7 +313,13 @@ async function eliminarMes() {
                 <button v-if="sinImagen" type="button" class="modal-copy-btn" :disabled="recuperando" @click="recuperarImagenes">
                     {{ recuperando ? 'Iniciando…' : 'Recuperar imágenes' }}
                 </button>
-                <button type="button" class="modal-copy-btn" :disabled="!filasFiltradas.length" @click="descargarCsv">Descargar CSV</button>
+                <button type="button" class="modal-copy-btn" :disabled="!filasFiltradas.length || !!generando" @click="descargarReporte('xlsx')">
+                    {{ generando === 'xlsx' ? 'Generando Excel…' : 'Excel con imágenes' }}
+                </button>
+                <button type="button" class="modal-copy-btn" :disabled="!filasFiltradas.length || !!generando" @click="descargarReporte('pdf')">
+                    {{ generando === 'pdf' ? 'Generando PDF…' : 'PDF con imágenes' }}
+                </button>
+                <button type="button" class="modal-copy-btn" :disabled="!filasFiltradas.length" @click="descargarCsv">CSV</button>
                 <button type="button" class="modal-copy-btn" @click="emit('actualizar', mes)">Actualizar mes</button>
                 <button v-if="puedeEliminar" type="button" class="btn-eliminar" @click="abrirEliminar">Eliminar mes</button>
             </div>
