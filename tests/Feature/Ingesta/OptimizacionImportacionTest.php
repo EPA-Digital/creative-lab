@@ -5,6 +5,7 @@ use App\Models\Creativo;
 use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
+use App\Models\TareaMedios;
 use App\Models\User;
 use App\Services\Ingesta\EnriquecedorCostosTiktok;
 use App\Services\Ingesta\ImagenCacheService;
@@ -75,7 +76,9 @@ it('el Job de imágenes guarda en el bucket y actualiza el creativo', function (
 
 it('la importación encola solo las imágenes que todavía no están en el bucket', function () {
     Queue::fake();
-    config(['services.meta.access_token' => 't', 'services.tiktok.access_token' => 't']);
+    // Videos fuera de este test (el fixture trae creativos de video de
+    // Meta, que también cuentan en la tarea) -- acá solo importan imágenes.
+    config(['services.meta.access_token' => 't', 'services.tiktok.access_token' => 't', 'videos.top_por_mes' => 0]);
     $pe = Pais::create(['codigo' => 'PE', 'nombre' => 'Perú']);
     CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'meta', 'cuenta_id' => '111', 'tipo' => 'tada']);
     // Un ad del fixture que YA tiene imagen en el bucket.
@@ -105,8 +108,11 @@ it('la importación encola solo las imágenes que todavía no están en el bucke
 
     Queue::assertPushed(CachearImagenesCreativos::class, function (CachearImagenesCreativos $job) {
         $urls = array_column($job->pendientes, 'url');
+        $tarea = TareaMedios::find($job->tareaId);
 
-        return $urls === ['https://cdn.meta/b.jpg'];
+        // La tarea de seguimiento (aviso "ya están las imágenes") cuenta
+        // exactamente lo que se encoló.
+        return $urls === ['https://cdn.meta/b.jpg'] && $tarea?->total === 1 && $tarea->mes === '2026-07';
     });
     expect(Creativo::where('ad_id', '555')->value('imagen_url'))->toBeNull('nunca se guarda la URL remota');
 });

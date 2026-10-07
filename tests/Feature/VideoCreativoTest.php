@@ -85,13 +85,41 @@ class VideoCreativoTest extends TestCase
         $this->assertSame('v3', $c->fresh()->video_id);
     }
 
-    public function test_meta_devuelve_el_enlace_a_facebook_y_lo_recuerda(): void
+    /**
+     * Respuestas falsas de Graph API para un ad de Meta "444" con video
+     * "999" de la página "p1" -- $paginas: lo que devuelve /me/accounts.
+     */
+    private function fakeMeta(array $paginas): void
     {
-        Http::fake(function (Request $r) {
-            return str_contains($r->url(), '/444')
-                ? Http::response(['creative' => ['video_id' => '999']])
-                : Http::response(['permalink_url' => '/reel/999/']);
+        Http::fake(function (Request $r) use ($paginas) {
+            parse_str((string) parse_url($r->url(), PHP_URL_QUERY), $q);
+            $path = parse_url($r->url(), PHP_URL_PATH);
+
+            return match (true) {
+                str_ends_with($path, '/444') => Http::response(['creative' => ['video_id' => '999']]),
+                str_ends_with($path, '/me/accounts') => Http::response(['data' => $paginas]),
+                ($q['fields'] ?? '') === 'from' => Http::response(['from' => ['id' => 'p1', 'name' => 'TaDa Delivery Ecuador']]),
+                ($q['fields'] ?? '') === 'source' => Http::response(($q['access_token'] ?? '') === 'token-pagina' ? ['source' => 'https://video.fbcdn.net/999.mp4'] : []),
+                default => Http::response(['permalink_url' => '/reel/999/']),
+            };
         });
+    }
+
+    public function test_meta_se_reproduce_con_el_token_de_la_pagina_duena(): void
+    {
+        Queue::fake();
+        $this->fakeMeta([['id' => 'p1', 'access_token' => 'token-pagina']]);
+        $c = $this->creativo(['ad_id' => '444', 'plataforma' => 'meta']);
+
+        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")
+            ->assertOk()->assertJson(['tipo' => 'directo', 'url' => 'https://video.fbcdn.net/999.mp4']);
+        $this->assertSame('999', $c->fresh()->video_id);
+        Queue::assertPushed(GuardarVideoCreativo::class, 1);
+    }
+
+    public function test_meta_sin_acceso_a_la_pagina_da_el_enlace_a_facebook_y_lo_recuerda(): void
+    {
+        $this->fakeMeta([]);
         $c = $this->creativo(['ad_id' => '444', 'plataforma' => 'meta']);
 
         $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")
@@ -144,9 +172,8 @@ class VideoCreativoTest extends TestCase
             $c->resultados()->create(['mes' => '2026-09', 'fecha_inicio' => '2026-09-01', 'fecha_fin' => '2026-09-30', 'cost' => $costo, 'impressions' => 0, 'clicks' => 0, 'installs' => 0, 'reorders' => 0]);
         }
 
-        (new ReflectionMethod(ImportadorDatos::class, 'encolarVideosConMasGasto'))->invoke(null, $this->ec, '2026-09');
+        $ids = (new ReflectionMethod(ImportadorDatos::class, 'videosConMasGasto'))->invoke(null, $this->ec, '2026-09');
 
-        $encolados = Queue::pushed(GuardarVideoCreativo::class)->map(fn ($job) => Creativo::find($job->creativoId)->ad_id)->all();
-        $this->assertSame(['b', 'd'], $encolados, 'los 2 de mayor gasto que todavía no están guardados');
+        $this->assertSame(['b', 'd'], array_map(fn (int $id) => Creativo::find($id)->ad_id, $ids), 'los 2 de mayor gasto que todavía no están guardados');
     }
 }

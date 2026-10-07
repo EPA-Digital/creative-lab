@@ -26,7 +26,7 @@ class VideoCreativoController extends Controller
             return response()->json(['message' => 'Este video ya no está disponible en la plataforma.'], 404);
         }
 
-        // Se está reproduciendo directo de TikTok (enlace que expira):
+        // Se está reproduciendo directo de TikTok/Meta (enlace que expira):
         // guardar la versión ligera para la próxima vez y para cuando TikTok
         // borre el anuncio. El candado evita encolarlo de nuevo en cada
         // apertura mientras el primero sigue en la cola.

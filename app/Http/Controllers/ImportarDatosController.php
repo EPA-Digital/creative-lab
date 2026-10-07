@@ -7,6 +7,7 @@ use App\Jobs\ProcesarImportacionCsv;
 use App\Models\AppsflyerApp;
 use App\Models\Importacion;
 use App\Models\Pais;
+use App\Models\TareaMedios;
 use App\Services\Ingesta\ImportadorDatos;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -241,6 +242,9 @@ class ImportarDatosController extends Controller
             'excluidos' => $importacion->excluidos,
             'sinActividadDescartados' => $importacion->sin_actividad_descartados,
             'conciliacion' => $importacion->conciliacion,
+            // Imágenes/videos que se siguen guardando en background -- el
+            // panel avisa cuando estén listos (ver TareaMediosController).
+            'tareaMediosId' => TareaMedios::where('importacion_id', $importacion->id)->value('id'),
         ]);
     }
 

@@ -2,7 +2,7 @@
 
 // Videos de los creativos (2026-10-06) -- ver VideoCreativoService.
 return [
-    // Cuántos videos de TikTok se guardan en segundo plano después de cada
+    // Cuántos videos (TikTok y Meta) se guardan en segundo plano después de cada
     // importación (los de mayor gasto del mes). Los demás se guardan la
     // primera vez que alguien los abre en el modal. Ajustable sin deploy de
     // código: variable de entorno VIDEOS_TOP_POR_MES.

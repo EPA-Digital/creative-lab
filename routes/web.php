@@ -9,6 +9,7 @@ use App\Http\Controllers\ImportarDatosController;
 use App\Http\Controllers\InteligenciaController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TareaMediosController;
 use App\Http\Controllers\UsuariosController;
 use App\Http\Controllers\VideoCreativoController;
 use Illuminate\Support\Facades\Route;
@@ -57,6 +58,10 @@ Route::middleware('auth')->group(function () {
             // Datos por mes (2026-10-05) -- ver/descargar es EPA, eliminar
             // un mes es solo superadmin.
             Route::get('/importar/mensual', [DatosMensualesController::class, 'index'])->name('importar-datos.mensual');
+            // Imágenes/videos en background (2026-10-07) -- avance de una
+            // tarea y "Recuperar imágenes" de un mes.
+            Route::get('/medios/tareas/{tarea}', [TareaMediosController::class, 'show'])->name('medios.tareas.show');
+            Route::post('/importar/mensual/{mes}/recuperar-imagenes', [TareaMediosController::class, 'recuperarImagenes'])->name('importar-datos.mensual.recuperar-imagenes');
             Route::delete('/importar/mensual/{mes}', [DatosMensualesController::class, 'destroy'])
                 ->middleware('can:eliminar-mes-importado')
                 ->name('importar-datos.mensual.destroy');

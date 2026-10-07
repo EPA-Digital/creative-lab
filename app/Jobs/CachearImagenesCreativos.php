@@ -3,9 +3,11 @@
 namespace App\Jobs;
 
 use App\Models\Creativo;
+use App\Models\TareaMedios;
 use App\Services\Ingesta\ImagenCacheService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
 /**
  * Descarga y guarda en el bucket las imágenes de los creativos recién
@@ -32,7 +34,11 @@ class CachearImagenesCreativos implements ShouldQueue
     /**
      * @param  array<int, array{url: string, nombre: string}>  $pendientes  creativo_id => URL remota + nombre base del archivo
      */
-    public function __construct(public readonly array $pendientes) {}
+    public function __construct(
+        public readonly array $pendientes,
+        // Avance para el aviso del panel (ver TareaMedios) -- opcional.
+        public readonly ?int $tareaId = null,
+    ) {}
 
     public function handle(ImagenCacheService $imagenes): void
     {
@@ -44,14 +50,22 @@ class CachearImagenesCreativos implements ShouldQueue
                 fn (string $creativoId) => $tanda[(int) $creativoId]['nombre'],
             );
 
+            $listas = 0;
             foreach ($guardadas as $creativoId => $url) {
                 // cachearVarias devuelve la URL remota si la descarga
                 // falló -- esa no se guarda (expira, y la CSP no la deja
                 // mostrar); el creativo sigue "sin thumbnail".
                 if (ImagenCacheService::esImagenEnBucket($url)) {
                     Creativo::whereKey($creativoId)->update(['imagen_url' => $url]);
+                    $listas++;
                 }
             }
+            TareaMedios::avanzar($this->tareaId, $listas, count($tanda) - $listas);
         }
+    }
+
+    public function failed(Throwable $e): void
+    {
+        TareaMedios::fallar($this->tareaId, "No se pudieron guardar las imágenes: {$e->getMessage()}");
     }
 }
