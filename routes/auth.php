@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\ActivarDosPasosController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
@@ -66,6 +67,10 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
+    // Activar el 2FA ya logueado -- ver ActivarDosPasosController.
+    Route::get('seguridad/2fa', [ActivarDosPasosController::class, 'show'])->name('seguridad.2fa');
+    Route::post('seguridad/2fa', [ActivarDosPasosController::class, 'store'])->middleware('throttle:10,1');
+
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');
 

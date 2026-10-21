@@ -84,6 +84,19 @@ class GoogleAuthController extends Controller
             return redirect()->route('login')->withErrors(['email' => self::MENSAJE_GENERICO]);
         }
 
+        // Quien activó el 2FA (ver ActivarDosPasosController) pasa por el
+        // mismo segundo paso que el login con contraseña -- sin
+        // Auth::login() hasta que TwoFactorLoginController valide el código.
+        if ($usuario->tieneTotpConfirmado()) {
+            Auditoria::registrar('login.google.paso1_exitoso', $usuario);
+            session()->put([
+                '2fa.pendiente_user_id' => $usuario->id,
+                '2fa.expira_en' => now()->addMinutes(5)->timestamp,
+            ]);
+
+            return redirect()->route('2fa.verificar');
+        }
+
         Auth::login($usuario);
         Auditoria::registrar('login.google.exito', $usuario);
 

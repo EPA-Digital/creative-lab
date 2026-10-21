@@ -41,6 +41,9 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user()?->only(['id', 'name', 'email', 'rol', 'email_verified_at']),
+                // Solo el booleano, nunca totp_* -- lo usa el aviso
+                // "Aún no tienes la verificación en dos pasos" (Aviso2fa.vue).
+                'tiene_2fa' => $request->user()?->tieneTotpConfirmado() ?? false,
             ],
         ];
     }

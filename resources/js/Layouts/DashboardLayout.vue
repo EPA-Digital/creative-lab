@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
+import Aviso2fa from '@/Components/Aviso2fa.vue';
 
 // Puerto de NAV_PAIS_ITEMS + renderNavPais (motor.js:1905-1933) -- mismos 4
 // items, mismos íconos SVG reales, mismo criterio "Próximamente" (sin href,
@@ -144,6 +145,7 @@ onMounted(aplicarTemaGuardado);
         </aside>
 
         <div class="app-content">
+            <Aviso2fa />
             <slot />
         </div>
     </div>
