@@ -38,6 +38,7 @@ class InvitacionController extends Controller
             'token' => $token,
             'nombre' => $usuario->name,
             'email' => $usuario->email,
+            'metodo' => $usuario->metodo_auth,
         ]);
     }
 
