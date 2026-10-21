@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
+import Aviso2fa from '@/Components/Aviso2fa.vue';
 
 // Puerto de index.html + renderSelectorPais (motor.js:1833-1880) -- la
 // jerarquía topbar/selector/footer y el comportamiento (click en un país
@@ -49,6 +50,7 @@ function seleccionarPais(pais) {
     </header>
 
     <main>
+        <Aviso2fa />
         <div class="selector-pais-view">
             <h2>Selecciona un país</h2>
             <div class="selector-pais-regla"></div>

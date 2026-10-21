@@ -1,10 +1,18 @@
 <script setup>
 import AuthCardLayout from '@/Layouts/AuthCardLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 
 // "¿Olvidaste tu contraseña?" sin correo (ver RecuperarPasswordController)
 // -- la identidad se prueba con el código de la app de autenticación o un
 // código de recuperación, no con un link por email.
+// "¿Ya tienes tu 2FA?" (pedido explícito 2026-10-21). Si responde que no,
+// NO se le da un QR acá: sin sesión ni código no hay forma de saber que es
+// el dueño del correo, y quien lo tenga podría tomar la cuenta. Se le
+// explica el camino seguro (login normal -> QR, o link de EPA).
+// Si vuelve con errores de validación, ya había elegido "sí".
+const tiene2fa = ref(Object.keys(usePage().props.errors ?? {}).length > 0 ? true : null);
+
 const form = useForm({
     email: '',
     codigo: '',
@@ -25,12 +33,37 @@ const submit = () => {
 
         <h1 class="auth-title">Recuperar contraseña</h1>
 
-        <p class="auth-status">
-            Ingresá tu correo, el código de tu app de autenticación (o un código de recuperación) y tu nueva contraseña.
-            Si nunca configuraste la verificación en dos pasos, pedile a alguien de EPA que resetee tu contraseña.
-        </p>
+        <template v-if="tiene2fa === null">
+            <p class="auth-status">¿Ya tienes activada la verificación en dos pasos (Google Authenticator)?</p>
 
-        <form class="auth-form" @submit.prevent="submit">
+            <button type="button" class="auth-btn-secondary" @click="tiene2fa = true">Sí, ya la tengo</button>
+            <button type="button" class="auth-btn-ghost" @click="tiene2fa = false">No, aún no</button>
+            <Link :href="route('login')" class="auth-link">Volver a iniciar sesión</Link>
+        </template>
+
+        <template v-else-if="tiene2fa === false">
+            <p class="auth-status">
+                Sin la verificación en dos pasos no podemos confirmar desde aquí que la cuenta es tuya, así que el código QR se
+                activa por otro camino:
+            </p>
+            <p class="auth-status">
+                <strong>Si recuerdas tu contraseña:</strong> inicia sesión normalmente y te mostramos el QR para escanear y tus
+                códigos de recuperación.
+            </p>
+            <p class="auth-status">
+                <strong>Si no la recuerdas:</strong> pide a alguien de EPA un link nuevo. Con ese link pones tu contraseña,
+                escaneas el QR y recibes tus códigos.
+            </p>
+
+            <Link :href="route('login')" class="auth-btn-secondary auth-btn-link">Ir a iniciar sesión</Link>
+            <button type="button" class="auth-link auth-link-btn" @click="tiene2fa = null">Volver</button>
+        </template>
+
+        <form v-else class="auth-form" @submit.prevent="submit">
+            <p class="auth-status">
+                Ingresá tu correo, el código de tu app de autenticación (o un código de recuperación) y tu nueva contraseña.
+            </p>
+
             <div class="auth-field">
                 <label for="email" class="auth-label">Correo</label>
                 <input
@@ -92,3 +125,15 @@ const submit = () => {
         </form>
     </AuthCardLayout>
 </template>
+
+<style scoped>
+.auth-link-btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    align-self: center;
+}
+</style>

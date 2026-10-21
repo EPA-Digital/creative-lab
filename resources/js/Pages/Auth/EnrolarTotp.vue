@@ -11,12 +11,16 @@ import { Head, useForm } from '@inertiajs/vue3';
 const props = defineProps({
     qr: { type: String, required: true },
     secreto: { type: String, required: true },
+    // Mismo QR para activarlo ya logueado (ver ActivarDosPasosController):
+    // otra URL de confirmación y sin el "es obligatorio".
+    postUrl: { type: String, default: null },
+    obligatorio: { type: Boolean, default: true },
 });
 
 const form = useForm({ codigo: '' });
 
 const submit = () => {
-    form.post(route('2fa.enrolar'), {
+    form.post(props.postUrl ?? route('2fa.enrolar'), {
         onFinish: () => form.reset('codigo'),
     });
 };
@@ -30,7 +34,8 @@ const submit = () => {
 
         <p class="auth-status">
             Escaneá este código con Google Authenticator, Authy o cualquier app TOTP, y confirmá el primer código para activar tu
-            cuenta. Es obligatorio -- sin esto no vas a poder entrar.
+            cuenta.<template v-if="obligatorio"> Es obligatorio -- sin esto no vas a poder entrar.</template>
+            <template v-else> Desde ahora te lo vamos a pedir cada vez que inicies sesión.</template>
         </p>
 
         <div class="auth-qr-wrap" v-html="qr" />
