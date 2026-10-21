@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Auth\RecuperarPasswordController;
 use App\Http\Controllers\Auth\TotpEnrollmentController;
 use App\Http\Controllers\Auth\TwoFactorLoginController;
 use App\Http\Controllers\Auth\VerifyEmailController;
@@ -57,6 +58,11 @@ Route::middleware('guest')->group(function () {
 
     Route::get('2fa/enrolar', [TotpEnrollmentController::class, 'show'])->name('2fa.enrolar');
     Route::post('2fa/enrolar', [TotpEnrollmentController::class, 'store']);
+
+    // "¿Olvidaste tu contraseña?" probando identidad con el TOTP en vez de
+    // con un correo (no hay SMTP real) -- ver RecuperarPasswordController.
+    Route::get('recuperar-contrasena', [RecuperarPasswordController::class, 'create'])->name('password.recuperar');
+    Route::post('recuperar-contrasena', [RecuperarPasswordController::class, 'store'])->middleware('throttle:10,1');
 });
 
 Route::middleware('auth')->group(function () {
