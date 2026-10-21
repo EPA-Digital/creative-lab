@@ -90,7 +90,7 @@ const submit = () => {
                     Recordarme
                 </label>
 
-                <Link v-if="canResetPassword" :href="route('password.request')" class="auth-link">
+                <Link v-if="canResetPassword" :href="route('password.recuperar')" class="auth-link">
                     ¿Olvidaste tu contraseña?
                 </Link>
             </div>

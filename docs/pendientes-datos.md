@@ -49,6 +49,12 @@ Generado al cerrar `auth-prompt.md` (endurecimiento de auth de
   `.env.example` (scaffold de Laravel, sin usar hoy) corresponde a una
   cuenta SES real de EPA, elegir proveedor, y volver `canResetPassword`
   a `true`.
+  **Actualización 2026-10-21:** el link "¿Olvidaste tu contraseña?" del
+  login volvió a mostrarse, pero apunta a `/recuperar-contrasena`
+  (`RecuperarPasswordController`), no a `/forgot-password`: el usuario
+  prueba identidad con un código TOTP vigente o un código de
+  recuperación y elige la contraseña nueva ahí mismo, sin correo. Quien
+  no tiene TOTP confirmado sigue dependiendo del reset manual de arriba.
 
 ## Pendiente
 

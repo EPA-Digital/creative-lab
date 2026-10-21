@@ -20,14 +20,12 @@ class AuthenticatedSessionController extends Controller
     {
         return Inertia::render('Auth/Login', [
             // Sin SMTP real (MAIL_MAILER=log, ver docs/pendientes-datos.md)
-            // el link de "olvidé mi contraseña" no entrega nada -- un
-            // 'cliente' que lo usara vería el mensaje de éxito genérico
-            // de Laravel sin que llegue nada nunca, un callejón sin salida
-            // silencioso. Se oculta a propósito (pedido explícito
-            // 2026-09-24: "yo como admin la reseteas manualmente") hasta
-            // que haya un proveedor de correo real -- la recuperación por
-            // ahora es UsuariosController::resetearPassword(), gerente+.
-            'canResetPassword' => false,
+            // el link apunta a RecuperarPasswordController, que prueba
+            // identidad con el TOTP en vez de mandar un correo (pedido
+            // explícito 2026-10-21 -- antes el link estaba oculto y solo
+            // un admin podía resetear vía UsuariosController::resetearPassword(),
+            // que sigue siendo el camino para quien no tiene TOTP).
+            'canResetPassword' => true,
             'status' => session('status'),
         ]);
     }
