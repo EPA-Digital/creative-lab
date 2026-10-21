@@ -323,4 +323,41 @@ class UsuariosController extends Controller
             'linkInvitacion' => route('invitaciones.show', $tokenPlano),
         ]);
     }
+
+    /**
+     * Cliente invitado con metodo_auth=google que en realidad necesita
+     * entrar con correo/contraseña + Google Authenticator (pedido explícito
+     * 2026-10-21 -- el form de invitar nunca mandaba 'metodo', así que todos
+     * quedaban en google sin 2FA y sin poder usar la contraseña que ponían).
+     * Genera el mismo link de invitación: al aceptarlo pone contraseña,
+     * InvitacionController lo manda a enrolar el TOTP y ve sus códigos de
+     * recuperación.
+     */
+    public function activarPassword(Request $request, User $usuario): JsonResponse
+    {
+        abort_if($usuario->esCorreoEpa(), 422, 'Una cuenta @'.User::DOMINIO_EPA.' solo puede entrar con Google.');
+        abort_if($usuario->metodo_auth === User::METODO_PASSWORD, 422, 'Este usuario ya entra con contraseña + 2FA.');
+
+        $tokenPlano = Str::random(40);
+
+        $usuario->update([
+            'metodo_auth' => User::METODO_PASSWORD,
+            'motivo_password' => 'Cambiado de Google a contraseña + 2FA desde /usuarios.',
+            'google_id' => null,
+            'password' => null,
+            'totp_secret' => null,
+            'totp_confirmed_at' => null,
+            'totp_recovery_codes' => null,
+            'totp_last_timestep' => null,
+            'invitacion_token' => hash('sha256', $tokenPlano),
+            'invitacion_expira_en' => now()->addHours(72),
+        ]);
+        SesionService::invalidarSesionesDe($usuario);
+        Auditoria::registrar('usuario.metodo_cambiado_a_password', $usuario, detalle: ['cambiado_por' => $request->user()->id]);
+
+        return response()->json([
+            'ok' => true,
+            'linkInvitacion' => route('invitaciones.show', $tokenPlano),
+        ]);
+    }
 }

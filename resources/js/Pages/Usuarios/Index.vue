@@ -44,6 +44,12 @@ function esPendiente(u) {
 const nombre = ref('');
 const email = ref('');
 const paisIdsInvitar = ref([]);
+// Cómo entra el invitado (pedido explícito 2026-10-21) -- antes el form no
+// mandaba 'metodo' y el backend caía siempre en google: sin 2FA y con una
+// contraseña que el login nunca aceptaba. 'password' exige motivo (ver
+// UsuariosController::store()) y trae TOTP + códigos de recuperación.
+const metodoInvitar = ref('password');
+const motivoInvitar = ref('');
 const invitando = ref(false);
 const error = ref('');
 const ultimoLink = ref('');
@@ -60,6 +66,8 @@ async function invitar() {
             name: nombre.value.trim(),
             email: email.value.trim(),
             pais_ids: paisIdsInvitar.value,
+            metodo: metodoInvitar.value,
+            motivo: metodoInvitar.value === 'password' ? motivoInvitar.value.trim() : null,
         });
         usuarios.value.unshift({
             ...data.usuario,
@@ -72,6 +80,7 @@ async function invitar() {
         nombre.value = '';
         email.value = '';
         paisIdsInvitar.value = [];
+        motivoInvitar.value = '';
     } catch (e) {
         error.value = e.response?.data?.message || Object.values(e.response?.data?.errors || {}).flat().join(' ') || 'No se pudo invitar.';
     } finally {
@@ -112,6 +121,30 @@ async function resetearPassword(usuario) {
     } finally {
         usuario.guardando = false;
     }
+}
+
+// Cliente que quedó en google (invitado antes de que existiera el selector
+// de método) -> contraseña + Google Authenticator. Mismo Gate y mismo link
+// que resetearPassword(); al abrirlo pone contraseña, escanea el QR y ve
+// sus códigos de recuperación.
+async function activarPassword(usuario) {
+    if (!confirm(`¿Pasar a ${usuario.name} a correo/contraseña + Google Authenticator? Deja de poder entrar con Google y va a necesitar el link nuevo -- se lo mandás vos por otro canal (Slack/WhatsApp).`)) return;
+    usuario.guardando = true;
+    usuario.errorFila = '';
+    try {
+        const { data } = await axios.post(`/usuarios/${usuario.id}/activar-password`);
+        usuario.metodo_auth = 'password';
+        ultimoLink.value = data.linkInvitacion;
+        avisoPendiente.value = false;
+    } catch (e) {
+        usuario.errorFila = e.response?.data?.message || 'No se pudo cambiar el método de acceso.';
+    } finally {
+        usuario.guardando = false;
+    }
+}
+
+function esCorreoEpa(u) {
+    return u.email?.toLowerCase().endsWith('@epa.digital');
 }
 
 // "TOTP perdido" -- mismo Gate. El usuario re-enrola en su próximo login
@@ -210,13 +243,26 @@ const ROL_LABEL = {
             <h1>Usuarios</h1>
             <p class="hint">
                 Cuentas @epa.digital entran solo con Google (acceso completo, sin invitación). Acá invitás gente sin
-                ese dominio -- entran con correo/contraseña, solo lectura, nunca pueden modificar nada. Cada
+                ese dominio -- entran con correo/contraseña + Google Authenticator (o con su cuenta de Google), solo
+                lectura, nunca pueden modificar nada. Cada
                 usuario solo ve los países que tenga asignados abajo -- incluido un director.
             </p>
 
             <form class="invitar-form" @submit.prevent="invitar">
                 <input v-model="nombre" type="text" placeholder="Nombre" required />
                 <input v-model="email" type="email" placeholder="correo@cliente.com" required />
+                <select v-model="metodoInvitar" aria-label="Cómo entra">
+                    <option value="password">Contraseña + Google Authenticator</option>
+                    <option value="google">Cuenta de Google</option>
+                </select>
+                <input
+                    v-if="metodoInvitar === 'password'"
+                    v-model="motivoInvitar"
+                    type="text"
+                    placeholder="Motivo (ej. cliente sin cuenta de Google)"
+                    maxlength="500"
+                    required
+                />
                 <span class="paises-label">Países que puede ver:</span>
                 <div class="paises-chips">
                     <label v-for="p in paises" :key="p.id" class="chip" :class="{ activo: paisIdsInvitar.includes(p.id) }">
@@ -251,7 +297,10 @@ const ROL_LABEL = {
                 <tbody>
                     <tr v-for="u in usuarios" :key="u.id">
                         <td>{{ u.name }}</td>
-                        <td>{{ u.email }}</td>
+                        <td>
+                            {{ u.email }}
+                            <span class="metodo mono">{{ u.metodo_auth === 'password' ? 'Contraseña + 2FA' : 'Google' }}</span>
+                        </td>
                         <td>
                             <select
                                 v-if="u.id !== miId && !esPendiente(u)"
@@ -361,6 +410,15 @@ const ROL_LABEL = {
                                     Resetear TOTP
                                 </button>
                                 <button
+                                    v-if="u.metodo_auth === 'google' && !esCorreoEpa(u) && u.id !== miId && puedeAprobar"
+                                    type="button"
+                                    class="btn-guardar"
+                                    :disabled="u.guardando"
+                                    @click="activarPassword(u)"
+                                >
+                                    Activar contraseña + 2FA
+                                </button>
+                                <button
                                     v-if="u.id !== miId && esSuperadmin"
                                     type="button"
                                     class="btn-eliminar"
@@ -404,13 +462,22 @@ h1 {
     gap: 8px;
     margin-bottom: 8px;
 }
-.invitar-form input {
+.invitar-form input,
+.invitar-form select {
     flex: 1;
     padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface);
     color: var(--text);
+}
+.metodo {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-faint);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 .paises-label {
     display: flex;

@@ -120,6 +120,10 @@ Route::middleware('auth')->group(function () {
             // "Olvidé mi contraseña" sin SMTP real (pedido explícito
             // 2026-09-24) -- mismo Gate, mismo patrón que resetear-totp.
             Route::post('/usuarios/{usuario}/resetear-password', [UsuariosController::class, 'resetearPassword'])->name('usuarios.resetear-password');
+
+            // Cliente que quedó en metodo_auth=google -> contraseña + TOTP
+            // (pedido explícito 2026-10-21), mismo Gate y mismo link.
+            Route::post('/usuarios/{usuario}/activar-password', [UsuariosController::class, 'activarPassword'])->name('usuarios.activar-password');
         });
     });
 

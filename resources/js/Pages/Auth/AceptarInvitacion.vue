@@ -13,6 +13,7 @@ const props = defineProps({
     token: { type: String, required: true },
     nombre: { type: String, required: true },
     email: { type: String, required: true },
+    metodo: { type: String, default: 'password' },
 });
 
 const form = useForm({
@@ -34,6 +35,11 @@ const submit = () => {
         <h1 class="auth-title">Hola, {{ nombre }}</h1>
 
         <p class="auth-status">Estás por activar el acceso de <strong>{{ email }}</strong>. Elige una contraseña para entrar.</p>
+
+        <p v-if="metodo === 'password'" class="auth-status">
+            Después vas a configurar la verificación en dos pasos: necesitás una app de autenticación en tu celular
+            (Google Authenticator, Microsoft Authenticator o similar) y vas a recibir códigos de recuperación para guardar.
+        </p>
 
         <form class="auth-form" @submit.prevent="submit">
             <div class="auth-field">
