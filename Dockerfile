@@ -31,7 +31,10 @@ FROM php:8.4-fpm-alpine
 
 # ffmpeg: versión ligera de los videos (VideoCreativoService).
 # gd + zip: reportes en Excel/PDF con imágenes (ReporteCreativosService).
-RUN apk add --no-cache nginx supervisor icu-dev libzip-dev oniguruma-dev ffmpeg \
+# apk upgrade: parches de seguridad del sistema (openssl, curl, musl...)
+# publicados después de la última imagen base, en cada build.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache nginx supervisor icu-dev libzip-dev oniguruma-dev ffmpeg \
         libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev \
     && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
     && docker-php-ext-install pdo_mysql mbstring bcmath opcache intl gd zip \
