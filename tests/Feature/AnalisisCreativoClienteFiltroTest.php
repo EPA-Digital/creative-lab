@@ -56,7 +56,7 @@ class AnalisisCreativoClienteFiltroTest extends TestCase
         $cliente = User::factory()->create(['rol' => 'cliente']);
         $cliente->paises()->attach($pais->id);
 
-        $response = $this->actingAs($cliente)->get('/pais/ecuador/analisis');
+        $response = $this->actingAs($cliente)->get('/tada/pais/ecuador/analisis');
 
         $response->assertInertia(fn ($page) => $page
             ->has('creativos', 1)
@@ -72,7 +72,7 @@ class AnalisisCreativoClienteFiltroTest extends TestCase
         $director = User::factory()->create(['rol' => 'director']);
         $director->paises()->attach($pais->id);
 
-        $response = $this->actingAs($director)->get('/pais/ecuador/analisis');
+        $response = $this->actingAs($director)->get('/tada/pais/ecuador/analisis');
 
         $response->assertInertia(fn ($page) => $page->has('creativos', 2));
     }

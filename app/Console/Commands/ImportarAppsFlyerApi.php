@@ -3,10 +3,13 @@
 namespace App\Console\Commands;
 
 use App\Models\AppsflyerApp;
+use App\Models\Cuenta;
 use App\Models\Pais;
 use App\Services\Ingesta\ImportadorDatos;
+use App\Support\CuentaActual;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
+use RuntimeException;
 
 /**
  * Reemplaza el paso manual de "descargar el CSV de AppsFlyer y subirlo" por
@@ -21,6 +24,10 @@ use InvalidArgumentException;
  * modo recurrente nunca pasa totales por diseño, no por descuido, y
  * ImportadorDatos::resolverNcOrdersFinal siempre tiene una razón clara para
  * preservar en vez de recalcular.
+ *
+ * Multi-cuenta: con {pais} explícito corre en --cuenta (TaDa si se omite,
+ * como siempre). Sin {pais} recorre las cuentas activas con AppsFlyer y
+ * token propio -- una cuenta sin token se salta con aviso, no es un error.
  */
 class ImportarAppsFlyerApi extends Command
 {
@@ -32,7 +39,8 @@ class ImportarAppsFlyerApi extends Command
         {--orders-total-real-meta= : Orders total real de Meta para el rango (solo válido con {pais} explícito)}
         {--nc-total-real-tiktok= : NC total real de TikTok para el rango (solo válido con {pais} explícito)}
         {--orders-total-real-tiktok= : Orders total real de TikTok para el rango (solo válido con {pais} explícito)}
-        {--buffer-dias= : Override puntual del buffer de atribución de AppsFlyer configurado}';
+        {--buffer-dias= : Override puntual del buffer de atribución de AppsFlyer configurado}
+        {--cuenta= : Slug de la cuenta -- con país, TaDa si se omite; sin país, todas las cuentas activas con token}';
 
     protected $description = 'Trae AppsFlyer vía API (en vez de CSV manual) + costos de Meta/TikTok, calcula venta real y persiste en creativos/resultados';
 
@@ -59,15 +67,51 @@ class ImportarAppsFlyerApi extends Command
                 }
             }
 
-            return $this->correrTodosLosPaises();
+            return $this->correrTodasLasCuentas();
         }
 
-        return $this->correrUnPais($paisSlug, [
+        $cuenta = Cuenta::where('slug', $this->option('cuenta') ?: Cuenta::SLUG_TADA)->first();
+        if (! $cuenta) {
+            $this->error("No existe la cuenta \"{$this->option('cuenta')}\".");
+
+            return self::FAILURE;
+        }
+
+        return CuentaActual::usar($cuenta, fn () => $this->correrUnPais($paisSlug, [
             'nc-total-real-meta' => $this->option('nc-total-real-meta'),
             'orders-total-real-meta' => $this->option('orders-total-real-meta'),
             'nc-total-real-tiktok' => $this->option('nc-total-real-tiktok'),
             'orders-total-real-tiktok' => $this->option('orders-total-real-tiktok'),
-        ]);
+        ]));
+    }
+
+    private function correrTodasLasCuentas(): int
+    {
+        $cuentas = Cuenta::where('activa', true)->where('fuente_mmp', true)
+            ->when($this->option('cuenta'), fn ($q, $slug) => $q->where('slug', $slug))
+            ->orderBy('id')
+            ->get();
+
+        if ($cuentas->isEmpty()) {
+            $this->warn('Ninguna cuenta activa usa AppsFlyer -- nada para correr.');
+
+            return self::SUCCESS;
+        }
+
+        $resultado = self::SUCCESS;
+        foreach ($cuentas as $cuenta) {
+            $this->line("=== {$cuenta->nombre} ===");
+            if (! $cuenta->credencial('appsflyer')?->listaParaImportar()) {
+                $this->warn("{$cuenta->nombre} no tiene token de AppsFlyer ni BigQuery configurado -- se salta (agrégalo en Cuentas → editar).");
+
+                continue;
+            }
+            if (CuentaActual::usar($cuenta, fn () => $this->correrTodosLosPaises()) !== self::SUCCESS) {
+                $resultado = self::FAILURE;
+            }
+        }
+
+        return $resultado;
     }
 
     /**
@@ -84,12 +128,14 @@ class ImportarAppsFlyerApi extends Command
         $this->info("Trayendo AppsFlyer vía API + costos de Meta/TikTok para \"{$paisSlug}\" ({$desde}..{$hasta})...");
 
         try {
+            // Sin token/eventos en la cuenta, ImportadorDatos lanza
+            // RuntimeException con el mensaje para el usuario.
             $resumen = ImportadorDatos::importarDesdeApi(
                 $paisSlug, $desde, $hasta,
                 $totales['nc-total-real-meta'], $totales['orders-total-real-meta'],
                 $totales['nc-total-real-tiktok'], $totales['orders-total-real-tiktok'],
             );
-        } catch (InvalidArgumentException $e) {
+        } catch (InvalidArgumentException|RuntimeException $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;
@@ -118,9 +164,12 @@ class ImportarAppsFlyerApi extends Command
         [$desde, $hasta] = $this->resolverRango();
         $sinTotales = ['nc-total-real-meta' => null, 'orders-total-real-meta' => null, 'nc-total-real-tiktok' => null, 'orders-total-real-tiktok' => null];
 
+        // Solo los países de la cuenta actual (cuenta_pais).
+        $codigosCuenta = Cuenta::findOrFail(CuentaActual::id())->paises()->pluck('codigo')->all();
+
         $paisesElegibles = collect(config('paises'))
-            ->filter(function (array $c) {
-                if (! ($c['habilitado'] ?? false)) {
+            ->filter(function (array $c) use ($codigosCuenta) {
+                if (! ($c['habilitado'] ?? false) || ! in_array($c['codigo'], $codigosCuenta, true)) {
                     return false;
                 }
                 $pais = Pais::where('codigo', $c['codigo'])->first();

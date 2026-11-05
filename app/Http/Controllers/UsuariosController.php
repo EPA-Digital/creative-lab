@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Middleware\EnsureAccesoPais;
+use App\Http\Controllers\Concerns\ResuelvePaisDeContexto;
 use App\Models\Pais;
 use App\Models\User;
 use App\Services\Auditoria;
@@ -38,7 +38,9 @@ use Inertia\Response;
  *
  * Todo pais_ids (acá y en aprobar()) queda limitado a los países que el
  * propio actor tiene asignados -- nadie puede otorgar acceso a un país
- * que ni él mismo puede ver.
+ * que ni él mismo puede ver. Lo mismo con cuenta_ids (multi-cuenta,
+ * 2026-11-04); además, al guardar se conservan las cuentas del usuario que
+ * el actor no ve (no puede quitar lo que no puede otorgar).
  *
  * Sin envío de correo automático a propósito -- MAIL_MAILER=log hoy no
  * entrega nada real y montar un transporte real es alcance aparte. store()
@@ -47,6 +49,8 @@ use Inertia\Response;
  */
 class UsuariosController extends Controller
 {
+    use ResuelvePaisDeContexto;
+
     private const ROLES = ['superadmin', 'director', 'gerente', 'senior', 'junior', 'cliente'];
 
     private const ROLES_SOLO_SUPERADMIN = ['superadmin', 'director'];
@@ -56,45 +60,36 @@ class UsuariosController extends Controller
         $yo = $request->user();
 
         $usuarios = User::orderByDesc('id')
-            ->with('paises:id,codigo,nombre')
-            ->get(['id', 'name', 'email', 'rol', 'activo', 'metodo_auth', 'invitacion_token', 'creado_por', 'pais_ids_propuestos'])
+            ->with(['paises:id,codigo,nombre', 'cuentas:id,slug,nombre,color,logo_url,actualizado_en'])
+            ->get()
             // Jerarquía (ver User::puedeGestionarA()) -- solo lo que está
             // estrictamente por debajo, más la propia fila (para verse a
             // sí mismo en la lista, nunca para autoadministrarse).
             ->filter(fn (User $u) => $u->id === $yo->id || $yo->puedeGestionarA($u))
-            ->values();
-
-        $paises = Pais::orderBy('nombre')->get(['id', 'codigo', 'nombre']);
+            ->values()
+            ->map(fn (User $u) => [
+                ...$u->only(['id', 'name', 'email', 'rol', 'activo', 'metodo_auth', 'pais_ids_propuestos', 'cuenta_ids_propuestos']),
+                ...$u->perfilPublico(),
+                'pendiente' => $u->estaPendienteDeAprobacion(),
+                // Invitación o link de contraseña sin usar todavía.
+                'invitado' => $u->invitacion_token !== null,
+                'tiene_2fa' => $u->tieneTotpConfirmado(),
+                'es_dominio_epa' => str_ends_with(Str::lower($u->email), '@'.User::DOMINIO_EPA),
+                'editable' => $yo->puedeGestionarA($u),
+                'paises' => $u->paises->map(fn (Pais $p) => $p->only(['id', 'codigo', 'nombre']))->values(),
+                'cuentas' => $u->cuentas->map(fn ($c) => ['id' => $c->id, 'slug' => $c->slug, 'nombre' => $c->nombre, 'color' => $c->color, 'logo' => $c->logoSrc()])->values(),
+            ]);
 
         return Inertia::render('Usuarios/Index', [
             'usuarios' => $usuarios,
-            'paises' => $paises,
+            'paises' => Pais::orderBy('nombre')->get(['id', 'codigo', 'nombre']),
+            // Solo lo que quien edita puede otorgar (ver store()/actualizarRolYPaises()).
+            'paisesOtorgables' => $yo->paises()->pluck('paises.id'),
+            'cuentas' => $yo->cuentas()->orderBy('nombre')->get(['cuentas.id', 'slug', 'nombre', 'color', 'logo_url', 'actualizado_en'])
+                ->map(fn ($c) => ['id' => $c->id, 'slug' => $c->slug, 'nombre' => $c->nombre, 'color' => $c->color, 'logo' => $c->logoSrc()]),
             'roles' => self::ROLES,
             'pais' => $this->paisDeContexto($request),
         ]);
-    }
-
-    /**
-     * '/usuarios' es transversal a países, pero DashboardLayout.vue (el rail
-     * de nav) necesita un país de contexto para armar sus hrefs. Antes era
-     * siempre el primer país habilitado (Ecuador), así que entrar a
-     * Usuarios desde Perú "cambiaba de país" (pedido explícito
-     * 2026-10-06). Ahora: el último país visitado en la sesión (lo guarda
-     * EnsureAccesoPais), si el usuario todavía tiene acceso; si no, el
-     * primer país habilitado que sí tenga asignado.
-     */
-    private function paisDeContexto(Request $request): string
-    {
-        $codigosConAcceso = $request->user()->paises()->pluck('codigo')->all();
-        $habilitados = collect(config('paises'))->filter(fn (array $c) => $c['habilitado'] ?? false);
-        $conAcceso = $habilitados->filter(fn (array $c) => in_array($c['codigo'], $codigosConAcceso, true));
-
-        $ultimo = $request->session()->get(EnsureAccesoPais::SESION_PAIS_ACTUAL);
-        if ($ultimo && $conAcceso->has($ultimo)) {
-            return $ultimo;
-        }
-
-        return $conAcceso->keys()->first() ?? $habilitados->keys()->first() ?? 'ecuador';
     }
 
     public function store(Request $request): JsonResponse
@@ -111,6 +106,8 @@ class UsuariosController extends Controller
                 // tiene asignado.
                 Rule::in($yo->paises()->pluck('paises.id')),
             ],
+            'cuenta_ids' => ['array'],
+            'cuenta_ids.*' => ['integer', Rule::in($yo->cuentas()->pluck('cuentas.id'))],
             // metodo/motivo (auth-prompt.md Fase 3) -- default google
             // (opción preferida). Elegir 'password' exige guardar el
             // motivo -- ese usuario va a tener TOTP obligatorio.
@@ -148,16 +145,20 @@ class UsuariosController extends Controller
             'invitacion_expira_en' => now()->addHours(72),
             'creado_por' => $yo->id,
             'pais_ids_propuestos' => $esPropuesta ? ($data['pais_ids'] ?? []) : null,
+            'cuenta_ids_propuestos' => $esPropuesta ? ($data['cuenta_ids'] ?? []) : null,
         ]);
 
         if (! $esPropuesta && ! empty($data['pais_ids'])) {
             $usuario->paises()->sync($data['pais_ids']);
         }
+        if (! $esPropuesta && ! empty($data['cuenta_ids'])) {
+            $usuario->cuentas()->sync($data['cuenta_ids']);
+        }
 
         Auditoria::registrar('invitacion.creada', $usuario, detalle: ['creado_por' => $yo->id, 'metodo' => $metodo, 'pendiente' => $esPropuesta]);
 
         return response()->json([
-            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo', 'pais_ids_propuestos', 'metodo_auth']), 'paises' => $usuario->paises],
+            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo', 'pais_ids_propuestos', 'cuenta_ids_propuestos', 'metodo_auth']), 'paises' => $usuario->paises, 'cuentas' => $usuario->cuentas()->get(['cuentas.id', 'cuentas.nombre'])],
             'linkInvitacion' => route('invitaciones.show', $tokenPlano),
             'pendiente' => $esPropuesta,
         ], 201);
@@ -218,6 +219,8 @@ class UsuariosController extends Controller
             'rol' => ['required', Rule::in(self::ROLES)],
             'pais_ids' => ['array'],
             'pais_ids.*' => ['integer', Rule::in($yo->paises()->pluck('paises.id'))],
+            'cuenta_ids' => ['array'],
+            'cuenta_ids.*' => ['integer', Rule::in($yo->cuentas()->pluck('cuentas.id'))],
         ]);
 
         // Solo superadmin puede otorgar 'director'/'superadmin' -- ni
@@ -233,15 +236,19 @@ class UsuariosController extends Controller
         $rolAnterior = $usuario->rol;
         $usuario->update(['rol' => $data['rol']]);
         $usuario->paises()->sync($data['pais_ids'] ?? []);
+        if (array_key_exists('cuenta_ids', $data)) {
+            $this->sincronizarCuentas($yo, $usuario, $data['cuenta_ids']);
+        }
         Auditoria::registrar('usuario.rol_cambiado', $usuario, detalle: [
             'cambiado_por' => $yo->id,
             'rol_anterior' => $rolAnterior,
             'rol_nuevo' => $data['rol'],
             'pais_ids' => $data['pais_ids'] ?? [],
+            'cuenta_ids' => $data['cuenta_ids'] ?? null,
         ]);
 
         return response()->json([
-            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
+            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises, 'cuentas' => $usuario->cuentas()->get(['cuentas.id', 'cuentas.nombre'])],
         ]);
     }
 
@@ -260,17 +267,35 @@ class UsuariosController extends Controller
         $data = $request->validate([
             'pais_ids' => ['array'],
             'pais_ids.*' => ['integer', Rule::in($yo->paises()->pluck('paises.id'))],
+            'cuenta_ids' => ['array'],
+            'cuenta_ids.*' => ['integer', Rule::in($yo->cuentas()->pluck('cuentas.id'))],
         ]);
 
         $paisIds = $data['pais_ids'] ?? $usuario->pais_ids_propuestos ?? [];
+        // Las propuestas también se limitan a las cuentas de quien aprueba.
+        $cuentaIds = $data['cuenta_ids'] ?? array_values(array_intersect($usuario->cuenta_ids_propuestos ?? [], $yo->cuentas()->pluck('cuentas.id')->all()));
 
-        $usuario->update(['activo' => true, 'pais_ids_propuestos' => null]);
+        $usuario->update(['activo' => true, 'pais_ids_propuestos' => null, 'cuenta_ids_propuestos' => null]);
         $usuario->paises()->sync($paisIds);
-        Auditoria::registrar('invitacion.aprobada', $usuario, detalle: ['aprobado_por' => $yo->id, 'pais_ids' => $paisIds]);
+        $usuario->cuentas()->sync($cuentaIds);
+        Auditoria::registrar('invitacion.aprobada', $usuario, detalle: ['aprobado_por' => $yo->id, 'pais_ids' => $paisIds, 'cuenta_ids' => $cuentaIds]);
 
         return response()->json([
-            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises],
+            'usuario' => [...$usuario->only(['id', 'name', 'email', 'rol', 'activo']), 'paises' => $usuario->paises, 'cuentas' => $usuario->cuentas()->get(['cuentas.id', 'cuentas.nombre'])],
         ]);
+    }
+
+    /**
+     * Reemplaza las cuentas que el actor puede otorgar y conserva las que no
+     * ve -- un gerente con solo TaDa no le quita Openbank a nadie.
+     *
+     * @param  list<int>  $cuentaIds
+     */
+    private function sincronizarCuentas(User $yo, User $usuario, array $cuentaIds): void
+    {
+        $mias = $yo->cuentas()->pluck('cuentas.id')->all();
+        $fueraDeMiAlcance = array_diff($usuario->cuentas()->pluck('cuentas.id')->all(), $mias);
+        $usuario->cuentas()->sync([...$fueraDeMiAlcance, ...$cuentaIds]);
     }
 
     /**

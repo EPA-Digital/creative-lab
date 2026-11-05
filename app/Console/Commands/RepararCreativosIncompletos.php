@@ -65,7 +65,7 @@ class RepararCreativosIncompletos extends Command
 
         // Todas las cuentas activas del país (ver CuentaPublicitaria) -- un
         // ad solo existe en una, en las demás simplemente no aparece.
-        $cuentasMeta = CuentaPublicitaria::activasPara($pais->id, 'meta')->pluck('cuenta_id');
+        $cuentasMeta = CuentaPublicitaria::activasPara($pais->id, 'meta')->pluck('id_externo');
         $meta = $incompletos->where('plataforma', 'meta');
         if ($meta->isNotEmpty() && $cuentasMeta->isNotEmpty()) {
             $this->line("Meta: reintentando {$meta->count()} ad(s)...");
@@ -96,7 +96,7 @@ class RepararCreativosIncompletos extends Command
             }
         }
 
-        $cuentasTiktok = CuentaPublicitaria::activasPara($pais->id, 'tiktok')->pluck('cuenta_id');
+        $cuentasTiktok = CuentaPublicitaria::activasPara($pais->id, 'tiktok')->pluck('id_externo');
         $tiktok = $incompletos->where('plataforma', 'tiktok');
         if ($tiktok->isNotEmpty() && $cuentasTiktok->isNotEmpty()) {
             $this->line("TikTok: reintentando {$tiktok->count()} ad(s)...");

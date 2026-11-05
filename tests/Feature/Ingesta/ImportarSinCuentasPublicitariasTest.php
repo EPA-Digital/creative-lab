@@ -27,8 +27,8 @@ it('corta con un error claro si ninguna plataforma con anuncios tiene cuenta', f
 
 it('detecta solo las plataformas que tienen anuncios y ninguna cuenta activa', function () {
     $pe = Pais::create(['codigo' => 'PE', 'nombre' => 'Perú']);
-    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'meta', 'cuenta_id' => '1', 'tipo' => 'tada']);
-    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'tiktok', 'cuenta_id' => '2', 'tipo' => 'tada', 'activa' => false]);
+    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'meta', 'id_externo' => '1', 'tipo' => 'tada']);
+    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'tiktok', 'id_externo' => '2', 'tipo' => 'tada', 'activa' => false]);
     $sinCuenta = fn (array $clasificados) => (new ReflectionMethod(ImportadorDatos::class, 'plataformasSinCuenta'))->invoke(null, $pe, $clasificados);
 
     expect($sinCuenta(['meta' => [['adId' => 'a']], 'tiktok' => [['adId' => 'b']]]))->toBe(['tiktok']);
@@ -43,7 +43,7 @@ it('avisa en el preview qué plataformas no tienen cuenta antes de importar', fu
     $user->paises()->attach($pe->id);
 
     $this->actingAs($user)
-        ->post('/pais/peru/importar/previsualizar', ['archivo' => new UploadedFile(CSV_FIXTURE, 'Data.csv', 'text/csv', null, true)], ['Accept' => 'application/json'])
+        ->post('/tada/pais/peru/importar/previsualizar', ['archivo' => new UploadedFile(CSV_FIXTURE, 'Data.csv', 'text/csv', null, true)], ['Accept' => 'application/json'])
         ->assertOk()
         ->assertJsonPath('plataformasSinCuenta', ['meta', 'tiktok']);
 });

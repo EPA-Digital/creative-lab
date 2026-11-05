@@ -106,7 +106,7 @@ class ReporteCreativosTest extends TestCase
     {
         $this->sembrar();
 
-        $respuesta = $this->actingAs($this->user)->get('/pais/ecuador/importar/mensual/2026-09/exportar?formato=xlsx&agrupar=arte');
+        $respuesta = $this->actingAs($this->user)->get('/tada/pais/ecuador/importar/mensual/2026-09/exportar?formato=xlsx&agrupar=arte');
 
         $respuesta->assertOk()->assertDownload('reporte-creativos-ecuador-2026-09.xlsx');
         $hoja = IOFactory::load($respuesta->baseResponse->getFile()->getPathname())->getActiveSheet();
@@ -119,7 +119,7 @@ class ReporteCreativosTest extends TestCase
     {
         $this->sembrar();
 
-        $respuesta = $this->actingAs($this->user)->get('/pais/ecuador/importar/mensual/2026-09/exportar?formato=pdf');
+        $respuesta = $this->actingAs($this->user)->get('/tada/pais/ecuador/importar/mensual/2026-09/exportar?formato=pdf');
 
         $respuesta->assertOk()->assertDownload('reporte-creativos-ecuador-2026-09.pdf');
         $this->assertStringStartsWith('%PDF', file_get_contents($respuesta->baseResponse->getFile()->getPathname()));
@@ -130,6 +130,6 @@ class ReporteCreativosTest extends TestCase
         $cliente = User::factory()->create(['rol' => 'cliente']);
         $cliente->paises()->attach($this->ec->id);
 
-        $this->actingAs($cliente)->get('/pais/ecuador/importar/mensual/2026-09/exportar?formato=xlsx')->assertForbidden();
+        $this->actingAs($cliente)->get('/tada/pais/ecuador/importar/mensual/2026-09/exportar?formato=xlsx')->assertForbidden();
     }
 }

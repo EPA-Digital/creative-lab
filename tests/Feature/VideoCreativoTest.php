@@ -36,7 +36,7 @@ class VideoCreativoTest extends TestCase
         parent::setUp();
         config(['services.meta.access_token' => 't', 'services.tiktok.access_token' => 't']);
         $this->ec = Pais::create(['codigo' => 'EC', 'nombre' => 'Ecuador']);
-        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'tiktok', 'cuenta_id' => '733', 'tipo' => 'tada']);
+        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'tiktok', 'id_externo' => '733', 'tipo' => 'tada']);
         $this->user = User::factory()->create(['rol' => 'cliente']);
         $this->user->paises()->attach($this->ec->id);
     }
@@ -53,7 +53,7 @@ class VideoCreativoTest extends TestCase
         $this->app->instance(ImagenFirmadaService::class, $firmas);
         $c = $this->creativo(['ad_id' => '1', 'plataforma' => 'tiktok', 'video_url' => 'https://storage.googleapis.com/test-bucket/creative-videos/x.mp4']);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/creativos/{$c->id}/video")
             ->assertOk()
             ->assertJson(['tipo' => 'archivo', 'url' => 'https://storage.googleapis.com/test-bucket/creative-videos/x.mp4?firma']);
     }
@@ -64,9 +64,9 @@ class VideoCreativoTest extends TestCase
         Http::fake(['business-api.tiktok.com/*/file/video/ad/info/*' => Http::response(['code' => 0, 'data' => ['list' => [['video_id' => 'v1', 'preview_url' => 'https://v16.tiktokcdn.com/v1.mp4']]]])]);
         $c = $this->creativo(['ad_id' => '2', 'plataforma' => 'tiktok', 'video_id' => 'v1']);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/creativos/{$c->id}/video")
             ->assertOk()->assertJson(['tipo' => 'directo', 'url' => 'https://v16.tiktokcdn.com/v1.mp4']);
-        $this->getJson("/pais/ecuador/creativos/{$c->id}/video")->assertOk();
+        $this->getJson("/tada/pais/ecuador/creativos/{$c->id}/video")->assertOk();
 
         Queue::assertPushed(GuardarVideoCreativo::class, 1);
     }
@@ -81,7 +81,7 @@ class VideoCreativoTest extends TestCase
         });
         $c = $this->creativo(['ad_id' => '3', 'plataforma' => 'tiktok']);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")->assertJsonPath('tipo', 'directo');
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/creativos/{$c->id}/video")->assertJsonPath('tipo', 'directo');
         $this->assertSame('v3', $c->fresh()->video_id);
     }
 
@@ -111,7 +111,7 @@ class VideoCreativoTest extends TestCase
         $this->fakeMeta([['id' => 'p1', 'access_token' => 'token-pagina']]);
         $c = $this->creativo(['ad_id' => '444', 'plataforma' => 'meta']);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/creativos/{$c->id}/video")
             ->assertOk()->assertJson(['tipo' => 'directo', 'url' => 'https://video.fbcdn.net/999.mp4']);
         $this->assertSame('999', $c->fresh()->video_id);
         Queue::assertPushed(GuardarVideoCreativo::class, 1);
@@ -122,7 +122,7 @@ class VideoCreativoTest extends TestCase
         $this->fakeMeta([]);
         $c = $this->creativo(['ad_id' => '444', 'plataforma' => 'meta']);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/creativos/{$c->id}/video")
             ->assertOk()->assertJson(['tipo' => 'enlace', 'url' => 'https://www.facebook.com/reel/999/']);
         $this->assertSame('https://www.facebook.com/reel/999/', $c->fresh()->video_permalink);
     }
@@ -132,7 +132,7 @@ class VideoCreativoTest extends TestCase
         Http::fake(['*' => Http::response(['code' => 0, 'data' => ['list' => []]])]);
         $c = $this->creativo(['ad_id' => '5', 'plataforma' => 'tiktok']);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$c->id}/video")
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/creativos/{$c->id}/video")
             ->assertNotFound()->assertJsonPath('message', 'Este video ya no está disponible en la plataforma.');
     }
 
@@ -141,7 +141,7 @@ class VideoCreativoTest extends TestCase
         $mx = Pais::create(['codigo' => 'MX', 'nombre' => 'México']);
         $ajeno = Creativo::create(['pais_id' => $mx->id, 'ad_id' => '6', 'nombre_completo' => 'X', 'plataforma' => 'tiktok', 'tipo_cuenta' => 'DTC']);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/creativos/{$ajeno->id}/video")->assertNotFound();
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/creativos/{$ajeno->id}/video")->assertNotFound();
     }
 
     public function test_sin_ffmpeg_no_intenta_guardar(): void

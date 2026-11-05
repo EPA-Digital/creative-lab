@@ -30,7 +30,7 @@ class PaisDeContextoTest extends TestCase
 
     public function test_usuarios_mantiene_el_ultimo_pais_visitado(): void
     {
-        $this->actingAs($this->gerente)->get('/pais/peru/analisis')->assertOk();
+        $this->actingAs($this->gerente)->get('/tada/pais/peru/analisis')->assertOk();
 
         $this->get('/usuarios')
             ->assertInertia(fn ($page) => $page->component('Usuarios/Index')->where('pais', 'peru'));
@@ -47,7 +47,7 @@ class PaisDeContextoTest extends TestCase
 
     public function test_si_ya_no_tiene_acceso_al_ultimo_pais_no_lo_usa(): void
     {
-        $this->actingAs($this->gerente)->get('/pais/peru/analisis')->assertOk();
+        $this->actingAs($this->gerente)->get('/tada/pais/peru/analisis')->assertOk();
         $this->gerente->paises()->detach(Pais::where('codigo', 'PE')->value('id'));
 
         $this->get('/usuarios')->assertInertia(fn ($page) => $page->where('pais', 'ecuador'));

@@ -76,7 +76,10 @@ class EnriquecedorCostosMeta
                 // sin ninguna conversión atribuida todavía) -- sin el
                 // nombre acá, esos ads no tienen nada de qué sacar
                 // nombre común/funnel/tipo de cuenta del lado del import.
-                'fields' => 'ad_id,ad_name,campaign_name,spend,impressions,inline_link_clicks',
+                // adset_name/objective: los usan las reglas de clasificación
+                // de cada cuenta (ReglasNomenclatura) -- conjunto y funnel de
+                // respaldo cuando el nombre no lo dice.
+                'fields' => 'ad_id,ad_name,campaign_name,adset_name,objective,spend,impressions,inline_link_clicks',
                 'time_range' => json_encode(['since' => $desde, 'until' => $hasta]),
                 'limit' => '500',
             ];
@@ -90,6 +93,8 @@ class EnriquecedorCostosMeta
                     'adId' => $row['ad_id'],
                     'adName' => $row['ad_name'] ?? '',
                     'campaignName' => $row['campaign_name'] ?? '',
+                    'conjuntoName' => ($row['adset_name'] ?? '') ?: null,
+                    'objetivo' => ($row['objective'] ?? '') ?: null,
                     'cost' => (float) ($row['spend'] ?? 0),
                     'impressions' => (int) ($row['impressions'] ?? 0),
                     'clicks' => (int) ($row['inline_link_clicks'] ?? 0),

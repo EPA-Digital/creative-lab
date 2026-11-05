@@ -6,6 +6,7 @@ use App\Models\Pais;
 use App\Models\Resultado;
 use App\Services\Ia\AnthropicApiClient;
 use App\Services\Ia\EvaluadorCreativoService;
+use App\Support\CuentaActual;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -28,6 +29,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * necesita.
  */
 beforeEach(function () {
+    // Esquema a mano sin la tabla cuentas: basta con un cuenta_id fijo.
+    CuentaActual::fijar(1);
+
     Schema::create('paises', function (Blueprint $table) {
         $table->increments('id');
         $table->string('codigo', 3)->unique();
@@ -35,6 +39,7 @@ beforeEach(function () {
     });
     Schema::create('creativos', function (Blueprint $table) {
         $table->increments('id');
+        $table->unsignedInteger('cuenta_id')->default(1);
         $table->unsignedInteger('pais_id');
         $table->string('ad_id', 50);
         $table->string('nombre_comun', 255)->nullable();

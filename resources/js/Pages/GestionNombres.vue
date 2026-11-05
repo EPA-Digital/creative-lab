@@ -1,4 +1,5 @@
 <script setup>
+import { urlPais } from '@/rutas';
 import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -6,7 +7,7 @@ import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 
 // Taxonomía legible (2026-08-27, ver plan del rediseño de Creativos/
 // Inteligencia) -- panel de gestión completo, mismo endpoint de guardado
-// (POST /pais/{pais}/creativos/{creativo}/nombre) que el lápiz inline de
+// (POST /{cuenta}/pais/{pais}/creativos/{creativo}/nombre) que el lápiz inline de
 // CreativeModal.vue. Trae TODOS los creativos del país (GestionNombres-
 // Controller::index no acota a un mes -- es gestión de identidad, no de
 // rendimiento).
@@ -49,7 +50,7 @@ async function guardarFila(fila) {
     fila.guardando = true;
     fila.error = '';
     try {
-        const { data } = await axios.post(`/pais/${props.pais}/creativos/${fila.id}/nombre`, {
+        const { data } = await axios.post(`${urlPais(props.pais)}/creativos/${fila.id}/nombre`, {
             nombre_corregido: valor,
         });
         fila.nombreAmigable = data.nombre_corregido;
@@ -77,7 +78,7 @@ async function guardarFila(fila) {
                             el nombre técnico original nunca se pierde (queda como referencia debajo).
                         </p>
                     </div>
-                    <Link :href="`/pais/${pais}/ajustes`" class="cargar-datos-btn">‹ Ajustes</Link>
+                    <Link :href="`${urlPais(pais)}/ajustes`" class="cargar-datos-btn">‹ Ajustes</Link>
                 </header>
 
                 <section class="import-panel">

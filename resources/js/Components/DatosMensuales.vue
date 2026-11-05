@@ -1,8 +1,9 @@
 <script setup>
+import { urlPais } from '@/rutas';
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
-import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
+import { formatMoneyExacto, formatNumeroExacto, etiquetaFunnel } from '@/motor';
 import { notificar } from '@/avisos';
 import { seguirTareaMedios } from '@/seguimientoMedios';
 
@@ -35,7 +36,7 @@ async function cargar() {
     cargando.value = true;
     error.value = '';
     try {
-        const { data } = await axios.get(`/pais/${props.pais}/importar/mensual`, {
+        const { data } = await axios.get(`${urlPais(props.pais)}/importar/mensual`, {
             params: { mes: mes.value, agrupar: agrupar.value },
         });
         meses.value = data.meses;
@@ -79,7 +80,7 @@ const PLATAFORMA_OPCIONES = [
 ];
 const funnelOpciones = computed(() => [
     { key: 'TODOS', label: 'Todas' },
-    ...[...new Set(filas.value.map((f) => f.funnel || 'SIN'))].map((f) => ({ key: f, label: f === 'SIN' ? 'Sin clasificar' : FUNNEL_LABELS[f] || f })),
+    ...[...new Set(filas.value.map((f) => f.funnel || 'SIN'))].map((f) => ({ key: f, label: f === 'SIN' ? 'Sin clasificar' : etiquetaFunnel(f) || f })),
 ]);
 
 // Columnas -- mismas que el sheet de QA; "por anuncio" agrega Ad ID,
@@ -169,7 +170,7 @@ function formato(valor, tipo) {
     return valor;
 }
 function textoCelda(fila, col) {
-    if (col.campo === 'funnel') return fila.funnel ? FUNNEL_LABELS[fila.funnel] || fila.funnel : 'Sin clasificar';
+    if (col.campo === 'funnel') return fila.funnel ? etiquetaFunnel(fila.funnel) || fila.funnel : 'Sin clasificar';
     if (col.campo === 'plataforma') return fila.plataforma === 'meta' ? 'Meta' : fila.plataforma === 'tiktok' ? 'TikTok' : fila.plataforma;
     return formato(fila[col.campo], col.tipo);
 }
@@ -209,7 +210,7 @@ async function descargarReporte(formato) {
     if (generando.value || !mes.value) return;
     generando.value = formato;
     try {
-        const { data, headers } = await axios.get(`/pais/${props.pais}/importar/mensual/${mes.value}/exportar`, {
+        const { data, headers } = await axios.get(`${urlPais(props.pais)}/importar/mensual/${mes.value}/exportar`, {
             params: { formato, agrupar: agrupar.value, plataforma: plataforma.value, funnel: funnel.value, q: busqueda.value || undefined },
             responseType: 'blob',
         });
@@ -241,7 +242,7 @@ async function recuperarImagenes() {
     if (recuperando.value || !mes.value) return;
     recuperando.value = true;
     try {
-        const { data } = await axios.post(`/pais/${props.pais}/importar/mensual/${mes.value}/recuperar-imagenes`);
+        const { data } = await axios.post(`${urlPais(props.pais)}/importar/mensual/${mes.value}/recuperar-imagenes`);
         seguirTareaMedios({ pais: props.pais, id: data.tareaMediosId });
         notificar({
             tipo: 'info',
@@ -272,7 +273,7 @@ async function eliminarMes() {
     eliminando.value = true;
     eliminarError.value = '';
     try {
-        const { data } = await axios.delete(`/pais/${props.pais}/importar/mensual/${mes.value}`, {
+        const { data } = await axios.delete(`${urlPais(props.pais)}/importar/mensual/${mes.value}`, {
             data: { confirmacion: confirmacion.value },
         });
         eliminadoOk.value = `Se eliminó ${etiquetaMes(data.mes)}: ${formatNumeroExacto(data.resultados)} resultado(s).`;

@@ -26,7 +26,7 @@ it('parsea una fila normal con Ad ID real a formato interno (fecha DD-MM-YYYY, N
         ])),
     ]);
 
-    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'));
+    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'), 'First Order Placed', 'Order Placed');
     $r = $enriquecedor->enriquecer(['id1596944067'], '2026-07-01', '2026-07-31');
 
     expect($r['limpias'])->toHaveCount(1);
@@ -34,6 +34,7 @@ it('parsea una fila normal con Ad ID real a formato interno (fecha DD-MM-YYYY, N
         'adId' => '120249684982530661',
         'campaign' => 'ECU_DTC_TAD_AON_FB-CONVERSION',
         'adRaw' => 'IMG_ARTE',
+        'conjunto' => null,
         'serie' => [
             ['fecha' => '15-07-2026', 'installs' => 10, 'orders' => 5, 'newCustomers' => 2],
         ],
@@ -49,7 +50,7 @@ it('trata filas con Ad ID "None" (ASA u orgánico puro) como orgánico, sin romp
         ])),
     ]);
 
-    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'));
+    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'), 'First Order Placed', 'Order Placed');
     $r = $enriquecedor->enriquecer(['id1596944067'], '2026-07-01', '2026-07-31');
 
     expect($r['limpias'])->toBeEmpty();
@@ -67,7 +68,7 @@ it('combina 2 apps (iOS+Android) sumando el mismo Ad ID+fecha en vez de descarta
         ])),
     ]);
 
-    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'));
+    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'), 'First Order Placed', 'Order Placed');
     $r = $enriquecedor->enriquecer(['id1596944067', 'ec.com.fiestacerca'], '2026-07-01', '2026-07-31');
 
     expect($r['limpias'])->toHaveCount(1);
@@ -87,7 +88,7 @@ it('flaggea (sin romper el resto) una fila con cantidad de columnas inesperada',
         ])),
     ]);
 
-    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'));
+    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('token-de-prueba'), 'First Order Placed', 'Order Placed');
     $r = $enriquecedor->enriquecer(['id1596944067'], '2026-07-01', '2026-07-31');
 
     expect($r['limpias'])->toHaveCount(1);
@@ -100,11 +101,11 @@ it('llama al Master API con la auth (Bearer), groupings y kpis verificados en vi
         'hq1.appsflyer.com/*' => Http::response(csvAppsFlyerFake([])),
     ]);
 
-    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('mi-token'));
+    $enriquecedor = new EnriquecedorAppsFlyerApi(new AppsFlyerApiClient('mi-token'), 'First Order Placed', 'Order Placed');
     $enriquecedor->enriquecer(['id1596944067'], '2026-07-01', '2026-07-31');
 
     Http::assertSent(function ($request) {
-        return $request->url() === 'https://hq1.appsflyer.com/api/master-agg-data/v4/app/id1596944067?from=2026-07-01&to=2026-07-31&groupings=c%2Caf_c_id%2Caf_ad%2Caf_ad_id%2Cinstall_time&kpis=installs%2Cevent_counter_First%20Order%20Placed%2Cevent_counter_Order%20Placed'
+        return $request->url() === 'https://hq1.appsflyer.com/api/master-agg-data/v4/app/id1596944067?from=2026-07-01&to=2026-07-31&groupings=c%2Caf_c_id%2Caf_adset%2Caf_ad%2Caf_ad_id%2Cinstall_time&kpis=installs%2Cevent_counter_First%20Order%20Placed%2Cevent_counter_Order%20Placed'
             && $request->hasHeader('Authorization', 'Bearer mi-token');
     });
 });

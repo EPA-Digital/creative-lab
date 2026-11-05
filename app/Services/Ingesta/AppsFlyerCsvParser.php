@@ -252,6 +252,8 @@ class AppsFlyerCsvParser
                     'adId' => $adId,
                     'campaign' => $fila['campaign'],
                     'adRaw' => $fila['adRaw'],
+                    // Solo la API trae el conjunto (af_adset); el CSV manual no.
+                    'conjunto' => $fila['conjunto'] ?? null,
                     'serie' => [],
                 ];
             }

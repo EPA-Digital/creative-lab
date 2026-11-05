@@ -2,6 +2,7 @@
 
 namespace App\Services\Ingesta;
 
+use App\Models\Cuenta;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
@@ -46,14 +47,28 @@ class AppsFlyerApiClient
 
     public function __construct(private readonly string $apiToken) {}
 
-    public static function fromConfig(): self
+    /**
+     * Token de la cuenta (cada cuenta tiene el suyo, no hay uno general --
+     * ver migración cuenta_credenciales).
+     */
+    public static function paraCuenta(Cuenta $cuenta): self
     {
-        $token = config('services.appsflyer.api_token');
+        $token = $cuenta->credencial('appsflyer')?->token;
         if (! $token) {
-            throw new RuntimeException('Falta APPSFLYER_API_TOKEN en el entorno.');
+            throw new RuntimeException("{$cuenta->nombre} no tiene token de AppsFlyer -- agrégalo en Cuentas → editar → Credenciales.");
         }
 
         return new self($token);
+    }
+
+    /**
+     * Prueba barata para validar un token antes de guardarlo: un día, sin
+     * desglose. Lanza RuntimeException con el motivo si no hay acceso.
+     */
+    public function probarAcceso(string $appId): void
+    {
+        $hoy = now()->toDateString();
+        $this->get($appId, ['from' => $hoy, 'to' => $hoy, 'groupings' => 'pid', 'kpis' => 'installs']);
     }
 
     /**

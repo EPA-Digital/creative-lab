@@ -1,6 +1,7 @@
 <script setup>
+import { urlPais } from '@/rutas';
 import { ref, computed } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import ConciliacionImportacion from '@/Components/ConciliacionImportacion.vue';
@@ -30,7 +31,7 @@ const cuentas = ref(props.cuentasPublicitarias.map((c) => ({ ...c, guardando: fa
 const nuevaCuenta = ref({
     pais_id: props.paises[0]?.id ?? null,
     plataforma: 'meta',
-    cuenta_id: '',
+    id_externo: '',
     nombre: '',
     tipo: 'tada',
     cuenta_en_venta_real: true,
@@ -40,19 +41,19 @@ const cuentaError = ref('');
 const cuentaGuardadaOk = ref('');
 
 async function agregarCuenta() {
-    if (!nuevaCuenta.value.cuenta_id.trim() || cuentaGuardando.value) return;
+    if (!nuevaCuenta.value.id_externo.trim() || cuentaGuardando.value) return;
     cuentaGuardando.value = true;
     cuentaError.value = '';
     cuentaGuardadaOk.value = '';
     try {
-        const { data } = await axios.post(`/pais/${props.pais}/ajustes/cuentas-publicitarias`, {
+        const { data } = await axios.post(`${urlPais(props.pais)}/ajustes/cuentas-publicitarias`, {
             ...nuevaCuenta.value,
-            cuenta_id: nuevaCuenta.value.cuenta_id.trim(),
+            id_externo: nuevaCuenta.value.id_externo.trim(),
             nombre: nuevaCuenta.value.nombre.trim() || null,
         });
         cuentas.value.push({ ...data, guardando: false, error: '' });
         cuentaGuardadaOk.value = `Cuenta verificada y guardada: ${data.nombre}.`;
-        nuevaCuenta.value.cuenta_id = '';
+        nuevaCuenta.value.id_externo = '';
         nuevaCuenta.value.nombre = '';
     } catch (err) {
         cuentaError.value = err.response?.data?.message || 'No se pudo guardar la cuenta.';
@@ -65,7 +66,7 @@ async function actualizarCuenta(cuenta, cambios) {
     const anterior = { ...cuenta };
     Object.assign(cuenta, cambios, { guardando: true, error: '' });
     try {
-        const { data } = await axios.patch(`/pais/${props.pais}/ajustes/cuentas-publicitarias/${cuenta.id}`, cambios);
+        const { data } = await axios.patch(`${urlPais(props.pais)}/ajustes/cuentas-publicitarias/${cuenta.id}`, cambios);
         Object.assign(cuenta, data);
     } catch (err) {
         Object.assign(cuenta, anterior);
@@ -107,7 +108,7 @@ async function guardar() {
     guardadoOk.value = false;
 
     try {
-        const { data } = await axios.post(`/pais/${props.pais}/ajustes/appsflyer-apps`, {
+        const { data } = await axios.post(`${urlPais(props.pais)}/ajustes/appsflyer-apps`, {
             pais_id: paisId.value,
             plataforma: plataforma.value,
             app_id: appId.value,
@@ -166,7 +167,7 @@ async function guardar() {
                                 <td><span class="pill mono">{{ PLATAFORMA_LABEL[cuenta.plataforma] }}</span></td>
                                 <td>
                                     {{ cuenta.nombre || '(sin nombre)' }}
-                                    <span class="mono cuenta-id">{{ cuenta.cuenta_id }}</span>
+                                    <span class="mono cuenta-id">{{ cuenta.id_externo }}</span>
                                     <span v-if="cuenta.error" class="cuenta-error">{{ cuenta.error }}</span>
                                 </td>
                                 <td>
@@ -225,7 +226,7 @@ async function guardar() {
                                 <label for="cuentaIdInput">ID de cuenta</label>
                                 <input
                                     id="cuentaIdInput"
-                                    v-model="nuevaCuenta.cuenta_id"
+                                    v-model="nuevaCuenta.id_externo"
                                     type="text"
                                     :placeholder="nuevaCuenta.plataforma === 'meta' ? 'ej. 913224553013929 o act_913…' : 'ej. 7332930135332749314'"
                                 />
@@ -250,7 +251,7 @@ async function guardar() {
                             </div>
                         </div>
                         <div class="import-actions">
-                            <button type="button" class="btn-primary" :disabled="!nuevaCuenta.cuenta_id.trim() || cuentaGuardando" @click="agregarCuenta">
+                            <button type="button" class="btn-primary" :disabled="!nuevaCuenta.id_externo.trim() || cuentaGuardando" @click="agregarCuenta">
                                 {{ cuentaGuardando ? 'Verificando…' : 'Verificar y guardar' }}
                             </button>
                             <span class="import-status">
@@ -296,8 +297,12 @@ async function guardar() {
                         Nombres amigables por creativo (ej. "AON-BURGER-SHOW" → "Burger Show") -- se aplican en
                         Creativos e Inteligencia, el nombre técnico original nunca se pierde.
                     </p>
-                    <Link :href="`/pais/${pais}/ajustes/nombres`" class="btn-primary" style="text-decoration: none; display: inline-block;">
+                    <Link :href="`${urlPais(pais)}/ajustes/nombres`" class="btn-primary" style="text-decoration: none; display: inline-block;">
                         Gestionar nombres
+                    </Link>
+                    <!-- Cuentas con clasificación propia: Spark Ads y demás sin creativo. -->
+                    <Link v-if="usePage().props.cuentaActual?.slug !== 'tada'" :href="`${urlPais(pais)}/ajustes/sin-creativo`" class="btn-primary" style="text-decoration: none; display: inline-block; margin-left: 8px;">
+                        Anuncios sin creativo
                     </Link>
                 </section>
 

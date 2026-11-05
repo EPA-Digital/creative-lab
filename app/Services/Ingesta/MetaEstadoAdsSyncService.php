@@ -3,6 +3,7 @@
 namespace App\Services\Ingesta;
 
 use App\Models\Creativo;
+use App\Models\CuentaPublicitaria;
 use App\Models\EstadoCreativoEvento;
 use App\Models\Pais;
 use Carbon\Carbon;
@@ -62,10 +63,22 @@ class MetaEstadoAdsSyncService
     public function sincronizar(string $paisSlug): array
     {
         $config = config("paises.{$paisSlug}");
-        if (! $config || ! ($config['meta_ad_account_id'] ?? null)) {
-            throw new InvalidArgumentException("País \"{$paisSlug}\" no tiene meta_ad_account_id configurado en config/paises.php.");
+        if (! $config) {
+            throw new InvalidArgumentException("País \"{$paisSlug}\" no existe en config/paises.php.");
         }
         $pais = Pais::where('codigo', $config['codigo'])->firstOrFail();
+
+        // Multi-cuenta: las cuentas de Meta activas de la cuenta actual en
+        // ese país (las de Ajustes / Cuentas), ya no meta_ad_account_id de
+        // config -- una cuenta del dashboard puede tener varias.
+        $adAccountIds = CuentaPublicitaria::where('pais_id', $pais->id)
+            ->where('plataforma', 'meta')
+            ->where('activa', true)
+            ->pluck('id_externo')
+            ->all();
+        if ($adAccountIds === []) {
+            throw new InvalidArgumentException("{$config['nombre']} no tiene cuentas de Meta activas en esta cuenta.");
+        }
 
         // Desde el último evento ya guardado para este país, con 1 hora de
         // solape para no perder nada justo en el borde de la corrida
@@ -75,7 +88,10 @@ class MetaEstadoAdsSyncService
         $ultimo = EstadoCreativoEvento::where('pais_id', $pais->id)->max('evento_en');
         $desde = $ultimo ? Carbon::parse($ultimo)->subHour() : now()->subDays(7);
 
-        $actividades = $this->obtenerActividades($config['meta_ad_account_id'], $desde, now());
+        $actividades = [];
+        foreach ($adAccountIds as $adAccountId) {
+            $actividades = [...$actividades, ...$this->obtenerActividades($adAccountId, $desde, now())];
+        }
 
         $eventosNuevos = 0;
         $resueltos = 0;

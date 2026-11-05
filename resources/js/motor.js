@@ -3,6 +3,9 @@
 // compartido por CreativeCard/CreativeCarousel/PodiumTop3/CreativeModal/
 // AnalisisCreativo para no triplicar la misma lógica en cada componente.
 
+import { usePage } from '@inertiajs/vue3';
+import { cuentaActualSlug } from '@/rutas';
+
 export function trimZero(n) {
     return String(Math.round(n * 10) / 10);
 }
@@ -81,6 +84,27 @@ export const TIPO_CUENTA_OPCIONES = [
     { key: 'BRD', label: 'BI (Marca)' },
     { key: 'SIN_CLASIFICAR', label: 'Sin clasificar' },
 ];
+
+// DTC/BRD es propio de TaDa (BRD = marcas de BI: Pilsener, Corona…) y BRD
+// solo existe en Ecuador (pedido explícito 2026-11-04). Las demás cuentas
+// solo distinguen clasificados de "Sin clasificar" -- internamente sus
+// creativos se guardan como DTC para no romper ese filtro.
+export function opcionesTipoCuenta(pais) {
+    if (cuentaActualSlug() !== 'tada') {
+        return [{ key: 'DTC', label: 'Clasificados' }, { key: 'SIN_CLASIFICAR', label: 'Sin clasificar' }];
+    }
+    return TIPO_CUENTA_OPCIONES.filter((o) => o.key !== 'BRD' || pais === 'ecuador');
+}
+// Nombre de una etapa como la llama la cuenta ("See", "Do"); si la cuenta
+// no tiene etapas propias, el de siempre (Awareness, Conversion…).
+// undefined si el código no es una etapa, para poder encadenar `|| x`.
+export function etiquetaFunnel(codigo, propio = null) {
+    return propio || usePage().props.cuentaActual?.etapas?.[codigo] || FUNNEL_LABELS[codigo];
+}
+
+export function etiquetaFiltroTipoCuenta() {
+    return cuentaActualSlug() === 'tada' ? 'Tipo de cuenta' : 'Clasificación';
+}
 
 // TIPO_CREATIVO_LABELS -- valores reales de creativo.formato
 // (VIDEO/CATALOGO/IMAGEN, ver ClasificadorNombres::FORMATO_CODES en el
@@ -684,6 +708,11 @@ export function cardDesdeCreativo(creativo, mes = null) {
     const r = mes ? resultadoDeMes(creativo, mes) : (creativo.resultados?.[0] ?? null);
     return {
         etapaFunnel: creativo.funnel,
+        // Clasificación propia de la cuenta (null en TaDa): cómo llama a la
+        // etapa ("Do") y su tipo de campaña (performance/branding/otro).
+        funnelPropio: creativo.funnel_propio ?? null,
+        tipoCampania: creativo.tipo_campania ?? null,
+        tipoCampaniaNombre: creativo.tipo_campania_nombre ?? null,
         impressions: numOrNull(r?.impressions),
         clicks: numOrNull(r?.clicks),
         cpm: numOrNull(r?.cpm),

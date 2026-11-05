@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
-import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
+import { formatMoneyExacto, formatNumeroExacto, etiquetaFunnel } from '@/motor';
 
 // Campañas que usa el país (2026-10-06, pedido explícito) -- ver
 // AjustesController::campaniasDelPais. Solo lectura: sirve para revisar que
@@ -77,7 +77,7 @@ function etiquetaMes(m) {
                         <td class="mono campanias-nombre">{{ c.campania }}</td>
                         <td>{{ c.plataforma === 'meta' ? 'Meta' : 'TikTok' }}</td>
                         <td>{{ c.cuenta || '—' }}</td>
-                        <td>{{ c.funnel ? FUNNEL_LABELS[c.funnel] || c.funnel : 'Sin clasificar' }}</td>
+                        <td>{{ c.funnel ? etiquetaFunnel(c.funnel) || c.funnel : 'Sin clasificar' }}</td>
                         <td>
                             <span class="estado" :class="{ ok: tipoDe(c) === 'DTC', pendiente: tipoDe(c) === 'BRD', neutro: tipoDe(c) === 'DTC_NO_PAID' }">
                                 {{ TIPO_OPCIONES.find((t) => t.key === tipoDe(c))?.label }}

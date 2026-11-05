@@ -1,12 +1,24 @@
 <script setup>
+import { urlPais } from '@/rutas';
 import { computed, ref, watch } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
-    cardDesdeCreativo, placeholderPorTipo, humanizarCampania,
-    kpisPrincipales, etapasFunnel, generarLectura,
-    calcularScoreDesglose, nombrePrincipalYTecnico, formatNumeroExacto, formatMoneyExacto, formatearRangoFecha,
-    FUNNEL_LABELS, FUNNEL_COLOR_VAR, TIPO_CUENTA_OPCIONES, TIPO_CREATIVO_LABELS,
+    cardDesdeCreativo,
+    placeholderPorTipo,
+    humanizarCampania,
+    kpisPrincipales,
+    etapasFunnel,
+    generarLectura,
+    calcularScoreDesglose,
+    nombrePrincipalYTecnico,
+    formatNumeroExacto,
+    formatMoneyExacto,
+    formatearRangoFecha,
+    FUNNEL_COLOR_VAR,
+    TIPO_CREATIVO_LABELS,
+    opcionesTipoCuenta,
+    etiquetaFunnel,
 } from '@/motor';
 
 // Rediseño 2026-08-21 (boceto del usuario, bocetos-modals.html 4A/4B) --
@@ -59,7 +71,7 @@ async function cargarVideo() {
     videoCargando.value = true;
     videoError.value = '';
     try {
-        const { data } = await axios.get(`/pais/${props.pais}/creativos/${props.creativo.id}/video`);
+        const { data } = await axios.get(`${urlPais(props.pais)}/creativos/${props.creativo.id}/video`);
         video.value = data;
     } catch (err) {
         videoError.value = err.response?.data?.message || 'No se pudo cargar el video.';
@@ -77,7 +89,7 @@ const stageColor = computed(() => FUNNEL_COLOR_VAR[card.value.etapaFunnel] || 'v
 const paisLabel = computed(() => (props.pais ? props.pais.charAt(0).toUpperCase() + props.pais.slice(1) : ''));
 const tipoCuentaLabel = computed(() => {
     const key = props.creativo.tipo_cuenta || 'SIN_CLASIFICAR';
-    return TIPO_CUENTA_OPCIONES.find((o) => o.key === key)?.label || 'Sin clasificar';
+    return opcionesTipoCuenta(props.pais).find((o) => o.key === key)?.label || 'Sin clasificar';
 });
 
 // Toggle simple Resumen/Etapas -- se probaron flechitas grandes en los
@@ -141,7 +153,7 @@ async function guardarNombre() {
     guardandoNombre.value = true;
     errorNombre.value = '';
     try {
-        const { data } = await axios.post(`/pais/${props.pais}/creativos/${props.creativo.id}/nombre`, {
+        const { data } = await axios.post(`${urlPais(props.pais)}/creativos/${props.creativo.id}/nombre`, {
             nombre_corregido: valor,
         });
         nombreAmigableLocal.value = data.nombre_corregido;
@@ -327,7 +339,7 @@ async function evaluar(modo) {
     cargando.value = true;
     errorEvaluacion.value = null;
     try {
-        const { data } = await axios.post(`/pais/${props.pais}/creativos/${props.creativo.id}/evaluar`, {
+        const { data } = await axios.post(`${urlPais(props.pais)}/creativos/${props.creativo.id}/evaluar`, {
             modo,
             mes: props.mes,
         });
@@ -426,7 +438,7 @@ watch(() => props.creativo?.id, () => {
                                 <button type="button" class="modal-copy-btn" :disabled="guardandoNombre" @click="cancelarEdicionNombre">Cancelar</button>
                             </div>
                             <span class="modal-funnel-tag" :style="{ '--stage-color': stageColor }">
-                                {{ (FUNNEL_LABELS[card.etapaFunnel] || 'Sin clasificar').toUpperCase() }}
+                                {{ (etiquetaFunnel(card.etapaFunnel, card.funnelPropio) || 'Sin clasificar').toUpperCase() }}
                             </span>
                         </div>
                         <span v-if="nombre.tecnico" class="modal-nombre-tecnico mono">{{ nombre.tecnico }}</span>
@@ -492,7 +504,7 @@ watch(() => props.creativo?.id, () => {
                             </div>
                             <p v-if="scoreDesglose.explicacion" class="modal-score-rendimiento-explicacion">{{ scoreDesglose.explicacion }}</p>
                             <p v-else class="modal-score-rendimiento-explicacion sin-dato">
-                                Compara {{ FUNNEL_LABELS[card.etapaFunnel] || 'este creativo' }} contra la media de su grupo ({{ paisLabel }} · {{ tipoCuentaLabel }}) -- todavía sin un cuello de botella claro.
+                                Compara {{ etiquetaFunnel(card.etapaFunnel, card.funnelPropio) || 'este creativo' }} contra la media de su grupo ({{ paisLabel }} · {{ tipoCuentaLabel }}) -- todavía sin un cuello de botella claro.
                             </p>
                             <p v-if="volumenComparado" class="modal-score-rendimiento-volumen mono">
                                 {{ formatNumeroExacto(card.installs) }} instalaciones · media del grupo: {{ formatNumeroExacto(promedios.installs) }}

@@ -80,14 +80,14 @@ it('la importación encola solo las imágenes que todavía no están en el bucke
     // Meta, que también cuentan en la tarea) -- acá solo importan imágenes.
     config(['services.meta.access_token' => 't', 'services.tiktok.access_token' => 't', 'videos.top_por_mes' => 0]);
     $pe = Pais::create(['codigo' => 'PE', 'nombre' => 'Perú']);
-    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'meta', 'cuenta_id' => '111', 'tipo' => 'tada']);
+    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'meta', 'id_externo' => '111', 'tipo' => 'tada']);
     // Un ad del fixture que YA tiene imagen en el bucket.
     Creativo::create(['pais_id' => $pe->id, 'ad_id' => '120243455653870661', 'nombre_completo' => 'X', 'plataforma' => 'meta', 'tipo_cuenta' => 'DTC', 'imagen_url' => 'https://storage.googleapis.com/test-bucket/creative-images/meta-costo-120243455653870661.jpg']);
 
     Http::fake(function (Request $request) {
         parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $q);
         $fields = $q['fields'] ?? '';
-        if ($fields === 'ad_id,ad_name,campaign_name,spend,impressions,inline_link_clicks') {
+        if ($fields === 'ad_id,ad_name,campaign_name,adset_name,objective,spend,impressions,inline_link_clicks') {
             return Http::response(['data' => [
                 ['ad_id' => '120243455653870661', 'ad_name' => 'A', 'campaign_name' => 'ECU_DTC_TAD_X_FB-CONVERSION', 'spend' => '5', 'impressions' => '50', 'inline_link_clicks' => '1'],
                 ['ad_id' => '555', 'ad_name' => 'B', 'campaign_name' => 'ECU_DTC_TAD_X_FB-CONVERSION', 'spend' => '7', 'impressions' => '70', 'inline_link_clicks' => '1'],
@@ -124,7 +124,7 @@ it('una importación "procesando" de hace más de 70 minutos se marca como error
     $imp = Importacion::create(['pais_id' => $pe->id, 'origen' => 'csv', 'desde' => '2026-09-01', 'hasta' => '2026-09-30', 'estado' => 'procesando']);
     $this->travel(71)->minutes();
 
-    $this->actingAs($user)->getJson("/pais/peru/importar/estado/{$imp->id}")
+    $this->actingAs($user)->getJson("/tada/pais/peru/importar/estado/{$imp->id}")
         ->assertStatus(422)
         ->assertJsonPath('estado', 'error')
         ->assertJsonPath('error', fn (string $e) => str_contains($e, 'tardó más de 70 minutos'));
@@ -140,7 +140,7 @@ it('Ajustes muestra las campañas del país con su tipo y gasto', function () {
         $c->resultados()->create(['mes' => '2026-09', 'fecha_inicio' => '2026-09-01', 'fecha_fin' => '2026-09-30', 'cost' => $costo, 'impressions' => 0, 'clicks' => 0, 'installs' => 0, 'reorders' => 0]);
     }
 
-    $this->actingAs($user)->get('/pais/peru/ajustes')
+    $this->actingAs($user)->get('/tada/pais/peru/ajustes')
         ->assertInertia(fn ($page) => $page
             ->has('campanias', 2)
             ->where('campanias.0.campania', 'PER_DTC_TAD_AON_AON_TAD_CNV_EPA_FB-CONVERSION')

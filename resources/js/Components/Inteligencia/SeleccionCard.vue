@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { cardDesdeCreativo, placeholderPorTipo, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, FUNNEL_LABELS } from '@/motor';
+import { cardDesdeCreativo, placeholderPorTipo, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, etiquetaFunnel } from '@/motor';
 
 // SeleccionCard -- 2026-08-27, Inteligencia (ver plan). Versión compacta de
 // CreativeCard.vue para el "carrito" de selección: MISMO patrón de imagen
@@ -51,7 +51,7 @@ const nombre = computed(() => nombrePrincipalYTecnico(card.value.nombreAmigable,
             <p class="resumen-card-meta">
                 {{ esTikTok ? 'TikTok Ads' : 'Meta Ads' }}
                 <span v-if="card.etapaFunnel" class="resumen-card-funnel" :style="{ '--stage-color': stageColor }">
-                    {{ FUNNEL_LABELS[card.etapaFunnel] || card.etapaFunnel }}
+                    {{ etiquetaFunnel(card.etapaFunnel, card.funnelPropio) || card.etapaFunnel }}
                 </span>
             </p>
         </div>

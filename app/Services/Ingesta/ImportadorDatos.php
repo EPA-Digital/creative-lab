@@ -6,11 +6,13 @@ use App\Jobs\CachearImagenesCreativos;
 use App\Jobs\GuardarVideoCreativo;
 use App\Models\AppsflyerApp;
 use App\Models\Creativo;
+use App\Models\Cuenta;
 use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
 use App\Models\Resultado;
 use App\Models\TareaMedios;
+use App\Support\CuentaActual;
 use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -141,7 +143,12 @@ class ImportadorDatos
         }
 
         self::avisar($progreso, 3, 'Trayendo instalaciones y conversiones de AppsFlyer');
-        $enriquecedorAppsFlyer = new EnriquecedorAppsFlyerApi(AppsFlyerApiClient::fromConfig());
+        // AppsFlyer por el Master API (token de la cuenta) o desde BigQuery
+        // (Data Locker de EPA), según la credencial -- misma forma de salida.
+        $cuenta = Cuenta::findOrFail(CuentaActual::id());
+        $enriquecedorAppsFlyer = $cuenta->credencial('appsflyer')?->origen() === 'bigquery'
+            ? EnriquecedorAppsFlyerBigQuery::paraCuenta($cuenta)
+            : EnriquecedorAppsFlyerApi::paraCuenta($cuenta);
         $csv = $enriquecedorAppsFlyer->enriquecer($appIds, $desde, $hasta);
 
         return self::ejecutarPipeline(
@@ -481,7 +488,7 @@ class ImportadorDatos
         $filas = [];
         $vistos = [];
         foreach ($cuentas->values() as $i => $cuenta) {
-            foreach ($traer($cuenta->cuenta_id, $i, $cuenta) as $fila) {
+            foreach ($traer($cuenta->id_externo, $i, $cuenta) as $fila) {
                 if (isset($vistos[$fila['adId']])) {
                     continue;
                 }
@@ -511,7 +518,7 @@ class ImportadorDatos
             if ($restantes === []) {
                 break;
             }
-            $restantes = array_values(array_intersect($restantes, $detectar($cuenta->cuenta_id, $restantes)));
+            $restantes = array_values(array_intersect($restantes, $detectar($cuenta->id_externo, $restantes)));
         }
 
         return $restantes;
@@ -683,6 +690,14 @@ class ImportadorDatos
                     'funnel' => $funnel,
                     'tipo_cuenta' => $tipoCuenta,
                     'formato' => $card['formato'] ?? null,
+                    'dimensiones' => ($card['dimensiones'] ?? null) ?: null,
+                    // Clasificación propia de la cuenta (ReglasNomenclatura).
+                    'funnel_propio' => $card['funnelPropio'] ?? null,
+                    'tipo_campania' => $card['tipoCampania'] ?? null,
+                    'tipo_campania_nombre' => $card['tipoCampaniaNombre'] ?? null,
+                    'nombre_conjunto' => ($card['conjuntoName'] ?? null) ?: null,
+                    // Sin post en esta corrida se conserva el que ya tenía.
+                    ...(! empty($card['postId']) ? ['post_id' => $card['postId']] : []),
                     'fecha_carga' => $desde,
                     ...(! empty($card['videoId']) ? ['video_id' => $card['videoId']] : []),
                     // Sin costo en esta corrida no se sabe la cuenta -- se

@@ -45,7 +45,7 @@ class ConciliacionImportacion
             $this->cuentas[$cuenta->id] = [
                 'id' => $cuenta->id,
                 'nombre' => $cuenta->nombre,
-                'cuenta_id' => $cuenta->cuenta_id,
+                'cuenta_id' => $cuenta->id_externo,
                 'tipo' => $cuenta->tipo,
                 'cuenta_en_venta_real' => $cuenta->cuenta_en_venta_real,
                 'ads' => 0,

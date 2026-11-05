@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureAccesoPais;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\ResolverCuentaActual;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Antes que todo lo demás del grupo web: el filtro por cuenta
+        // (PerteneceACuenta) ya actúa al resolver {creativo} y demás
+        // parámetros de ruta, así que la cuenta tiene que estar fijada antes.
+        $middleware->web(prepend: [ResolverCuentaActual::class]);
+
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,

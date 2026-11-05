@@ -8,6 +8,7 @@ use App\Services\Auditoria;
 use App\Services\Reportes\ExportadorExcelCreativos;
 use App\Services\Reportes\ExportadorPdfCreativos;
 use App\Services\Reportes\ReporteCreativosService;
+use App\Support\CuentaActual;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,6 +34,7 @@ class DatosMensualesController extends Controller
 
         $meses = DB::table('resultados')
             ->join('creativos', 'creativos.id', '=', 'resultados.creativo_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisModelo->id)
             ->groupBy('resultados.mes')
             ->orderByDesc('resultados.mes')
@@ -65,6 +67,7 @@ class DatosMensualesController extends Controller
             // Para el aviso "X creativos sin imagen" + "Recuperar imágenes".
             'sinImagen' => $mes ? RecuperarImagenesMes::creativosSinImagen($paisModelo->id, $mes)->count() : 0,
             'importaciones' => $mes ? DB::table('importaciones')
+                ->where('cuenta_id', CuentaActual::id())
                 ->where('pais_id', $paisModelo->id)
                 ->where('desde', '>=', "{$mes}-01")
                 ->where('desde', '<=', date('Y-m-t', strtotime("{$mes}-01")))
@@ -91,7 +94,7 @@ class DatosMensualesController extends Controller
             'confirmacion.required' => "Para eliminar, escribe exactamente {$mes}.",
         ]);
 
-        $creativoIds = DB::table('creativos')->where('pais_id', $paisModelo->id)->pluck('id');
+        $creativoIds = DB::table('creativos')->where('cuenta_id', CuentaActual::id())->where('pais_id', $paisModelo->id)->pluck('id');
 
         [$resultados, $diarios] = DB::transaction(function () use ($creativoIds, $mes) {
             $resultados = DB::table('resultados')->whereIn('creativo_id', $creativoIds)->where('mes', $mes)->delete();
@@ -169,6 +172,7 @@ class DatosMensualesController extends Controller
         $base = DB::table('resultados')
             ->join('creativos', 'creativos.id', '=', 'resultados.creativo_id')
             ->leftJoin('cuentas_publicitarias', 'cuentas_publicitarias.id', '=', 'creativos.cuenta_publicitaria_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisId)
             ->where('resultados.mes', $mes);
 

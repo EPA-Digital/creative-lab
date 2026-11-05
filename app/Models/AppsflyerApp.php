@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AppsflyerApp extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'appsflyer_apps';
 
     const CREATED_AT = 'creado_en';

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { cardDesdeCreativo, statsParaCard, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, FUNNEL_LABELS } from '@/motor';
+import { cardDesdeCreativo, statsParaCard, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, etiquetaFunnel } from '@/motor';
 
 // Vista "Tabla" de "Todos los creativos" (2026-08-27, ver plan del
 // rediseño) -- mismo dataset y mismo orden que CreativeCarousel
@@ -54,7 +54,7 @@ const filas = computed(() => props.creativos.map((creativo) => {
                     </td>
                     <td>
                         <span v-if="fila.card.etapaFunnel" class="resumen-card-funnel" :style="{ '--stage-color': fila.stageColor }">
-                            {{ FUNNEL_LABELS[fila.card.etapaFunnel] || fila.card.etapaFunnel }}
+                            {{ etiquetaFunnel(fila.card.etapaFunnel, fila.card.funnelPropio) || fila.card.etapaFunnel }}
                         </span>
                     </td>
                     <td class="num mono creative-table-estrella">{{ fila.estrella.value }}</td>

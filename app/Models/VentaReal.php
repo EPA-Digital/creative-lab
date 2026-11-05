@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class VentaReal extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'venta_real';
 
     const CREATED_AT = 'capturado_en';

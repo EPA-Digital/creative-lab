@@ -86,8 +86,8 @@ class AuditoriaTest extends TestCase
         $director = User::factory()->create(['rol' => 'director']);
         $director->paises()->attach($ec->id);
 
-        $this->actingAs($director)->get('/pais/ecuador/analisis');
-        $this->actingAs($director)->get('/pais/ecuador/analisis');
+        $this->actingAs($director)->get('/tada/pais/ecuador/analisis');
+        $this->actingAs($director)->get('/tada/pais/ecuador/analisis');
 
         $this->assertSame(1, AuditoriaAcceso::where('evento', 'pais.primera_visita')->count());
     }

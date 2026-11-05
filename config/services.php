@@ -49,9 +49,20 @@ return [
     // cálculo automático de "hasta" porque AppsFlyer todavía no terminó de
     // recibir las conversiones postback de esos días (lag de atribución
     // conocido, confirmado con el negocio: 5 días por defecto, ajustable).
+    //
+    // api_token: ya NO se usa para importar -- cada cuenta tiene su token
+    // en cuenta_credenciales. Solo lo lee la migración que lo copia a TaDa.
     'appsflyer' => [
         'api_token' => env('APPSFLYER_API_TOKEN'),
         'buffer_atribucion_dias' => (int) env('APPSFLYER_BUFFER_ATRIBUCION_DIAS', 5),
+    ],
+
+    // BigQuery (2026-11-05): AppsFlyer de las cuentas desde el Data Locker
+    // del proyecto de datos de EPA. Las consultas se cobran a este proyecto
+    // (necesita BigQuery Job User); los datasets dan lector a la cuenta de
+    // servicio del dashboard.
+    'bigquery' => [
+        'proyecto_consultas' => env('BIGQUERY_PROYECTO_CONSULTAS', env('GOOGLE_CLOUD_PROJECT_ID', 'epa-turing')),
     ],
 
     // Evaluación IA de creativos (2026-08-26, ver plan) -- "Evaluar por

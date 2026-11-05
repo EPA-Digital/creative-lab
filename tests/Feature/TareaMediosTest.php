@@ -85,9 +85,9 @@ class TareaMediosTest extends TestCase
         $mx = Pais::create(['codigo' => 'MX', 'nombre' => 'México']);
         $this->user->paises()->attach($mx->id);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/medios/tareas/{$t->id}")
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/medios/tareas/{$t->id}")
             ->assertOk()->assertJson(['estado' => 'pendiente', 'total' => 2, 'mes' => '2026-09']);
-        $this->getJson("/pais/mexico/medios/tareas/{$t->id}")->assertNotFound();
+        $this->getJson("/tada/pais/mexico/medios/tareas/{$t->id}")->assertNotFound();
     }
 
     public function test_la_importacion_terminada_devuelve_su_tarea_de_medios(): void
@@ -95,7 +95,7 @@ class TareaMediosTest extends TestCase
         $imp = Importacion::create(['pais_id' => $this->ec->id, 'origen' => 'csv', 'desde' => '2026-09-01', 'hasta' => '2026-09-30', 'estado' => 'completado']);
         $t = TareaMedios::create(['pais_id' => $this->ec->id, 'mes' => '2026-09', 'origen' => 'importacion', 'importacion_id' => $imp->id, 'total' => 4]);
 
-        $this->actingAs($this->user)->getJson("/pais/ecuador/importar/estado/{$imp->id}")
+        $this->actingAs($this->user)->getJson("/tada/pais/ecuador/importar/estado/{$imp->id}")
             ->assertOk()->assertJsonPath('tareaMediosId', $t->id);
     }
 
@@ -105,26 +105,26 @@ class TareaMediosTest extends TestCase
         $this->creativoDelMes('1');
         $this->creativoDelMes('2', 'https://storage.googleapis.com/test-bucket/creative-images/meta-costo-2.jpg');
 
-        $r = $this->actingAs($this->user)->postJson('/pais/ecuador/importar/mensual/2026-09/recuperar-imagenes')
+        $r = $this->actingAs($this->user)->postJson('/tada/pais/ecuador/importar/mensual/2026-09/recuperar-imagenes')
             ->assertStatus(202)->assertJsonPath('total', 1);
 
         $this->assertSame(1, TareaMedios::find($r->json('tareaMediosId'))->total);
         Queue::assertPushed(RecuperarImagenesMes::class);
-        $this->getJson('/pais/ecuador/importar/mensual?mes=2026-09')->assertJsonPath('sinImagen', 1);
+        $this->getJson('/tada/pais/ecuador/importar/mensual?mes=2026-09')->assertJsonPath('sinImagen', 1);
     }
 
     public function test_si_no_falta_ninguna_imagen_lo_dice(): void
     {
         $this->creativoDelMes('2', 'https://storage.googleapis.com/test-bucket/creative-images/meta-costo-2.jpg');
 
-        $this->actingAs($this->user)->postJson('/pais/ecuador/importar/mensual/2026-09/recuperar-imagenes')
+        $this->actingAs($this->user)->postJson('/tada/pais/ecuador/importar/mensual/2026-09/recuperar-imagenes')
             ->assertStatus(422)->assertJsonPath('message', 'Todos los creativos de ese mes ya tienen imagen.');
     }
 
     public function test_recuperar_imagenes_las_guarda_y_cuenta_las_que_no_aparecen(): void
     {
         Storage::fake('gcs');
-        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'cuenta_id' => '913', 'tipo' => 'tada']);
+        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'id_externo' => '913', 'tipo' => 'tada']);
         $conImagen = $this->creativoDelMes('10');
         $this->creativoDelMes('11'); // Meta no lo devuelve (borrado)
         Http::fake(function (Request $r) {

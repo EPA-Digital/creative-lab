@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Creativo extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'creativos';
 
     const CREATED_AT = 'creado_en';
@@ -37,6 +40,12 @@ class Creativo extends Model
         'plataforma',
         'tipo',
         'formato',
+        'dimensiones',
+        'funnel_propio',
+        'tipo_campania',
+        'tipo_campania_nombre',
+        'nombre_conjunto',
+        'post_id',
         'medio',
         'funnel',
         'tipo_cuenta',
@@ -52,6 +61,7 @@ class Creativo extends Model
             'fecha_carga' => 'date',
             'fecha_termino' => 'date',
             'copy' => 'array',
+            'dimensiones' => 'array',
         ];
     }
 

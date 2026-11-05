@@ -2,11 +2,12 @@
 import { ref, computed } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
+import { useFiltroTipoCampania } from '@/tiposCampania';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
 import SeleccionCard from '@/Components/Inteligencia/SeleccionCard.vue';
 import ComparacionCreativos from '@/Components/Inteligencia/ComparacionCreativos.vue';
 import CreativeModal from '@/Components/Creativo/CreativeModal.vue';
-import { cardDesdeCreativo, placeholderPorTipo, promediosDeGrupo, FUNNEL_LABELS, FUNNEL_ORDER, TIPO_CUENTA_OPCIONES, resultadoDeMes } from '@/motor';
+import { cardDesdeCreativo, placeholderPorTipo, promediosDeGrupo, FUNNEL_ORDER, opcionesTipoCuenta, etiquetaFiltroTipoCuenta, resultadoDeMes, etiquetaFunnel } from '@/motor';
 
 // Inteligencia -- comparación head-to-head de 2-4 creativos (2026-08-27,
 // ver plan). El controller manda el historial COMPLETO de `resultados`
@@ -55,10 +56,14 @@ const plataformaCounts = computed(() => {
     for (const c of props.creativos) counts[c.plataforma] = (counts[c.plataforma] || 0) + 1;
     return counts;
 });
+// Tipo de campaña propio de la cuenta (ver tiposCampania.js) -- se aplica
+// antes que la plataforma; sus conteos son sobre el set completo.
+const filtroTipoCampania = useFiltroTipoCampania(computed(() => props.creativos));
+const tipoCampaniaSeleccionado = filtroTipoCampania.seleccionado;
 const creativosPorPlataforma = computed(() =>
     plataformaSeleccionada.value === 'TODOS'
-        ? props.creativos
-        : props.creativos.filter((c) => c.plataforma === plataformaSeleccionada.value),
+        ? filtroTipoCampania.filtrados.value
+        : filtroTipoCampania.filtrados.value.filter((c) => c.plataforma === plataformaSeleccionada.value),
 );
 
 // Tipo de cuenta -- mismo patrón que AnalisisCreativo.vue
@@ -176,10 +181,11 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
 
                 <div class="resumen-filtros">
                     <FiltroDropdown label="Mes" :modelValue="mes" :options="mesOptions" @update:modelValue="cambiarMes" />
+                    <FiltroDropdown v-if="filtroTipoCampania.visible.value" label="Tipo de campaña" v-model="tipoCampaniaSeleccionado" :options="filtroTipoCampania.opciones.value" :counts="filtroTipoCampania.counts.value" />
                     <FiltroDropdown label="Plataforma" v-model="plataformaSeleccionada" :options="PLATAFORMA_OPCIONES" :counts="plataformaCounts" />
-                    <FiltroDropdown label="Tipo de cuenta" v-model="tipoCuentaSeleccionado" :options="TIPO_CUENTA_OPCIONES" :counts="tipoCuentaCounts" />
+                    <FiltroDropdown :label="etiquetaFiltroTipoCuenta()" v-model="tipoCuentaSeleccionado" :options="opcionesTipoCuenta(pais)" :counts="tipoCuentaCounts" />
                     <p v-if="funnelBloqueado" class="date-hint">
-                        Comparando dentro de {{ FUNNEL_LABELS[funnelBloqueado] || funnelBloqueado }} -- vacía el carrito para elegir de otra etapa.
+                        Comparando dentro de {{ etiquetaFunnel(funnelBloqueado) || funnelBloqueado }} -- vacía el carrito para elegir de otra etapa.
                     </p>
                 </div>
 
@@ -195,7 +201,7 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
                         :class="{ activo: funnelFiltro === f }"
                         @click="funnelFiltro = f"
                     >
-                        {{ FUNNEL_LABELS[f] || f }} ({{ creativosPorTipoCuenta.filter((c) => c.funnel === f).length }})
+                        {{ etiquetaFunnel(f) || f }} ({{ creativosPorTipoCuenta.filter((c) => c.funnel === f).length }})
                     </button>
                 </div>
 

@@ -7,6 +7,7 @@ use App\Models\Resultado;
 use App\Services\ImagenFirmadaService;
 use App\Services\Ingesta\VentaRealYAgrupacion;
 use App\Services\RangosActividadService;
+use App\Support\CuentaActual;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -42,6 +43,7 @@ class AnalisisCreativoController extends Controller
 
         $tieneDatosDiarios = DB::table('resultados_diarios')
             ->join('creativos', 'creativos.id', '=', 'resultados_diarios.creativo_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisModelo->id)
             ->exists();
 
@@ -138,6 +140,7 @@ class AnalisisCreativoController extends Controller
     {
         $rango = DB::table('resultados_diarios')
             ->join('creativos', 'creativos.id', '=', 'resultados_diarios.creativo_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisId)
             ->selectRaw('MIN(fecha) as min, MAX(fecha) as max')
             ->first();
@@ -191,6 +194,10 @@ class AnalisisCreativoController extends Controller
                 'etapaFunnel' => $c->funnel ?? 'Sin clasificar',
                 'plataforma' => $c->plataforma,
                 'tipoCuenta' => $c->tipo_cuenta,
+                // Clasificación propia de la cuenta (null en TaDa).
+                'funnelPropio' => $c->funnel_propio,
+                'tipoCampania' => $c->tipo_campania,
+                'tipoCampaniaNombre' => $c->tipo_campania_nombre,
                 'formato' => $c->formato,
                 'imageUrl' => $c->imagen_url ?? '',
                 'adNameShort' => $c->nombre_completo,
@@ -235,6 +242,7 @@ class AnalisisCreativoController extends Controller
     {
         $filas = DB::table('resultados_diarios')
             ->join('creativos', 'creativos.id', '=', 'resultados_diarios.creativo_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisId)
             ->when($plataforma, fn ($q) => $q->where('creativos.plataforma', $plataforma))
             ->whereBetween('resultados_diarios.fecha', [$desde, $hasta])
@@ -248,6 +256,9 @@ class AnalisisCreativoController extends Controller
                 DB::raw('MIN(creativos.funnel) as funnel'),
                 DB::raw('MIN(creativos.plataforma) as plataforma'),
                 DB::raw('MIN(creativos.tipo_cuenta) as tipo_cuenta'),
+                DB::raw('MIN(creativos.funnel_propio) as funnel_propio'),
+                DB::raw('MIN(creativos.tipo_campania) as tipo_campania'),
+                DB::raw('MIN(creativos.tipo_campania_nombre) as tipo_campania_nombre'),
                 DB::raw('MIN(creativos.formato) as formato'),
                 DB::raw('MIN(creativos.imagen_url) as imagen_url'),
                 DB::raw('SUM(resultados_diarios.cost) as cost'),
@@ -273,6 +284,9 @@ class AnalisisCreativoController extends Controller
                 'etapaFunnel' => $f->funnel ?? 'Sin clasificar',
                 'plataforma' => $f->plataforma,
                 'tipoCuenta' => $f->tipo_cuenta,
+                'funnelPropio' => $f->funnel_propio,
+                'tipoCampania' => $f->tipo_campania,
+                'tipoCampaniaNombre' => $f->tipo_campania_nombre,
                 'formato' => $f->formato,
                 'imageUrl' => $f->imagen_url ?? '',
                 'adNameShort' => $f->nombre_completo,
@@ -325,6 +339,9 @@ class AnalisisCreativoController extends Controller
             'formato' => $card['formato'] ?? null,
             'funnel' => $funnel === 'Sin clasificar' ? null : $funnel,
             'tipo_cuenta' => $card['tipoCuenta'] ?? null,
+            'funnel_propio' => $card['funnelPropio'] ?? null,
+            'tipo_campania' => $card['tipoCampania'] ?? null,
+            'tipo_campania_nombre' => $card['tipoCampaniaNombre'] ?? null,
             'nombre_amigable' => $card['nombreAmigable'] ?? null,
             'status' => $card['status'] ?? null,
             'esGrupoArte' => $esGrupo,

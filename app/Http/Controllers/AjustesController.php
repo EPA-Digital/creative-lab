@@ -8,6 +8,7 @@ use App\Models\Importacion;
 use App\Models\Pais;
 use App\Services\Ingesta\ClasificadorNombres;
 use App\Services\Ingesta\ValidadorCuentaPublicitaria;
+use App\Support\CuentaActual;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -73,6 +74,7 @@ class AjustesController extends Controller
         return DB::table('creativos')
             ->join('resultados', 'resultados.creativo_id', '=', 'creativos.id')
             ->leftJoin('cuentas_publicitarias', 'cuentas_publicitarias.id', '=', 'creativos.cuenta_publicitaria_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisId)
             ->whereNotNull('creativos.nombre_campania')
             ->groupBy('creativos.nombre_campania', 'creativos.plataforma')
@@ -117,28 +119,37 @@ class AjustesController extends Controller
         $data = $request->validate([
             'pais_id' => ['required', 'integer', Rule::in($request->user()->paises()->pluck('paises.id'))],
             'plataforma' => ['required', Rule::in(CuentaPublicitaria::PLATAFORMAS)],
-            'cuenta_id' => ['required', 'string', 'max:50', 'regex:/^(act_)?\d+$/i'],
+            'id_externo' => ['required', 'string', 'max:50', 'regex:/^(act_)?\d+$/i'],
             'nombre' => ['nullable', 'string', 'max:150'],
             'tipo' => ['required', Rule::in(CuentaPublicitaria::TIPOS)],
             'cuenta_en_venta_real' => ['required', 'boolean'],
         ], [
-            'cuenta_id.regex' => 'El ID de cuenta debe ser solo números (en Meta puede llevar "act_" adelante).',
+            'id_externo.regex' => 'El ID de cuenta debe ser solo números (en Meta puede llevar "act_" adelante).',
         ]);
 
-        $data['cuenta_id'] = ValidadorCuentaPublicitaria::normalizarId($data['cuenta_id']);
-        if (CuentaPublicitaria::where('plataforma', $data['plataforma'])->where('cuenta_id', $data['cuenta_id'])->exists()) {
-            return response()->json(['message' => 'Esa cuenta ya está cargada.'], 422);
+        $data['id_externo'] = ValidadorCuentaPublicitaria::normalizarId($data['id_externo']);
+        // Sin el filtro de cuenta a propósito: una cuenta publicitaria solo
+        // puede estar en UNA cuenta del dashboard, la que sea -- si no,
+        // alguien podría traer los datos de otro cliente a la suya.
+        $existente = CuentaPublicitaria::withoutGlobalScope('cuenta')
+            ->where('plataforma', $data['plataforma'])
+            ->where('id_externo', $data['id_externo'])
+            ->first();
+        if ($existente) {
+            return response()->json(['message' => $existente->cuenta_id === CuentaActual::id()
+                ? 'Esa cuenta ya está cargada.'
+                : 'Esa cuenta publicitaria ya está registrada en otra cuenta del dashboard.'], 422);
         }
 
         try {
-            $nombreRemoto = $validador->nombreRemoto($data['plataforma'], $data['cuenta_id']);
+            $nombreRemoto = $validador->nombreRemoto($data['plataforma'], $data['id_externo']);
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
         $cuenta = CuentaPublicitaria::create([
             ...$data,
-            'nombre' => $data['nombre'] ?: ($nombreRemoto ?? ($data['plataforma'] === 'meta' ? 'Meta' : 'TikTok')." {$data['cuenta_id']}"),
+            'nombre' => $data['nombre'] ?: ($nombreRemoto ?? ($data['plataforma'] === 'meta' ? 'Meta' : 'TikTok')." {$data['id_externo']}"),
             'activa' => true,
         ]);
 
@@ -150,10 +161,10 @@ class AjustesController extends Controller
      * real). El ID y la plataforma no se editan -- una cuenta distinta se
      * da de alta aparte.
      */
-    public function updateCuentaPublicitaria(Request $request, string $pais, CuentaPublicitaria $cuenta): JsonResponse
+    public function updateCuentaPublicitaria(Request $request, string $pais, CuentaPublicitaria $cuentaPublicitaria): JsonResponse
     {
         abort_unless(config("paises.{$pais}"), 404, "País \"{$pais}\" no existe en config/paises.php.");
-        abort_unless($request->user()->paises()->where('paises.id', $cuenta->pais_id)->exists(), 403);
+        abort_unless($request->user()->paises()->where('paises.id', $cuentaPublicitaria->pais_id)->exists(), 403);
 
         $data = $request->validate([
             'nombre' => ['sometimes', 'nullable', 'string', 'max:150'],
@@ -162,9 +173,9 @@ class AjustesController extends Controller
             'cuenta_en_venta_real' => ['sometimes', 'boolean'],
         ]);
 
-        $cuenta->update($data);
+        $cuentaPublicitaria->update($data);
 
-        return response()->json($cuenta->load('pais:id,nombre'));
+        return response()->json($cuentaPublicitaria->load('pais:id,nombre'));
     }
 
     /**

@@ -1,3 +1,4 @@
+import { urlPais } from '@/rutas';
 import axios from 'axios';
 import { notificar } from '@/avisos';
 
@@ -46,7 +47,7 @@ async function revisar() {
     const siguen = [];
     for (const t of tareas) {
         try {
-            const { data } = await axios.get(`/pais/${t.pais}/medios/tareas/${t.id}`);
+            const { data } = await axios.get(`${t.base ?? `/pais/${t.pais}`}/medios/tareas/${t.id}`);
             if (data.estado === 'listo') {
                 const fallidos = data.fallidos ? ` ${n(data.fallidos)} no se pudieron recuperar (el anuncio ya no existe en la plataforma o no tiene imagen).` : '';
                 notificar({
@@ -94,7 +95,9 @@ function arrancar() {
 export function seguirTareaMedios({ pais, id }) {
     if (!pais || !id) return;
     const tareas = leer().filter((t) => t.id !== id);
-    escribir([...tareas, { pais, id }]);
+    // La URL base (con la cuenta) se guarda al empezar: el polling sigue
+    // aunque se cambie de cuenta o de página.
+    escribir([...tareas, { pais, id, base: urlPais(pais) }]);
     arrancar();
 }
 

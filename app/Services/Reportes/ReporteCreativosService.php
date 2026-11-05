@@ -9,6 +9,7 @@ use App\Services\Ingesta\EnriquecedorCostosTiktok;
 use App\Services\Ingesta\ImagenCacheService;
 use App\Services\Ingesta\MetaApiClient;
 use App\Services\Ingesta\TiktokApiClient;
+use App\Support\CuentaActual;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +43,11 @@ class ReporteCreativosService
         $anuncios = DB::table('resultados')
             ->join('creativos', 'creativos.id', '=', 'resultados.creativo_id')
             ->leftJoin('cuentas_publicitarias', 'cuentas_publicitarias.id', '=', 'creativos.cuenta_publicitaria_id')
-            ->leftJoin('correcciones_nombres', 'correcciones_nombres.ad_id', '=', 'creativos.ad_id')
+            ->leftJoin('correcciones_nombres', function ($join) {
+                $join->on('correcciones_nombres.ad_id', '=', 'creativos.ad_id')
+                    ->on('correcciones_nombres.cuenta_id', '=', 'creativos.cuenta_id');
+            })
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisId)
             ->where('resultados.mes', $mes)
             ->get([
@@ -241,7 +246,7 @@ class ReporteCreativosService
                     $filaPorAdId[$f['adId']] = $i;
                 }
             }
-            foreach (CuentaPublicitaria::activasPara($paisId, $plataforma)->pluck('cuenta_id') as $cuentaId) {
+            foreach (CuentaPublicitaria::activasPara($paisId, $plataforma)->pluck('id_externo') as $cuentaId) {
                 if ($filaPorAdId === []) {
                     break;
                 }

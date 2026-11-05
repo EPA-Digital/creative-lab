@@ -23,7 +23,7 @@ class AccesoPaisTest extends TestCase
         $director = User::factory()->create(['rol' => 'director']);
 
         $this->actingAs($director)
-            ->get('/pais/ecuador/analisis')
+            ->get('/tada/pais/ecuador/analisis')
             ->assertForbidden();
     }
 
@@ -37,7 +37,7 @@ class AccesoPaisTest extends TestCase
         // controller igual responde 200 (lista vacía) -- confirma que
         // EnsureAccesoPais dejó pasar hasta el final.
         $this->actingAs($director)
-            ->get('/pais/ecuador/analisis')
+            ->get('/tada/pais/ecuador/analisis')
             ->assertOk();
     }
 
@@ -52,7 +52,9 @@ class AccesoPaisTest extends TestCase
 
         $response->assertInertia(fn ($page) => $page
             ->component('Landing')
-            ->has('paises', 2));
+            ->has('cuentas', 1)
+            ->where('cuentas.0.slug', 'tada')
+            ->has('cuentas.0.paises', 2));
     }
 
     public function test_un_usuario_con_un_solo_pais_asignado_se_salta_el_selector(): void
@@ -65,7 +67,7 @@ class AccesoPaisTest extends TestCase
 
         $this->actingAs($cliente)
             ->get('/')
-            ->assertRedirect('/pais/ecuador/analisis');
+            ->assertRedirect('/tada/pais/ecuador/analisis');
     }
 
     public function test_un_solo_pais_asignado_pero_deshabilitado_si_muestra_el_selector(): void
@@ -84,7 +86,7 @@ class AccesoPaisTest extends TestCase
 
         $response->assertInertia(fn ($page) => $page
             ->component('Landing')
-            ->has('paises', 1));
+            ->has('cuentas.0.paises', 1));
     }
 
     public function test_un_usuario_no_puede_gestionar_a_otro_de_su_mismo_nivel_o_mas_alto(): void

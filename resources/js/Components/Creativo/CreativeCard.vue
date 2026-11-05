@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { cardDesdeCreativo, statsParaCard, placeholderPorTipo, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, FUNNEL_LABELS, rangoActividadEnMes, formatearRangoFecha } from '@/motor';
+import { cardDesdeCreativo, statsParaCard, placeholderPorTipo, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, rangoActividadEnMes, formatearRangoFecha, etiquetaFunnel } from '@/motor';
 
 // Puerto literal de renderCardPulida + renderAreaImagen + placeholderPorTipo
 // + statsParaCard (dashboard/shared/motor.js, líneas 1079-1253 del proyecto
@@ -115,7 +115,7 @@ function onKeydown(e) {
             <p class="resumen-card-meta">
                 {{ esTikTok ? 'TikTok Ads' : 'Meta Ads' }}
                 <span v-if="card.etapaFunnel" class="resumen-card-funnel" :style="{ '--stage-color': stageColor }">
-                    {{ FUNNEL_LABELS[card.etapaFunnel] || card.etapaFunnel }}
+                    {{ etiquetaFunnel(card.etapaFunnel, card.funnelPropio) || card.etapaFunnel }}
                 </span>
             </p>
             <p v-if="rangoActividad" class="resumen-card-vigencia" title="Aproximado: primer día con impresiones o costo real hasta el último -- no es el registro exacto de Meta">
