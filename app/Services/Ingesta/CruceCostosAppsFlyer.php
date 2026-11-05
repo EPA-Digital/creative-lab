@@ -34,7 +34,7 @@ class CruceCostosAppsFlyer
         $excluidos = [];
 
         foreach ($limpias as $ad) {
-            $r = ClasificadorNombres::parsearNombre($ad['campaign'], $ad['adRaw']);
+            $r = Nomenclatura::parsear($ad['campaign'], $ad['adRaw'], $ad['conjunto'] ?? null);
             if ($r['plataforma'] === null) {
                 $excluidos[] = $ad;
 
@@ -46,6 +46,11 @@ class CruceCostosAppsFlyer
                 'arte' => $r['arte'],
                 'patronCampania' => $r['patron'],
                 'formato' => $r['formato'],
+                'dimensiones' => $r['dimensiones'] ?? null,
+                // Solo con reglas propias de la cuenta (ReglasNomenclatura).
+                'funnelPropio' => $r['funnelPropio'] ?? null,
+                'tipoCampania' => $r['tipoCampania'] ?? null,
+                'tipoCampaniaNombre' => $r['tipoCampaniaNombre'] ?? null,
             ]);
             if ($r['plataforma'] === 'meta') {
                 $meta[] = $enriquecido;
@@ -165,8 +170,22 @@ class CruceCostosAppsFlyer
             // como única fuente para funnel/tipoCuenta/formato cuando no
             // hay fila de AppsFlyer en absoluto (caso "solo API" original).
             $apiInfo = ($costos && ! empty($costos['adName']))
-                ? ClasificadorNombres::parsearNombre($costos['campaignName'] ?? null, $costos['adName'])
+                ? Nomenclatura::parsear($costos['campaignName'] ?? null, $costos['adName'], $costos['conjuntoName'] ?? null, $costos['objetivo'] ?? null, $costos['postId'] ?? null)
                 : null;
+
+            // Cuentas con reglas propias: si AppsFlyer no trae funnel o tipo,
+            // se completan con la API (que además trae conjunto y el
+            // objetivo de la campaña como respaldo del funnel). TaDa no
+            // pasa por acá: su clasificación queda exactamente igual.
+            $conReglas = ($apiInfo['patron'] ?? null) === 'NOMENCLATURA_CUENTA';
+            if ($af && $conReglas && $af['etapaFunnel'] === 'Sin clasificar' && $apiInfo['funnel']) {
+                $af['etapaFunnel'] = $apiInfo['funnel'];
+                $af['funnelPropio'] = $apiInfo['funnelPropio'];
+            }
+            if ($af && $conReglas && ! $af['tipoCampania']) {
+                $af['tipoCampania'] = $apiInfo['tipoCampania'];
+                $af['tipoCampaniaNombre'] = $apiInfo['tipoCampaniaNombre'];
+            }
 
             // arte: se prioriza el de AppsFlyer (campaign+ad name del CSV/
             // reporte), pero si ahí no se pudo extraer nada, se reintenta
@@ -175,6 +194,11 @@ class CruceCostosAppsFlyer
             // estructurado, el Ad Name de la API SÍ trae el nombre
             // correcto y arte se puede extraer de ahí.
             $arte = ($af && $af['arte']) ? $af['arte'] : ($apiInfo['arte'] ?? null);
+            // Cuenta con reglas propias: un creativo asignado al post de
+            // TikTok (cola "Sin creativo") es lo más específico y gana.
+            if (str_starts_with($apiInfo['reglasAplicadas']['arte'] ?? '', 'post ')) {
+                $arte = $apiInfo['arte'];
+            }
 
             $costosAdName = $costos['adName'] ?? null;
             $afAdRaw = $af['adRaw'] ?? null;
@@ -206,6 +230,14 @@ class CruceCostosAppsFlyer
                 // cuando no hay match de AppsFlyer o cuando arte solo se
                 // pudo extraer del Ad Name de la API.
                 'formato' => $af && $af['formato'] ? $af['formato'] : ($apiInfo['formato'] ?? null),
+                // Dimensiones propias de la cuenta (solo con nomenclatura
+                // propia, ver ReglasNomenclatura) -- mismo criterio que formato.
+                'dimensiones' => ($af['dimensiones'] ?? null) ?: ($apiInfo['dimensiones'] ?? null),
+                'funnelPropio' => $af ? ($af['funnelPropio'] ?? null) : ($apiInfo['funnelPropio'] ?? null),
+                'tipoCampania' => $af ? ($af['tipoCampania'] ?? null) : ($apiInfo['tipoCampania'] ?? null),
+                'tipoCampaniaNombre' => $af ? ($af['tipoCampaniaNombre'] ?? null) : ($apiInfo['tipoCampaniaNombre'] ?? null),
+                'conjuntoName' => ($costos['conjuntoName'] ?? null) ?: ($af['conjunto'] ?? null),
+                'postId' => $costos['postId'] ?? null,
                 // campaignName: el Campaign del CSV de AppsFlyer coincide
                 // EXACTO con el campaign_name real de Meta/TikTok
                 // (verificado 2026-08-04) -- se prioriza por ser el dato ya

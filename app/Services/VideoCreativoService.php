@@ -279,11 +279,11 @@ class VideoCreativoService
      */
     private function cuentasTiktok(Creativo $creativo): array
     {
-        $propia = $creativo->cuentaPublicitaria?->plataforma === 'tiktok' ? [$creativo->cuentaPublicitaria->cuenta_id] : [];
+        $propia = $creativo->cuentaPublicitaria?->plataforma === 'tiktok' ? [$creativo->cuentaPublicitaria->id_externo] : [];
 
         return array_values(array_unique([
             ...$propia,
-            ...CuentaPublicitaria::activasPara($creativo->pais_id, 'tiktok')->pluck('cuenta_id')->all(),
+            ...CuentaPublicitaria::activasPara($creativo->pais_id, 'tiktok')->pluck('id_externo')->all(),
         ]));
     }
 

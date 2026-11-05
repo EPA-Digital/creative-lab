@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Importacion extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'importaciones';
 
     const CREATED_AT = 'creado_en';

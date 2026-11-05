@@ -27,7 +27,7 @@ function cuenta(array $atributos = []): CuentaPublicitaria
     return CuentaPublicitaria::create([
         'pais_id' => $pais->id,
         'plataforma' => 'tiktok',
-        'cuenta_id' => (string) random_int(1000, 999999),
+        'id_externo' => (string) random_int(1000, 999999),
         'nombre' => 'Cuenta',
         'tipo' => 'tada',
         ...$atributos,
@@ -59,8 +59,8 @@ it('reparte entre todos los canales de las cuentas marcadas para venta real', fu
 });
 
 it('junta los costos de todas las cuentas y etiqueta cada fila con su cuenta', function () {
-    $a = cuenta(['cuenta_id' => '111']);
-    $b = cuenta(['cuenta_id' => '222']);
+    $a = cuenta(['id_externo' => '111']);
+    $b = cuenta(['id_externo' => '222']);
     $porCuenta = [
         '111' => [['adId' => 'x1', 'cost' => 10.0], ['adId' => 'x2', 'cost' => 5.0]],
         '222' => [['adId' => 'y1', 'cost' => 7.0], ['adId' => 'x1', 'cost' => 99.0]],
@@ -73,8 +73,8 @@ it('junta los costos de todas las cuentas y etiqueta cada fila con su cuenta', f
 });
 
 it('solo confirma "sin actividad"/"eliminado" lo que lo es en todas las cuentas', function () {
-    $a = cuenta(['cuenta_id' => '111']);
-    $b = cuenta(['cuenta_id' => '222']);
+    $a = cuenta(['id_externo' => '111']);
+    $b = cuenta(['id_externo' => '222']);
     // En la cuenta 111 el ad "vivo" existe; en la 222 no existe ninguno.
     $detectar = fn (string $cuentaId, array $adIds) => $cuentaId === '111' ? array_values(array_diff($adIds, ['vivo'])) : $adIds;
 

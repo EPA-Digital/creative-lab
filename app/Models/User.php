@@ -53,6 +53,9 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'puesto',
+        'avatar_color',
+        'foto_path',
         'email',
         'google_id',
         'metodo_auth',
@@ -69,6 +72,7 @@ class User extends Authenticatable
         'activo',
         'email_verified_at',
         'pais_ids_propuestos',
+        'cuenta_ids_propuestos',
     ];
 
     /**
@@ -97,6 +101,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'activo' => 'boolean',
             'pais_ids_propuestos' => 'array',
+            'cuenta_ids_propuestos' => 'array',
             'totp_secret' => 'encrypted',
             'totp_confirmed_at' => 'datetime',
             'totp_recovery_codes' => 'array',
@@ -273,6 +278,29 @@ class User extends Authenticatable
     public function paises(): BelongsToMany
     {
         return $this->belongsToMany(Pais::class, 'usuario_pais', 'usuario_id', 'pais_id');
+    }
+
+    /**
+     * Lo que ve el equipo en el dashboard (nav, "Editar perfil"). ?v= evita
+     * la caché del navegador al cambiar la foto.
+     *
+     * @return array{id: int, name: string, puesto: ?string, avatar_color: ?string, foto: ?string}
+     */
+    public function perfilPublico(): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'puesto' => $this->puesto,
+            'avatar_color' => $this->avatar_color,
+            'foto' => $this->foto_path ? "/usuarios/{$this->id}/foto?v=".$this->updated_at?->timestamp : null,
+        ];
+    }
+
+    /** Cuentas que puede ver (multi-cuenta) -- se combina con paises(), ver EnsureAccesoPais. */
+    public function cuentas(): BelongsToMany
+    {
+        return $this->belongsToMany(Cuenta::class, 'usuario_cuenta', 'usuario_id', 'cuenta_id');
     }
 
     public function creadoPor(): BelongsTo

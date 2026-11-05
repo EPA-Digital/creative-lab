@@ -1,6 +1,7 @@
 <script setup>
+import { urlPais } from '@/rutas';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import TipoCuentaToggle from '@/Components/Creativo/TipoCuentaToggle.vue';
@@ -9,7 +10,7 @@ import DatosMensuales from '@/Components/DatosMensuales.vue';
 import ProgresoImportacion from '@/Components/ProgresoImportacion.vue';
 import { mostrarAlerta } from '@/avisos';
 import { etiquetaMes, seguirTareaMedios } from '@/seguimientoMedios';
-import { formatMoneyExacto, formatNumeroExacto, FUNNEL_LABELS } from '@/motor';
+import { formatMoneyExacto, formatNumeroExacto, etiquetaFunnel } from '@/motor';
 
 // Puerto del import-panel de meta.html/tiktok.html ("Cargar datos") -- el
 // hueco real de la migración: antes no había dónde teclear ncTotalReal/
@@ -121,7 +122,7 @@ async function importarApi() {
     try {
         // Corre en background (ProcesarImportacionApi, 2026-10-06): el POST
         // solo encola y devuelve el id; el avance se sigue con polling.
-        const { data } = await axios.post(`/pais/${props.pais}/importar/api`, {
+        const { data } = await axios.post(`${urlPais(props.pais)}/importar/api`, {
             desde: apiDesde.value,
             hasta: apiHasta.value,
             nc_total_real_meta: apiNcTotalRealMeta.value === '' ? null : apiNcTotalRealMeta.value,
@@ -199,7 +200,7 @@ async function onArchivoSeleccionado(e) {
     try {
         const formData = new FormData();
         formData.append('archivo', file);
-        const { data } = await axios.post(`/pais/${props.pais}/importar/previsualizar`, formData);
+        const { data } = await axios.post(`${urlPais(props.pais)}/importar/previsualizar`, formData);
         preview.value = data;
         token.value = data.token;
         desde.value = data.rangoMin || '';
@@ -248,7 +249,7 @@ async function importar() {
     resumen.value = null;
 
     try {
-        const { data } = await axios.post(`/pais/${props.pais}/importar`, {
+        const { data } = await axios.post(`${urlPais(props.pais)}/importar`, {
             token: token.value,
             nombre_archivo: nombreArchivo.value,
             desde: desde.value,
@@ -326,7 +327,7 @@ function seguirImportacion(id, { alTerminar, alFallar }, mesDeImportacion) {
 
     pollHandle = setInterval(async () => {
         try {
-            const { data } = await axios.get(`/pais/${props.pais}/importar/estado/${id}`);
+            const { data } = await axios.get(`${urlPais(props.pais)}/importar/estado/${id}`);
             if (data.estado === 'procesando') {
                 progreso.value.porcentaje = data.progreso ?? 0;
                 progreso.value.etapa = data.etapa ?? null;
@@ -378,7 +379,7 @@ async function cargarResumen(params = {}) {
     resumenCargando.value = true;
     resumenError.value = '';
     try {
-        const { data } = await axios.get(`/pais/${props.pais}/importar/resumen`, { params });
+        const { data } = await axios.get(`${urlPais(props.pais)}/importar/resumen`, { params });
         resumenDesde.value = data.desde || '';
         resumenHasta.value = data.hasta || '';
         resumenRangoMin.value = data.rangoMin || null;
@@ -544,10 +545,11 @@ onMounted(() => cargarResumen());
                         </span>
                     </div>
 
-                    <div class="tipo-cuenta-row">
+                    <!-- DTC/BRD es propio de TaDa (ver opcionesTipoCuenta). -->
+                    <div v-if="usePage().props.cuentaActual?.slug === 'tada'" class="tipo-cuenta-row">
                         <span class="tipo-cuenta-label">Tipo de cuenta</span>
-                        <TipoCuentaToggle :counts="preview?.tipoCuentaCounts || {}" readonly />
-                        <span class="date-hint">DTC (paid propio de TaDa) y BRD (integración de marca) son negocios distintos — nunca se suman juntos.</span>
+                        <TipoCuentaToggle :pais="pais" :counts="preview?.tipoCuentaCounts || {}" readonly />
+                        <span class="date-hint">{{ pais === 'ecuador' ? 'DTC (paid propio de TaDa) y BRD (marcas de BI) son negocios distintos — nunca se suman juntos.' : 'Paid propio de TaDa.' }}</span>
                     </div>
 
                     <div class="import-grid">
@@ -725,7 +727,7 @@ onMounted(() => cargarResumen());
                                         {{ fila.nombreComun || '(sin clasificar)' }}
                                     </td>
                                     <td :class="{ 'resumen-tabla-sin-clasificar': !fila.funnel }">
-                                        {{ fila.funnel ? (FUNNEL_LABELS[fila.funnel] || fila.funnel) : '(sin clasificar)' }}
+                                        {{ fila.funnel ? (etiquetaFunnel(fila.funnel) || fila.funnel) : '(sin clasificar)' }}
                                     </td>
                                     <td class="mono">{{ formatMoneyExacto(fila.cost) }}</td>
                                     <td class="mono">{{ formatNumeroExacto(fila.impressions) }}</td>

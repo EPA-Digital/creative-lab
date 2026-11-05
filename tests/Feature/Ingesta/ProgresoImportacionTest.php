@@ -23,8 +23,8 @@ uses(RefreshDatabase::class);
 function paisPeruConCuentas(): Pais
 {
     $pe = Pais::create(['codigo' => 'PE', 'nombre' => 'Perú']);
-    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'meta', 'cuenta_id' => '111', 'nombre' => 'Perú Meta', 'tipo' => 'tada']);
-    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'tiktok', 'cuenta_id' => '222', 'nombre' => 'Perú TikTok', 'tipo' => 'tada']);
+    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'meta', 'id_externo' => '111', 'nombre' => 'Perú Meta', 'tipo' => 'tada']);
+    CuentaPublicitaria::create(['pais_id' => $pe->id, 'plataforma' => 'tiktok', 'id_externo' => '222', 'nombre' => 'Perú TikTok', 'tipo' => 'tada']);
 
     return $pe;
 }
@@ -36,7 +36,7 @@ it('"Por API" encola un Job y responde al instante con el id', function () {
     $user = User::factory()->create(['rol' => 'superadmin']);
     $user->paises()->attach($pe->id);
 
-    $r = $this->actingAs($user)->postJson('/pais/peru/importar/api', ['desde' => '2026-09-01', 'hasta' => '2026-09-30', 'nc_total_real_meta' => 100])
+    $r = $this->actingAs($user)->postJson('/tada/pais/peru/importar/api', ['desde' => '2026-09-01', 'hasta' => '2026-09-30', 'nc_total_real_meta' => 100])
         ->assertStatus(202)
         ->assertJsonPath('estado', 'procesando');
 
@@ -50,7 +50,7 @@ it('el estado de una importación en curso devuelve el avance', function () {
     $user->paises()->attach($pe->id);
     $imp = Importacion::create(['pais_id' => $pe->id, 'origen' => 'csv', 'desde' => '2026-09-01', 'hasta' => '2026-09-30', 'estado' => 'procesando', 'progreso' => 42, 'etapa' => 'Guardando creativos de Meta: 40 de 90']);
 
-    $this->actingAs($user)->getJson("/pais/peru/importar/estado/{$imp->id}")
+    $this->actingAs($user)->getJson("/tada/pais/peru/importar/estado/{$imp->id}")
         ->assertOk()
         ->assertJson(['estado' => 'procesando', 'progreso' => 42, 'etapa' => 'Guardando creativos de Meta: 40 de 90']);
 });

@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CorreccionNombre extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'correcciones_nombres';
 
     const CREATED_AT = 'corregido_en';

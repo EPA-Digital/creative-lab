@@ -162,7 +162,7 @@ class InvitacionTest extends TestCase
         $cliente = User::factory()->create(['rol' => 'cliente']);
 
         $this->actingAs($cliente)
-            ->get('/pais/ecuador/importar')
+            ->get('/tada/pais/ecuador/importar')
             ->assertForbidden();
     }
 

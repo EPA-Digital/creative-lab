@@ -65,7 +65,7 @@ class DatosMensualesTest extends TestCase
         $this->sembrar();
 
         $r = $this->actingAs($this->usuario('junior'))
-            ->getJson('/pais/ecuador/importar/mensual?mes=2026-09')
+            ->getJson('/tada/pais/ecuador/importar/mensual?mes=2026-09')
             ->assertOk()
             ->assertJsonPath('mes', '2026-09')
             ->assertJsonPath('meses.0.mes', '2026-09')
@@ -90,7 +90,7 @@ class DatosMensualesTest extends TestCase
         $this->sembrar();
 
         $this->actingAs($this->usuario('junior'))
-            ->getJson('/pais/ecuador/importar/mensual?mes=2026-09&agrupar=anuncio')
+            ->getJson('/tada/pais/ecuador/importar/mensual?mes=2026-09&agrupar=anuncio')
             ->assertOk()
             ->assertJsonCount(3, 'filas')
             ->assertJsonPath('filas.0.adId', '1');
@@ -100,12 +100,12 @@ class DatosMensualesTest extends TestCase
     {
         $this->sembrar();
 
-        $this->actingAs($this->usuario('junior'))->getJson('/pais/ecuador/importar/mensual')->assertJsonPath('mes', '2026-09');
+        $this->actingAs($this->usuario('junior'))->getJson('/tada/pais/ecuador/importar/mensual')->assertJsonPath('mes', '2026-09');
     }
 
     public function test_un_cliente_no_puede_ver_la_data_importada(): void
     {
-        $this->actingAs($this->usuario('cliente'))->getJson('/pais/ecuador/importar/mensual')->assertForbidden();
+        $this->actingAs($this->usuario('cliente'))->getJson('/tada/pais/ecuador/importar/mensual')->assertForbidden();
     }
 
     public function test_superadmin_elimina_solo_ese_mes_de_ese_pais(): void
@@ -115,7 +115,7 @@ class DatosMensualesTest extends TestCase
         $this->resultado($mx, '99', 'VID-MX', '2026-09', ['cost' => 10]);
 
         $this->actingAs($this->usuario('superadmin'))
-            ->deleteJson('/pais/ecuador/importar/mensual/2026-09', ['confirmacion' => '2026-09'])
+            ->deleteJson('/tada/pais/ecuador/importar/mensual/2026-09', ['confirmacion' => '2026-09'])
             ->assertOk()
             ->assertJsonPath('resultados', 3);
 
@@ -131,7 +131,7 @@ class DatosMensualesTest extends TestCase
         $this->sembrar();
 
         $this->actingAs($this->usuario('superadmin'))
-            ->deleteJson('/pais/ecuador/importar/mensual/2026-09', ['confirmacion' => 'si'])
+            ->deleteJson('/tada/pais/ecuador/importar/mensual/2026-09', ['confirmacion' => 'si'])
             ->assertStatus(422);
 
         $this->assertSame(3, Resultado::where('mes', '2026-09')->count());
@@ -143,7 +143,7 @@ class DatosMensualesTest extends TestCase
 
         foreach (['junior', 'gerente', 'director'] as $rol) {
             $this->actingAs($this->usuario($rol))
-                ->deleteJson('/pais/ecuador/importar/mensual/2026-09', ['confirmacion' => '2026-09'])
+                ->deleteJson('/tada/pais/ecuador/importar/mensual/2026-09', ['confirmacion' => '2026-09'])
                 ->assertForbidden();
         }
 
@@ -152,9 +152,9 @@ class DatosMensualesTest extends TestCase
 
     public function test_la_pantalla_sabe_si_puede_eliminar(): void
     {
-        $this->actingAs($this->usuario('gerente'))->get('/pais/ecuador/importar')
+        $this->actingAs($this->usuario('gerente'))->get('/tada/pais/ecuador/importar')
             ->assertInertia(fn ($page) => $page->where('puedeEliminarMes', false));
-        $this->actingAs($this->usuario('superadmin'))->get('/pais/ecuador/importar')
+        $this->actingAs($this->usuario('superadmin'))->get('/tada/pais/ecuador/importar')
             ->assertInertia(fn ($page) => $page->where('puedeEliminarMes', true));
     }
 

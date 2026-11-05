@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class CuentaPublicitaria extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'cuentas_publicitarias';
 
     const CREATED_AT = 'creado_en';
@@ -32,7 +35,7 @@ class CuentaPublicitaria extends Model
     protected $fillable = [
         'pais_id',
         'plataforma',
-        'cuenta_id',
+        'id_externo',
         'nombre',
         'tipo',
         'activa',

@@ -3,9 +3,14 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Services\Ingesta\BigQueryClient;
+use App\Support\CuentaActual;
 use Google\Cloud\Storage\StorageClient;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -21,6 +26,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // BigQuery con las credenciales por defecto (ver BigQueryClient);
+        // los tests lo reemplazan con un token fijo.
+        $this->app->bind(BigQueryClient::class, fn () => BigQueryClient::fromConfig());
         // league/flysystem-google-cloud-storage no trae auto-registro de
         // Laravel -- disco 'gcs' (ver config/filesystems.php), usado por
         // ImagenCacheService. Autentica vía Application Default Credentials
@@ -56,6 +64,22 @@ class AppServiceProvider extends ServiceProvider
     {
         Vite::prefetch(concurrency: 3);
 
+        // Multi-cuenta: los comandos propios sin cuenta explícita y los jobs
+        // encolados antes del cambio corren en TaDa (todo lo que existía era
+        // de TaDa). Los jobs nuevos heredan la cuenta solos (Context) y los
+        // programados (importar:appsflyer-api, meta:sincronizar-estado-ads)
+        // recorren cada cuenta activa con CuentaActual::usar.
+        Event::listen(CommandStarting::class, function (CommandStarting $evento) {
+            if (in_array(strtok((string) $evento->command, ':'), ['importar', 'meta', 'reparar'], true) && ! CuentaActual::hay()) {
+                CuentaActual::tadaPorDefecto();
+            }
+        });
+        Queue::before(function () {
+            if (! CuentaActual::hay()) {
+                CuentaActual::tadaPorDefecto();
+            }
+        });
+
         // Política única de contraseñas (auth-prompt.md Fase 3) -- solo
         // aplica a metodo_auth=password, un @epa.digital nunca setea una
         // acá (entra por Google). Rules\Password::defaults() la toma
@@ -77,6 +101,10 @@ class AppServiceProvider extends ServiceProvider
         // usuarios) -- ver routes/web.php ->middleware('can:epa'). Un
         // 'cliente' (correo/contraseña, solo lectura) nunca pasa esto.
         Gate::define('epa', fn (User $user) => $user->esEpa());
+
+        // Desactivar/reactivar una cuenta del dashboard -- mismo nivel que
+        // desactivar usuarios (director/superadmin).
+        Gate::define('desactivar-cuentas', fn (User $user) => $user->puedeDesactivarUsuarios());
 
         // Editar rol/países de OTRO usuario -- jerarquía completa (ver
         // User::puedeGestionarA()): gerente administra senior/junior/

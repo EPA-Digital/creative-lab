@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -13,6 +14,8 @@ use Illuminate\Support\Facades\DB;
  */
 class TareaMedios extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'tareas_medios';
 
     const CREATED_AT = 'creado_en';

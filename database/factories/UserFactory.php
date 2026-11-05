@@ -4,7 +4,9 @@ namespace Database\Factories;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
@@ -31,6 +33,21 @@ class UserFactory extends Factory
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
         ];
+    }
+
+    /**
+     * Multi-cuenta: todo el dashboard era TaDa y todos los usuarios
+     * existentes quedaron con TaDa (migración usuario_cuenta) -- el usuario
+     * de prueba también. Para probar sin acceso: $user->cuentas()->detach().
+     */
+    public function configure(): static
+    {
+        return $this->afterCreating(function (User $user) {
+            if (Schema::hasTable('usuario_cuenta')) {
+                $tada = DB::table('cuentas')->where('slug', 'tada')->value('id');
+                $tada && $user->cuentas()->syncWithoutDetaching([$tada]);
+            }
+        });
     }
 
     /**

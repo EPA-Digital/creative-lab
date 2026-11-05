@@ -1,10 +1,21 @@
 <script setup>
 import { computed } from 'vue';
 import {
-    cardDesdeCreativo, placeholderPorTipo, promediosDeGrupo, calcularScoreDesglose, serieMensual, serieDiaria,
-    DIRECCION_METRICA_MAYOR_ES_MEJOR, FUNNEL_LABELS, nombrePrincipalYTecnico,
-    formatMoneyExacto, formatPercent, formatNumeroExacto,
-    formatearRangoFecha, diasEnRango, evaluarComparabilidad,
+    cardDesdeCreativo,
+    placeholderPorTipo,
+    promediosDeGrupo,
+    calcularScoreDesglose,
+    serieMensual,
+    serieDiaria,
+    DIRECCION_METRICA_MAYOR_ES_MEJOR,
+    nombrePrincipalYTecnico,
+    formatMoneyExacto,
+    formatPercent,
+    formatNumeroExacto,
+    formatearRangoFecha,
+    diasEnRango,
+    evaluarComparabilidad,
+    etiquetaFunnel,
 } from '@/motor';
 import TendenciaChart from '@/Components/Inteligencia/TendenciaChart.vue';
 
@@ -209,7 +220,7 @@ const comparabilidad = computed(() => evaluarComparabilidad(ordenados.value.map(
             <div class="comparacion-titulo">
                 <span class="comparacion-eyebrow">Inteligencia · Competencia{{ !esVs ? ` de ${ordenados.length}` : '' }}</span>
                 <span class="comparacion-titulo-texto">
-                    {{ esVs ? `${FUNNEL_LABELS[funnelComun] || funnelComun} vs. ${FUNNEL_LABELS[funnelComun] || funnelComun}` : `Todos ${FUNNEL_LABELS[funnelComun] || funnelComun} — comparados a la vez` }}
+                    {{ esVs ? `${etiquetaFunnel(funnelComun) || funnelComun} vs. ${etiquetaFunnel(funnelComun) || funnelComun}` : `Todos ${etiquetaFunnel(funnelComun) || funnelComun} — comparados a la vez` }}
                 </span>
             </div>
             <span class="comparacion-header-spacer"></span>

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\CuentaActual;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -26,6 +27,7 @@ class RangosActividadService
     {
         $filas = DB::table('resultados_diarios')
             ->join('creativos', 'creativos.id', '=', 'resultados_diarios.creativo_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisId)
             ->where(function ($q) {
                 $q->where('resultados_diarios.impressions', '>', 0)

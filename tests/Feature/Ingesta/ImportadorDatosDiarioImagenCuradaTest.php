@@ -3,7 +3,9 @@
 use App\Models\Creativo;
 use App\Models\Pais;
 use App\Services\Ingesta\ImportadorDatosDiario;
+use App\Support\CuentaActual;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -23,6 +25,15 @@ use Illuminate\Support\Facades\Storage;
  * arma a mano el subset de esquema sqlite-compatible que necesita.
  */
 beforeEach(function () {
+    // Esquema a mano: una cuenta 1 sin nomenclatura propia (clasificador de
+    // TaDa, ver Nomenclatura) y un cuenta_id fijo.
+    CuentaActual::fijar(1);
+    Schema::create('cuentas', function (Blueprint $table) {
+        $table->increments('id');
+        $table->json('nomenclatura')->nullable();
+    });
+    DB::table('cuentas')->insert(['id' => 1]);
+
     Schema::create('paises', function (Blueprint $table) {
         $table->increments('id');
         $table->string('codigo', 3)->unique();
@@ -30,6 +41,7 @@ beforeEach(function () {
     });
     Schema::create('creativos', function (Blueprint $table) {
         $table->increments('id');
+        $table->unsignedInteger('cuenta_id')->default(1);
         $table->unsignedInteger('pais_id');
         $table->string('ad_id', 50);
         $table->string('nombre_comun', 255)->nullable();
@@ -38,6 +50,11 @@ beforeEach(function () {
         $table->string('imagen_url', 500)->nullable();
         $table->string('plataforma', 10);
         $table->string('formato', 20)->nullable();
+        $table->json('dimensiones')->nullable();
+        $table->string('nombre_conjunto')->nullable();
+        $table->string('funnel_propio', 40)->nullable();
+        $table->string('tipo_campania', 20)->nullable();
+        $table->string('tipo_campania_nombre', 40)->nullable();
         $table->string('funnel', 10)->nullable();
         $table->string('tipo_cuenta', 10)->nullable();
         $table->timestamp('creado_en')->useCurrent();
@@ -99,6 +116,7 @@ afterEach(function () {
     Schema::dropIfExists('resultados_diarios');
     Schema::dropIfExists('creativos');
     Schema::dropIfExists('paises');
+    Schema::dropIfExists('cuentas');
 });
 
 function csvSnowflakeParaAd(string $adId, string $fecha, string $thumbUrl): string

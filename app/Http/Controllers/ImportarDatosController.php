@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Jobs\ProcesarImportacionApi;
 use App\Jobs\ProcesarImportacionCsv;
 use App\Models\AppsflyerApp;
+use App\Models\Cuenta;
 use App\Models\Importacion;
 use App\Models\Pais;
 use App\Models\TareaMedios;
 use App\Services\Ingesta\ImportadorDatos;
+use App\Support\CuentaActual;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -281,6 +283,10 @@ class ImportarDatosController extends Controller
         if (AppsflyerApp::where('pais_id', $paisModelo->id)->doesntExist()) {
             return response()->json(['error' => "{$paisModelo->nombre} no tiene apps de AppsFlyer configuradas -- agrégalas en Ajustes para poder importar por API."], 422);
         }
+        $cuenta = Cuenta::findOrFail(CuentaActual::id());
+        if (! $cuenta->credencial('appsflyer')?->listaParaImportar()) {
+            return response()->json(['error' => "{$cuenta->nombre} no tiene AppsFlyer configurado (token o BigQuery) -- agrégalo en Cuentas → editar → Medición para poder importar por API."], 422);
+        }
 
         // Background, igual que el CSV (2026-10-06): un país grande puede
         // pasar el timeout de Cloud Run. El panel hace polling de
@@ -351,6 +357,7 @@ class ImportarDatosController extends Controller
 
         $rango = DB::table('resultados_diarios')
             ->join('creativos', 'creativos.id', '=', 'resultados_diarios.creativo_id')
+            ->where('creativos.cuenta_id', CuentaActual::id())
             ->where('creativos.pais_id', $paisModelo->id)
             ->selectRaw('MIN(fecha) as min, MAX(fecha) as max')
             ->first();
@@ -371,6 +378,7 @@ class ImportarDatosController extends Controller
         if ($desde && $hasta) {
             $filas = DB::table('resultados_diarios')
                 ->join('creativos', 'creativos.id', '=', 'resultados_diarios.creativo_id')
+                ->where('creativos.cuenta_id', CuentaActual::id())
                 ->where('creativos.pais_id', $paisModelo->id)
                 ->whereBetween('resultados_diarios.fecha', [$desde, $hasta])
                 ->groupBy('creativos.nombre_comun', 'resultados_diarios.fecha')

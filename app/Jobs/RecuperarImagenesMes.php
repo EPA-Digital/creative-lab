@@ -59,7 +59,7 @@ class RecuperarImagenesMes implements ShouldQueue
             }
 
             $faltan = $creativos->keys()->all();
-            foreach (CuentaPublicitaria::activasPara($tarea->pais_id, $plataforma)->pluck('cuenta_id') as $cuentaId) {
+            foreach (CuentaPublicitaria::activasPara($tarea->pais_id, $plataforma)->pluck('id_externo') as $cuentaId) {
                 if ($faltan === []) {
                     break;
                 }

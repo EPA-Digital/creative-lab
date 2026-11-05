@@ -37,7 +37,7 @@ class ErroresEnEspanolTest extends TestCase
     public function test_un_csv_de_mas_de_30_mb_se_rechaza_con_un_mensaje_claro(): void
     {
         $this->actingAs($this->user)
-            ->postJson('/pais/peru/importar/previsualizar', ['archivo' => UploadedFile::fake()->create('peru.csv', 31 * 1024, 'text/csv')])
+            ->postJson('/tada/pais/peru/importar/previsualizar', ['archivo' => UploadedFile::fake()->create('peru.csv', 31 * 1024, 'text/csv')])
             ->assertStatus(422)
             ->assertJsonPath('message', 'El archivo pesa más de 30 MB. Exporta el CSV por un rango más corto o filtrado por país.');
     }
@@ -47,7 +47,7 @@ class ErroresEnEspanolTest extends TestCase
         // México pesa ~4.2 MB -- antes de docker/php.ini fallaba en
         // producción (límite de fábrica de PHP: 2 MB).
         $this->actingAs($this->user)
-            ->postJson('/pais/peru/importar/previsualizar', ['archivo' => UploadedFile::fake()->create('mexico.csv', 5 * 1024, 'text/csv')])
+            ->postJson('/tada/pais/peru/importar/previsualizar', ['archivo' => UploadedFile::fake()->create('mexico.csv', 5 * 1024, 'text/csv')])
             ->assertOk()
             ->assertJsonStructure(['token', 'nombreArchivo']);
     }
@@ -55,7 +55,7 @@ class ErroresEnEspanolTest extends TestCase
     public function test_un_archivo_que_no_es_csv_se_rechaza_en_espanol(): void
     {
         $this->actingAs($this->user)
-            ->postJson('/pais/peru/importar/previsualizar', ['archivo' => UploadedFile::fake()->create('peru.xlsx', 10, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')])
+            ->postJson('/tada/pais/peru/importar/previsualizar', ['archivo' => UploadedFile::fake()->create('peru.xlsx', 10, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')])
             ->assertStatus(422)
             ->assertJsonPath('message', fn (string $m) => str_contains($m, 'tiene que ser un CSV'));
     }
@@ -63,7 +63,7 @@ class ErroresEnEspanolTest extends TestCase
     public function test_los_mensajes_genericos_salen_en_espanol_con_nombres_legibles(): void
     {
         $this->actingAs($this->user)
-            ->postJson('/pais/peru/importar/api', [])
+            ->postJson('/tada/pais/peru/importar/api', [])
             ->assertStatus(422)
             ->assertJsonPath('errors.desde.0', 'El campo fecha de inicio es obligatorio.');
     }

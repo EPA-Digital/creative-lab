@@ -37,10 +37,10 @@ class CuentasPublicitariasAjustesTest extends TestCase
 
     private function alta(User $user, array $datos = [])
     {
-        return $this->actingAs($user)->postJson('/pais/ecuador/ajustes/cuentas-publicitarias', [
+        return $this->actingAs($user)->postJson('/tada/pais/ecuador/ajustes/cuentas-publicitarias', [
             'pais_id' => $this->ec->id,
             'plataforma' => 'meta',
-            'cuenta_id' => 'act_123456',
+            'id_externo' => 'act_123456',
             'nombre' => '',
             'tipo' => 'brd',
             'cuenta_en_venta_real' => true,
@@ -54,11 +54,11 @@ class CuentasPublicitariasAjustesTest extends TestCase
 
         $this->alta($this->usuario('superadmin'))
             ->assertCreated()
-            ->assertJsonPath('cuenta_id', '123456')
+            ->assertJsonPath('id_externo', '123456')
             ->assertJsonPath('nombre', 'Ecuador BRD')
             ->assertJsonPath('tipo', 'brd');
 
-        $this->assertDatabaseHas('cuentas_publicitarias', ['cuenta_id' => '123456', 'plataforma' => 'meta', 'activa' => true]);
+        $this->assertDatabaseHas('cuentas_publicitarias', ['id_externo' => '123456', 'plataforma' => 'meta', 'activa' => true]);
     }
 
     public function test_si_la_api_no_da_acceso_no_se_guarda(): void
@@ -77,11 +77,11 @@ class CuentasPublicitariasAjustesTest extends TestCase
         Http::fake(['business-api.tiktok.com/*' => Http::response(['code' => 0, 'data' => ['list' => [], 'page_info' => ['total_page' => 0]]])]);
         $superadmin = $this->usuario('superadmin');
 
-        $this->alta($superadmin, ['plataforma' => 'tiktok', 'cuenta_id' => '7550000000000000001', 'nombre' => 'TaDa EC nueva'])
+        $this->alta($superadmin, ['plataforma' => 'tiktok', 'id_externo' => '7550000000000000001', 'nombre' => 'TaDa EC nueva'])
             ->assertCreated()
             ->assertJsonPath('nombre', 'TaDa EC nueva');
 
-        $this->alta($superadmin, ['plataforma' => 'tiktok', 'cuenta_id' => '7550000000000000002'])
+        $this->alta($superadmin, ['plataforma' => 'tiktok', 'id_externo' => '7550000000000000002'])
             ->assertCreated()
             ->assertJsonPath('nombre', 'TikTok 7550000000000000002');
 
@@ -92,7 +92,7 @@ class CuentasPublicitariasAjustesTest extends TestCase
     {
         Http::fake(['business-api.tiktok.com/*' => Http::response(['code' => 40001, 'message' => 'Permission error'])]);
 
-        $this->alta($this->usuario('superadmin'), ['plataforma' => 'tiktok', 'cuenta_id' => '7550000000000000003'])
+        $this->alta($this->usuario('superadmin'), ['plataforma' => 'tiktok', 'id_externo' => '7550000000000000003'])
             ->assertStatus(422);
 
         $this->assertDatabaseCount('cuentas_publicitarias', 0);
@@ -100,30 +100,30 @@ class CuentasPublicitariasAjustesTest extends TestCase
 
     public function test_no_permite_cargar_la_misma_cuenta_dos_veces(): void
     {
-        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'cuenta_id' => '123456', 'tipo' => 'tada']);
+        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'id_externo' => '123456', 'tipo' => 'tada']);
 
         $this->alta($this->usuario('superadmin'))->assertStatus(422)->assertJsonPath('message', 'Esa cuenta ya está cargada.');
     }
 
     public function test_solo_superadmin_puede_agregar_o_editar_cuentas(): void
     {
-        $cuenta = CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'cuenta_id' => '999', 'tipo' => 'tada']);
+        $cuenta = CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'id_externo' => '999', 'tipo' => 'tada']);
 
         foreach (['junior', 'gerente', 'director'] as $rol) {
             $user = $this->usuario($rol);
             $this->alta($user)->assertForbidden();
             $this->actingAs($user)
-                ->patchJson("/pais/ecuador/ajustes/cuentas-publicitarias/{$cuenta->id}", ['cuenta_en_venta_real' => false])
+                ->patchJson("/tada/pais/ecuador/ajustes/cuentas-publicitarias/{$cuenta->id}", ['cuenta_en_venta_real' => false])
                 ->assertForbidden();
         }
     }
 
     public function test_superadmin_cambia_los_interruptores_de_una_cuenta(): void
     {
-        $cuenta = CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'tiktok', 'cuenta_id' => '777', 'tipo' => 'tada']);
+        $cuenta = CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'tiktok', 'id_externo' => '777', 'tipo' => 'tada']);
 
         $this->actingAs($this->usuario('superadmin'))
-            ->patchJson("/pais/ecuador/ajustes/cuentas-publicitarias/{$cuenta->id}", ['cuenta_en_venta_real' => false, 'tipo' => 'brd'])
+            ->patchJson("/tada/pais/ecuador/ajustes/cuentas-publicitarias/{$cuenta->id}", ['cuenta_en_venta_real' => false, 'tipo' => 'brd'])
             ->assertOk()
             ->assertJsonPath('cuenta_en_venta_real', false)
             ->assertJsonPath('tipo', 'brd');
@@ -131,19 +131,19 @@ class CuentasPublicitariasAjustesTest extends TestCase
 
     public function test_ajustes_muestra_las_cuentas_y_si_puede_gestionarlas(): void
     {
-        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'cuenta_id' => '1', 'tipo' => 'tada']);
+        CuentaPublicitaria::create(['pais_id' => $this->ec->id, 'plataforma' => 'meta', 'id_externo' => '1', 'tipo' => 'tada']);
 
-        $this->actingAs($this->usuario('gerente'))->get('/pais/ecuador/ajustes')
+        $this->actingAs($this->usuario('gerente'))->get('/tada/pais/ecuador/ajustes')
             ->assertInertia(fn ($page) => $page->has('cuentasPublicitarias', 1)->where('puedeGestionarCuentas', false));
 
-        $this->actingAs($this->usuario('superadmin'))->get('/pais/ecuador/ajustes')
+        $this->actingAs($this->usuario('superadmin'))->get('/tada/pais/ecuador/ajustes')
             ->assertInertia(fn ($page) => $page->where('puedeGestionarCuentas', true));
     }
 
     public function test_los_totales_de_venta_real_deben_ser_enteros(): void
     {
         $this->actingAs($this->usuario('superadmin'))
-            ->postJson('/pais/ecuador/importar/api', [
+            ->postJson('/tada/pais/ecuador/importar/api', [
                 'desde' => now()->startOfMonth()->toDateString(),
                 'hasta' => now()->endOfMonth()->toDateString(),
                 'nc_total_real_tiktok' => '1.039',

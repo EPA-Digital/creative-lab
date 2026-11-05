@@ -50,7 +50,7 @@ class ImportadorDatosDiario
         $sinActividadDescartados = 0;
         $porAdId = [];
         foreach ($csv['filas'] as $fila) {
-            $r = ClasificadorNombres::parsearNombre($fila['campaign'], $fila['adRaw']);
+            $r = Nomenclatura::parsear($fila['campaign'], $fila['adRaw'], $fila['conjunto'] ?? null, $fila['objetivo'] ?? null);
             if ($r['plataforma'] === null) {
                 $excluidos++;
 
@@ -119,6 +119,11 @@ class ImportadorDatosDiario
                     'funnel' => $funnel,
                     'tipo_cuenta' => $r['tipoCuenta'] ?? 'DTC',
                     'formato' => $r['formato'],
+                    'dimensiones' => ($r['dimensiones'] ?? null) ?: null,
+                    'funnel_propio' => $r['funnelPropio'] ?? null,
+                    'tipo_campania' => $r['tipoCampania'] ?? null,
+                    'tipo_campania_nombre' => $r['tipoCampaniaNombre'] ?? null,
+                    'nombre_conjunto' => ($primerDia['conjunto'] ?? null) ?: null,
                 ]
             );
             $creativosTocados++;

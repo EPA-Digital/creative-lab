@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
+import { useFiltroTipoCampania } from '@/tiposCampania';
 import PodiumTop3 from '@/Components/Creativo/PodiumTop3.vue';
 import CreativeCarousel from '@/Components/Creativo/CreativeCarousel.vue';
 import CreativeTable from '@/Components/Creativo/CreativeTable.vue';
@@ -9,7 +10,7 @@ import CreativeBars from '@/Components/Creativo/CreativeBars.vue';
 import VistaSwitch from '@/Components/Creativo/VistaSwitch.vue';
 import CreativeModal from '@/Components/Creativo/CreativeModal.vue';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
-import { formatNumeroExacto, formatMoneyExacto, FUNNEL_ORDER, FUNNEL_LABELS, TIPO_CUENTA_OPCIONES, promediosDeGrupo } from '@/motor';
+import { formatNumeroExacto, formatMoneyExacto, FUNNEL_ORDER, opcionesTipoCuenta, etiquetaFiltroTipoCuenta, promediosDeGrupo, etiquetaFunnel } from '@/motor';
 
 const props = defineProps({
     pais: String,
@@ -164,10 +165,14 @@ const plataformaCounts = computed(() => {
     for (const c of props.creativos) counts[c.plataforma] = (counts[c.plataforma] || 0) + 1;
     return counts;
 });
+// Tipo de campaña propio de la cuenta (ver tiposCampania.js) -- se aplica
+// antes que la plataforma; sus conteos son sobre el set completo.
+const filtroTipoCampania = useFiltroTipoCampania(computed(() => props.creativos));
+const tipoCampaniaSeleccionado = filtroTipoCampania.seleccionado;
 const creativosPorPlataforma = computed(() =>
     plataformaSeleccionada.value === 'TODOS'
-        ? props.creativos
-        : props.creativos.filter((c) => c.plataforma === plataformaSeleccionada.value),
+        ? filtroTipoCampania.filtrados.value
+        : filtroTipoCampania.filtrados.value.filter((c) => c.plataforma === plataformaSeleccionada.value),
 );
 
 // Puerto literal de tipoCuentaDeCard + filtrarPorTipoCuenta +
@@ -405,7 +410,7 @@ const podiosPorEtapa = computed(() => {
             }
             return {
                 etapa,
-                label: FUNNEL_LABELS[etapa] || etapa,
+                label: etiquetaFunnel(etapa) || etapa,
                 excluidosPorVolumen,
                 estrellaEtapa,
                 top: elegibles.slice(0, nPodio.value),
@@ -491,10 +496,12 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                     </template>
                     <button v-else type="button" class="chip" @click="aplicarRango">Rango personalizado</button>
                 </div>
+                <FiltroDropdown v-if="filtroTipoCampania.visible.value" label="Tipo de campaña" v-model="tipoCampaniaSeleccionado" :options="filtroTipoCampania.opciones.value" :counts="filtroTipoCampania.counts.value" />
                 <FiltroDropdown label="Plataforma" v-model="plataformaSeleccionada" :options="PLATAFORMA_OPCIONES" :counts="plataformaCounts" />
-                <FiltroDropdown label="Tipo de cuenta" v-model="tipoCuentaSeleccionado" :options="TIPO_CUENTA_OPCIONES" :counts="tipoCuentaCounts" />
+                <FiltroDropdown :label="etiquetaFiltroTipoCuenta()" v-model="tipoCuentaSeleccionado" :options="opcionesTipoCuenta(pais)" :counts="tipoCuentaCounts" />
                 <FiltroDropdown label="Formato" v-model="formatoSeleccionado" :options="FORMATO_OPCIONES" :counts="formatoCounts" />
-                <p class="date-hint resumen-filtros-hint">
+                <!-- Pista propia de la nomenclatura de TaDa (BI, CNV/CON). -->
+                <p v-if="usePage().props.cuentaActual?.slug === 'tada'" class="date-hint resumen-filtros-hint">
                     Acá sí se mezclan Meta y TikTok en el mismo ranking -- útil justamente porque el mismo tipo de
                     campaña (ej. BI) usa segmentos de funnel distintos por plataforma (Meta: CNV, TikTok: CON → CONS).
                 </p>
@@ -519,7 +526,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                         :class="{ activo: funnelSeleccionado === f }"
                         @click="funnelSeleccionado = f"
                     >
-                        {{ FUNNEL_LABELS[f] || f }}
+                        {{ etiquetaFunnel(f) || f }}
                     </button>
                 </div>
                 <p v-if="ranking.excluidosPorVolumen > 0" class="umbral-nota">
@@ -533,7 +540,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
 
             <section class="section">
                 <div class="section-header">
-                    <h2 class="section-title">Análisis creativo{{ funnelSeleccionado === 'TODOS' ? '' : ` — ${FUNNEL_LABELS[funnelSeleccionado] || funnelSeleccionado}` }}</h2>
+                    <h2 class="section-title">Análisis creativo{{ funnelSeleccionado === 'TODOS' ? '' : ` — ${etiquetaFunnel(funnelSeleccionado) || funnelSeleccionado}` }}</h2>
                     <div class="chip-group">
                         <button
                             v-for="n in N_OPCIONES"

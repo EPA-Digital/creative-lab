@@ -50,6 +50,12 @@
     --amber-ink: #161826;
     --mint-ink: #06231b;
     --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+    /* Pantallas de Cuentas (diseño 2026-11-03): texto de badges sobre
+       tintes, texto sobre --coral sólido y velo de modales. */
+    --amber-strong: #b5abfc;
+    --mint-strong: #59e0bd;
+    --coral-ink: #1a0b09;
+    --overlay: rgba(10, 11, 20, 0.62);
     /* Referenciado también por DashboardLayout.vue (altura del rail) --
        vh se calcula contra el viewport REAL, sin enterarse del `zoom` de
        más abajo, así que cualquier alto en vh necesita dividirse por este
@@ -74,6 +80,10 @@
     --amber-ink: #fff8ec;
     --mint-ink: #f0fffa;
     --shadow: 0 20px 50px rgba(20, 15, 10, 0.12);
+    --amber-strong: #8a5a05;
+    --mint-strong: #0a7a60;
+    --coral-ink: #ffffff;
+    --overlay: rgba(27, 20, 36, 0.35);
 }
 
 body {

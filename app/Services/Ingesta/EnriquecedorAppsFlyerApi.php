@@ -2,6 +2,9 @@
 
 namespace App\Services\Ingesta;
 
+use App\Models\Cuenta;
+use RuntimeException;
+
 /**
  * Reemplaza el CSV manual de AppsFlyer por un pull en vivo al Master API,
  * para el mismo shape de datos (Campaign/Campaign ID/Ad/Ad ID/Install Day/
@@ -19,16 +22,34 @@ namespace App\Services\Ingesta;
  */
 class EnriquecedorAppsFlyerApi
 {
-    private const GROUPINGS = 'c,af_c_id,af_ad,af_ad_id,install_time';
+    // af_adset: nombre del conjunto, para las reglas de clasificación de
+    // cada cuenta. Un ad vive en un solo conjunto, así que no parte filas.
+    private const GROUPINGS = 'c,af_c_id,af_adset,af_ad,af_ad_id,install_time';
 
-    // Nombres REALES de evento del SDK de la app (no los headers de columna
-    // relabeled del CSV manual, "First Order"/"Order Submitted") -- ver nota
-    // de verificación en vivo en AppsFlyerApiClient.
-    private const EVENTO_NC = 'First Order Placed';
+    /**
+     * Los eventos son por cuenta (credencial de AppsFlyer, ajustes): nombres
+     * REALES de evento del SDK de la app, no los headers relabeled del CSV
+     * manual -- ver nota de verificación en vivo en AppsFlyerApiClient. TaDa:
+     * "First Order Placed" / "Order Placed"; Openbank: onb_success_n2 /
+     * onb_success_tdc. El principal llena newCustomers (NC) y el secundario
+     * orders; sin secundario, orders queda en 0.
+     */
+    public function __construct(
+        private readonly AppsFlyerApiClient $appsflyer,
+        private readonly string $eventoPrincipal,
+        private readonly ?string $eventoSecundario = null,
+    ) {}
 
-    private const EVENTO_ORDERS = 'Order Placed';
+    public static function paraCuenta(Cuenta $cuenta): self
+    {
+        $cliente = AppsFlyerApiClient::paraCuenta($cuenta);
+        $ajustes = $cuenta->credencial('appsflyer')?->ajustes ?? [];
+        if (blank($ajustes['evento_principal'] ?? null)) {
+            throw new RuntimeException("{$cuenta->nombre} no tiene evento principal de AppsFlyer -- agrégalo en Cuentas → editar → Credenciales.");
+        }
 
-    public function __construct(private readonly AppsFlyerApiClient $appsflyer) {}
+        return new self($cliente, $ajustes['evento_principal'], ($ajustes['evento_secundario'] ?? null) ?: null);
+    }
 
     /**
      * @param  list<string>  $appIds
@@ -44,7 +65,7 @@ class EnriquecedorAppsFlyerApi
                 'from' => $desde,
                 'to' => $hasta,
                 'groupings' => self::GROUPINGS,
-                'kpis' => 'installs,event_counter_'.self::EVENTO_NC.',event_counter_'.self::EVENTO_ORDERS,
+                'kpis' => implode(',', ['installs', ...array_map(fn (string $e) => "event_counter_{$e}", $this->eventos())]),
             ]);
 
             [$filasApp, $problemasApp] = $this->parsearCsv($csvCrudo, $appId);
@@ -59,8 +80,8 @@ class EnriquecedorAppsFlyerApi
             'problemas' => [...$problemas, ...$agregado['problemasDuplicado']],
             'subtotales' => 0,
             'organico' => $agregado['organico'],
-            'columnaNC' => 'AppsFlyer API: '.self::EVENTO_NC,
-            'columnaOrders' => 'AppsFlyer API: '.self::EVENTO_ORDERS,
+            'columnaNC' => 'AppsFlyer API: '.$this->eventoPrincipal,
+            'columnaOrders' => $this->eventoSecundario ? 'AppsFlyer API: '.$this->eventoSecundario : null,
         ];
     }
 
@@ -78,10 +99,11 @@ class EnriquecedorAppsFlyerApi
         $idxCampaignId = array_search('Campaign ID', $headers, true);
         $idxAd = array_search('Ad', $headers, true);
         $idxAdId = array_search('Ad ID', $headers, true);
+        $idxAdset = array_search('Adset', $headers, true);
         $idxInstallTime = array_search('Install Time', $headers, true);
         $idxInstalls = array_search('Installs', $headers, true);
-        $idxNc = array_search('Event Counter - '.self::EVENTO_NC, $headers, true);
-        $idxOrders = array_search('Event Counter - '.self::EVENTO_ORDERS, $headers, true);
+        $idxNc = array_search('Event Counter - '.$this->eventoPrincipal, $headers, true);
+        $idxOrders = $this->eventoSecundario ? array_search('Event Counter - '.$this->eventoSecundario, $headers, true) : false;
 
         $filas = [];
         $problemas = [];
@@ -119,15 +141,22 @@ class EnriquecedorAppsFlyerApi
                 'esOrganico' => $esOrganico,
                 'campaign' => $campos[$idxCampaign] ?? '',
                 'adRaw' => ($campos[$idxAd] ?? '') === 'None' ? '' : ($campos[$idxAd] ?? ''),
+                'conjunto' => $idxAdset === false || in_array($campos[$idxAdset] ?? '', ['', 'None'], true) ? null : $campos[$idxAdset],
                 'fecha' => $fecha,
                 'installs' => self::numero($campos[$idxInstalls] ?? null),
-                'orders' => self::numero($campos[$idxOrders] ?? null),
-                'newCustomers' => self::numero($campos[$idxNc] ?? null),
+                'orders' => $idxOrders === false ? 0 : self::numero($campos[$idxOrders] ?? null),
+                'newCustomers' => $idxNc === false ? 0 : self::numero($campos[$idxNc] ?? null),
                 'filaOriginal' => ['appId' => $appId, 'campaignId' => $campos[$idxCampaignId] ?? null, ...array_combine($headers, $campos)],
             ];
         }
 
         return [$filas, $problemas];
+    }
+
+    /** @return list<string> */
+    private function eventos(): array
+    {
+        return array_values(array_filter([$this->eventoPrincipal, $this->eventoSecundario]));
     }
 
     private static function numero(?string $raw): int|float

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\PerteneceACuenta;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class EstadoCreativoEvento extends Model
 {
+    use PerteneceACuenta;
+
     protected $table = 'estado_creativo_eventos';
 
     const CREATED_AT = 'creado_en';

@@ -41,7 +41,7 @@ class ImportarMesHistoricoTest extends TestCase
 
     private function importarApi(User $user, string $mes)
     {
-        return $this->actingAs($user)->postJson('/pais/mexico/importar/api', [
+        return $this->actingAs($user)->postJson('/tada/pais/mexico/importar/api', [
             'desde' => "{$mes}-01",
             'hasta' => "{$mes}-28",
         ]);
@@ -73,7 +73,7 @@ class ImportarMesHistoricoTest extends TestCase
     public function test_el_import_por_csv_tambien_respeta_el_limite(): void
     {
         $this->actingAs($this->usuario('gerente'))
-            ->postJson('/pais/mexico/importar', [
+            ->postJson('/tada/pais/mexico/importar', [
                 'token' => 'no-importa',
                 'nombre_archivo' => 'mayo.csv',
                 'desde' => '2026-05-01',
@@ -85,11 +85,11 @@ class ImportarMesHistoricoTest extends TestCase
     public function test_la_pantalla_recibe_el_mes_minimo_solo_si_no_es_superadmin(): void
     {
         $this->actingAs($this->usuario('junior'))
-            ->get('/pais/mexico/importar')
+            ->get('/tada/pais/mexico/importar')
             ->assertInertia(fn ($page) => $page->where('mesMinimoImportable', '2026-08'));
 
         $this->actingAs($this->usuario('superadmin'))
-            ->get('/pais/mexico/importar')
+            ->get('/tada/pais/mexico/importar')
             ->assertInertia(fn ($page) => $page->where('mesMinimoImportable', null));
     }
 }

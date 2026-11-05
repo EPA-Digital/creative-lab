@@ -53,7 +53,15 @@ class EnriquecedorCostosTiktok
             }
         }
 
+        $objetivoPorCampania = $this->traerObjetivos($advertiserId, array_column($this->conjuntoPorAdId, 'campaignId'));
+
         foreach ($filas as &$fila) {
+            // Conjunto (adgroup) y objetivo de la campaña: los usan las
+            // reglas de clasificación de cada cuenta (ReglasNomenclatura).
+            $extra = $this->conjuntoPorAdId[$fila['adId']] ?? [];
+            $fila['conjuntoName'] = $extra['conjuntoName'] ?? null;
+            $fila['objetivo'] = $objetivoPorCampania[$extra['campaignId'] ?? ''] ?? null;
+            $fila['postId'] = $extra['postId'] ?? null;
             $fila['adName'] = $nombrePorAdId[$fila['adId']] ?? '';
             $fila['imageUrl'] = $imagenRemotaPorAdId[$fila['adId']] ?? '';
             $fila['campaignName'] = $campaignNombrePorAdId[$fila['adId']] ?? '';
@@ -242,6 +250,8 @@ class EnriquecedorCostosTiktok
                     ]);
                     foreach ($data['list'] ?? [] as $ad) {
                         self::acumularAd($ad, $nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId);
+                        $this->acumularConjunto($ad);
+                        $this->acumularConjunto($ad);
                     }
                 } catch (Throwable $e) {
                     Log::warning('No se pudo traer nombre/video para una tanda de '.count($tanda)." ad(s) -- el costo se guarda igual: {$e->getMessage()}");
@@ -280,6 +290,50 @@ class EnriquecedorCostosTiktok
         }
 
         return [$nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId];
+    }
+
+    /** ad_id => {conjuntoName, campaignId}, de las mismas respuestas de /ad/get/. */
+    private array $conjuntoPorAdId = [];
+
+    /** @param  array<string, mixed>  $ad  un elemento de /ad/get/ */
+    private function acumularConjunto(array $ad): void
+    {
+        $this->conjuntoPorAdId[$ad['ad_id']] = [
+            'conjuntoName' => ($ad['adgroup_name'] ?? '') ?: null,
+            'campaignId' => isset($ad['campaign_id']) ? (string) $ad['campaign_id'] : null,
+            // Spark Ads: el post de TikTok que promueven (ver ReglasNomenclatura).
+            'postId' => ! empty($ad['tiktok_item_id']) ? (string) $ad['tiktok_item_id'] : null,
+        ];
+    }
+
+    /**
+     * objective_type de cada campaña (respaldo del funnel cuando el nombre
+     * no lo dice). Best-effort: si falla, el funnel sale solo del nombre.
+     *
+     * @param  list<?string>  $campaignIds
+     * @return array<string, string>
+     */
+    private function traerObjetivos(string $advertiserId, array $campaignIds): array
+    {
+        $objetivos = [];
+        foreach (array_chunk(array_values(array_unique(array_filter($campaignIds))), 100) as $tanda) {
+            try {
+                $data = $this->tiktok->get('/campaign/get/', [
+                    'advertiser_id' => $advertiserId,
+                    'filtering' => ['campaign_ids' => $tanda],
+                    'page_size' => 100,
+                ]);
+                foreach ($data['list'] ?? [] as $c) {
+                    if (! empty($c['objective_type'])) {
+                        $objetivos[(string) $c['campaign_id']] = $c['objective_type'];
+                    }
+                }
+            } catch (Throwable $e) {
+                Log::warning('No se pudo traer el objetivo de '.count($tanda)." campaña(s) de TikTok: {$e->getMessage()}");
+            }
+        }
+
+        return $objetivos;
     }
 
     /**

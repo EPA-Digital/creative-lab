@@ -20,7 +20,13 @@ class VentaRealYAgrupacion
      *   share_ad  = newCustomers_ad (AppsFlyer) / Σ newCustomers de TODOS
      *               los cards recibidos
      *   ncReal_ad = share_ad × ncTotalReal
-     * (mismo cálculo para Orders). El denominador incluye TODOS los cards,
+     * Para Orders el peso es el TOTAL de órdenes del ad: primeras compras +
+     * recompras (newCustomers + orders de AppsFlyer -- "orders" es Order
+     * Submitted, que son solo recompras). Confirmado con el negocio
+     * 2026-11-05 contra la hoja de Ecuador octubre (columna ORDERS = NEW
+     * CUSTOMERS + REPURCHASES); antes se pesaba solo por recompras y los ads
+     * de conversión, con muchas primeras compras, salían con menos órdenes.
+     * El denominador incluye TODOS los cards,
      * incluso los que no tengan match de costo en la API -- diluyen el
      * share de los demás igual que en el Excel de referencia del negocio.
      * cac/cpo se recalculan desde ncReal/ordersReal, NUNCA desde
@@ -39,7 +45,7 @@ class VentaRealYAgrupacion
         $sumaOrders = 0;
         foreach ($cards as $c) {
             $sumaNC += $c['newCustomers'] ?? 0;
-            $sumaOrders += $c['orders'] ?? 0;
+            $sumaOrders += self::pesoOrdenes($c);
         }
         $ncTotal = self::normalizarNumero($ncTotalReal);
         $ordersTotal = self::normalizarNumero($ordersTotalReal);
@@ -48,7 +54,7 @@ class VentaRealYAgrupacion
 
         return array_map(function (array $c) use ($sumaNC, $sumaOrders, $ncTotal, $ordersTotal, $hayNcTotal, $hayOrdersTotal, $esRangoParcial) {
             $shareNC = $sumaNC > 0 ? ($c['newCustomers'] ?? 0) / $sumaNC : 0;
-            $shareOrders = $sumaOrders > 0 ? ($c['orders'] ?? 0) / $sumaOrders : 0;
+            $shareOrders = $sumaOrders > 0 ? self::pesoOrdenes($c) / $sumaOrders : 0;
             // null explícito (nunca 0) si todavía no se tecleó el total, o
             // si el rango es parcial (el costo de la API no tiene desglose
             // diario, no se puede prorratear a un sub-rango).
@@ -63,6 +69,12 @@ class VentaRealYAgrupacion
                 'cpo' => ($cost !== null && $ordersReal) ? $cost / $ordersReal : null,
             ]);
         }, $cards);
+    }
+
+    /** Órdenes totales del ad en AppsFlyer: primeras compras + recompras. */
+    private static function pesoOrdenes(array $c): int|float
+    {
+        return ($c['newCustomers'] ?? 0) + ($c['orders'] ?? 0);
     }
 
     /**

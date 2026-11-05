@@ -5,7 +5,9 @@ use App\Models\EstadoCreativoEvento;
 use App\Models\Pais;
 use App\Services\Ingesta\MetaApiClient;
 use App\Services\Ingesta\MetaEstadoAdsSyncService;
+use App\Support\CuentaActual;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 
@@ -18,10 +20,13 @@ use Illuminate\Support\Facades\Schema;
  * `ALTER TABLE ... MODIFY`, raw MySQL, incompatible con sqlite:memory):
  * arma a mano el subset de esquema sqlite-compatible que necesita.
  *
- * Usa el país 'panama' real de config/paises.php (ya trae meta_ad_account_id
- * configurado) para no necesitar mockear config().
+ * Usa el país 'panama' real de config/paises.php y su cuenta de Meta real
+ * (268039321215783) en cuentas_publicitarias, de donde la lee el servicio.
  */
 beforeEach(function () {
+    // Esquema a mano sin la tabla cuentas: basta con un cuenta_id fijo.
+    CuentaActual::fijar(1);
+
     Schema::create('paises', function (Blueprint $table) {
         $table->increments('id');
         $table->string('codigo', 3)->unique();
@@ -29,6 +34,7 @@ beforeEach(function () {
     });
     Schema::create('creativos', function (Blueprint $table) {
         $table->increments('id');
+        $table->unsignedInteger('cuenta_id')->default(1);
         $table->unsignedInteger('pais_id');
         $table->string('ad_id', 50);
         $table->string('nombre_completo', 500)->default('');
@@ -37,6 +43,7 @@ beforeEach(function () {
     });
     Schema::create('estado_creativo_eventos', function (Blueprint $table) {
         $table->id();
+        $table->unsignedInteger('cuenta_id')->default(1);
         $table->unsignedInteger('pais_id');
         $table->string('ad_id', 50);
         $table->unsignedInteger('creativo_id')->nullable();
@@ -49,10 +56,21 @@ beforeEach(function () {
         $table->unique(['pais_id', 'ad_id', 'evento_en', 'estado_nuevo'], 'estado_evento_unico');
     });
 
-    Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
+    Schema::create('cuentas_publicitarias', function (Blueprint $table) {
+        $table->increments('id');
+        $table->unsignedInteger('cuenta_id')->default(1);
+        $table->unsignedInteger('pais_id');
+        $table->string('plataforma', 10);
+        $table->string('id_externo', 50);
+        $table->boolean('activa')->default(true);
+    });
+
+    $pa = Pais::create(['codigo' => 'PA', 'nombre' => 'Panamá']);
+    DB::table('cuentas_publicitarias')->insert(['pais_id' => $pa->id, 'plataforma' => 'meta', 'id_externo' => '268039321215783']);
 });
 
 afterEach(function () {
+    Schema::dropIfExists('cuentas_publicitarias');
     Schema::dropIfExists('estado_creativo_eventos');
     Schema::dropIfExists('creativos');
     Schema::dropIfExists('paises');

@@ -10,8 +10,9 @@ Artisan::command('inspire', function () {
 
 // Schedule::command('importar:csv')->everyFiveMinutes();
 
-// Sin {pais} -> modo multi-país (todos los habilitados con appsflyer_app_ids
-// configurado), nunca pasa totales manuales (el comando los rechaza en ese
+// Sin {pais} -> recorre cada cuenta activa con AppsFlyer y token propio (las
+// que no tienen token se saltan con aviso) y, dentro de cada una, sus países
+// con apps configuradas; nunca pasa totales manuales (el comando los rechaza en ese
 // modo) -- corre 1 vez al día, no hace falta más seguido: el buffer de
 // atribución (5 días default) ya evita pedir datos todavía inestables, y
 // nc/orders/cac/cpo de meses ya cerrados quedan protegidos por
