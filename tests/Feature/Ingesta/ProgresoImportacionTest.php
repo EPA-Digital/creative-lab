@@ -2,6 +2,8 @@
 
 use App\Jobs\ProcesarImportacionApi;
 use App\Models\AppsflyerApp;
+use App\Models\Cuenta;
+use App\Models\CuentaCredencial;
 use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
@@ -35,6 +37,11 @@ it('"Por API" encola un Job y responde al instante con el id', function () {
     AppsflyerApp::create(['pais_id' => $pe->id, 'plataforma' => 'android', 'app_id' => 'pe.app']);
     $user = User::factory()->create(['rol' => 'superadmin']);
     $user->paises()->attach($pe->id);
+    // Token propio de TaDa: no depender de APPSFLYER_API_TOKEN del .env (en CI no hay).
+    CuentaCredencial::updateOrCreate(
+        ['cuenta_id' => Cuenta::where('slug', Cuenta::SLUG_TADA)->value('id'), 'proveedor' => 'appsflyer'],
+        ['token' => 'token-de-prueba', 'ultimos4' => 'ueba'],
+    );
 
     $r = $this->actingAs($user)->postJson('/tada/pais/peru/importar/api', ['desde' => '2026-09-01', 'hasta' => '2026-09-30', 'nc_total_real_meta' => 100])
         ->assertStatus(202)
