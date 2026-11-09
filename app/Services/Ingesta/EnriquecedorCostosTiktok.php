@@ -13,7 +13,9 @@ use Throwable;
  * video en un segundo paso best-effort. /ad/get/ SIN filtro de
  * operation_status (a diferencia de listarAdsActivosTikTok, que sí filtra a
  * ENABLE) -- trae cualquier ad de la cuenta en pocas llamadas paginadas, no
- * un loop por ad.
+ * un loop por ad. Ojo: TikTok excluye los ads ELIMINADOS del reporte y de
+ * /ad/get/ salvo que se pida STATUS_ALL (2026-11-09); detectarEliminados
+ * depende justo de ese comportamiento por defecto.
  */
 class EnriquecedorCostosTiktok
 {
@@ -117,7 +119,7 @@ class EnriquecedorCostosTiktok
             try {
                 $data = $this->tiktok->get('/ad/get/', [
                     'advertiser_id' => $advertiserId,
-                    'filtering' => ['ad_ids' => array_map('strval', $chunk)],
+                    'filtering' => ['ad_ids' => array_map('strval', $chunk), 'primary_status' => 'STATUS_ALL'],
                     'page_size' => 100,
                 ]);
                 foreach ($data['list'] ?? [] as $ad) {
@@ -183,6 +185,9 @@ class EnriquecedorCostosTiktok
                 'metrics' => ['spend', 'impressions', 'clicks'],
                 'start_date' => $desde,
                 'end_date' => $hasta,
+                // Sin este filtro TikTok omite el gasto de los ads ELIMINADOS
+                // (caso real Panamá sep-2026: $207 visibles de $4,982 reales).
+                'filtering' => [['field_name' => 'ad_status', 'filter_type' => 'IN', 'filter_value' => json_encode(['STATUS_ALL'])]],
                 'page' => $page,
                 'page_size' => 100,
             ]);
@@ -245,12 +250,12 @@ class EnriquecedorCostosTiktok
                 try {
                     $data = $this->tiktok->get('/ad/get/', [
                         'advertiser_id' => $advertiserId,
-                        'filtering' => ['ad_ids' => array_map('strval', $tanda)],
+                        // STATUS_ALL: también los eliminados, que sí tuvieron gasto.
+                        'filtering' => ['ad_ids' => array_map('strval', $tanda), 'primary_status' => 'STATUS_ALL'],
                         'page_size' => 100,
                     ]);
                     foreach ($data['list'] ?? [] as $ad) {
                         self::acumularAd($ad, $nombrePorAdId, $videoIdPorAdId, $campaignNombrePorAdId, $copyPorAdId);
-                        $this->acumularConjunto($ad);
                         $this->acumularConjunto($ad);
                     }
                 } catch (Throwable $e) {

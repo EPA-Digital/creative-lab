@@ -53,3 +53,38 @@ it('corta el loop si la PRIMERA página falla (no se conoce total_page, no hay f
     // 1 intento inicial + 3 reintentos del retry/backoff ya existente en TiktokApiClient.
     Http::assertSentCount(4);
 });
+
+/**
+ * Caso real Panamá sep-2026: TikTok deja fuera del reporte y de /ad/get/ los
+ * ads ELIMINADOS salvo que se pida STATUS_ALL -- se veían $207 de $4,982.
+ */
+it('pide también los ads eliminados en el gasto y en los nombres', function () {
+    Http::fake([
+        'business-api.tiktok.com/open_api/v1.3/report/integrated/get/*' => Http::response(['code' => 0, 'message' => 'OK', 'data' => [
+            'list' => [['dimensions' => ['ad_id' => '1875987818230354'], 'metrics' => ['spend' => '222.70', 'impressions' => '1000', 'clicks' => '10']]],
+            'page_info' => ['total_page' => 1],
+        ]]),
+        'business-api.tiktok.com/open_api/v1.3/ad/get/*' => Http::response(['code' => 0, 'message' => 'OK', 'data' => ['list' => [adTiktok('1875987818230354', 'ATLAS-2-CAJAS')], 'page_info' => ['total_page' => 1]]]),
+    ]);
+
+    $enriquecedor = new EnriquecedorCostosTiktok(new TiktokApiClient('token'), new ImagenCacheService);
+    $costos = (new ReflectionMethod(EnriquecedorCostosTiktok::class, 'traerCostos'))->invoke($enriquecedor, 'adv-1', '2026-09-01', '2026-09-30');
+    [$nombres] = (new ReflectionMethod(EnriquecedorCostosTiktok::class, 'traerNombreYVideoId'))->invoke($enriquecedor, 'adv-1', ['1875987818230354']);
+
+    expect($costos[0]['cost'])->toBe(222.70)
+        ->and($nombres)->toBe(['1875987818230354' => 'ATLAS-2-CAJAS']);
+
+    Http::assertSent(fn ($req) => str_contains($req->url(), 'report/integrated')
+        && json_decode($req['filtering'], true)[0] === ['field_name' => 'ad_status', 'filter_type' => 'IN', 'filter_value' => '["STATUS_ALL"]']);
+    Http::assertSent(fn ($req) => str_contains($req->url(), 'ad/get')
+        && json_decode($req['filtering'], true)['primary_status'] === 'STATUS_ALL');
+});
+
+it('detectarEliminados sigue sin pedir STATUS_ALL (depende de que TikTok omita los eliminados)', function () {
+    Http::fake(['business-api.tiktok.com/open_api/v1.3/ad/get/*' => Http::response(['code' => 0, 'message' => 'OK', 'data' => ['list' => []]])]);
+
+    $eliminados = (new EnriquecedorCostosTiktok(new TiktokApiClient('token'), new ImagenCacheService))->detectarEliminados('adv-1', ['111']);
+
+    expect($eliminados)->toBe(['111']);
+    Http::assertSent(fn ($req) => ! array_key_exists('primary_status', json_decode($req['filtering'], true)));
+});
