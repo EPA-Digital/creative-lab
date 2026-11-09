@@ -291,7 +291,8 @@ class VideoCreativoService
     {
         $data = TiktokApiClient::fromConfig()->get('/ad/get/', [
             'advertiser_id' => $advertiserId,
-            'filtering' => ['ad_ids' => [$adId]],
+            // STATUS_ALL: un ad eliminado en TikTok sigue teniendo su video.
+            'filtering' => ['ad_ids' => [$adId], 'primary_status' => 'STATUS_ALL'],
             'page_size' => 1,
         ]);
 
