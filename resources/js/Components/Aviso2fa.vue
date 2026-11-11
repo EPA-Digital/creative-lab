@@ -52,7 +52,7 @@ function masTarde() {
     border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
     border-radius: 14px;
     background: color-mix(in srgb, var(--amber) 12%, var(--surface));
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .aviso-2fa-texto {
     flex: 1;

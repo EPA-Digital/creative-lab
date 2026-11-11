@@ -16,7 +16,7 @@ watch(() => props.usuario?.foto, () => { fallo.value = false; });
 <template>
     <span
         class="avatar-usuario"
-        :style="{ width: `${tamano}px`, height: `${tamano}px`, fontSize: `${Math.round(tamano * 0.36)}px`, background: usuario?.avatar_color || 'var(--amber)' }"
+        :style="{ width: `${tamano}px`, height: `${tamano}px`, fontSize: `${Math.round(tamano * 0.36)}px`, background: usuario?.avatar_color || 'var(--avatar-default)' }"
         role="img"
         :aria-label="usuario?.name ? `Foto de ${usuario.name}` : 'Foto de perfil'"
     >
@@ -32,7 +32,7 @@ watch(() => props.usuario?.foto, () => { fallo.value = false; });
     flex: none;
     overflow: hidden;
     border-radius: 999px;
-    color: var(--amber-ink);
+    color: var(--avatar-ink);
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
     line-height: 1;

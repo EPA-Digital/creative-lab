@@ -1,8 +1,8 @@
 <script setup>
 // Loader EPA "Ensamble" (diseño 2026-11-11, hecho en Claude Design): las 3
 // barras del logo llegan volando con rebote, el logo gira 120° y las barras
-// salen. Solo SVG + CSS. El color sale de --epa-logo (app.css), que cambia
-// con el tema: azul claro sobre fondo oscuro, azul EPA oficial sobre claro.
+// salen. Solo SVG + CSS. Cada barra tiene su azul de la paleta EPA
+// (--epa-barra-1/2/3 en app.css).
 defineProps({
     // Lado del logo en px.
     tamano: { type: Number, default: 150 },
@@ -16,7 +16,7 @@ const GIROS = [0, 120, 240];
     <svg class="epa-loader" :width="tamano" :height="tamano" viewBox="-110 -110 220 220" aria-hidden="true">
         <g class="epa-giro">
             <g v-for="(giro, i) in GIROS" :key="giro" :transform="giro ? `rotate(${giro})` : null">
-                <g class="epa-pieza" :style="{ animationDelay: `calc(var(--epa-loader-ciclo) * ${i * 0.04})` }">
+                <g class="epa-pieza" :style="{ animationDelay: `calc(var(--epa-loader-ciclo) * ${i * 0.04})`, fill: `var(--epa-barra-${i + 1})` }">
                     <polygon points="-56,-46 -39,-36.5 -39,96 -56,86" />
                     <polygon points="-35,-34.5 -18,-25 -18,86 -35,96" />
                 </g>
@@ -29,7 +29,6 @@ const GIROS = [0, 120, 240];
 .epa-loader {
     --epa-loader-ciclo: 3s;
     overflow: visible;
-    fill: var(--epa-logo, #2f7bff);
 }
 .epa-giro {
     transform-origin: 0 0;

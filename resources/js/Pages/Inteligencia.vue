@@ -309,7 +309,7 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--amber);
+    color: var(--accent-text);
     margin: 0 0 4px;
 }
 .title {

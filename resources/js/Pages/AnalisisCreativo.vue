@@ -744,7 +744,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--amber);
+    color: var(--accent-text);
     margin: 0 0 4px;
 }
 .title {
@@ -889,7 +889,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
 }
 .top3-flecha:hover {
     border-color: var(--amber);
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .etapa-titulo {
     font-family: 'Space Grotesk', 'Inter', sans-serif;

@@ -3,11 +3,11 @@
    variables para que el tema claro funcione solo. */
 .us { padding: 32px 32px 64px; }
 .us-page { max-width: 1200px; margin: 0 auto; }
-.us-eyebrow { font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+.us-eyebrow { font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-text); }
 .us-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
 .us-title { margin: 0; font: 700 28px/1.2 'Space Grotesk', sans-serif; }
 .us-subtitle { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--text-muted); }
-.us-info-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: none; color: var(--amber); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.us-info-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: none; color: var(--accent-text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .us-info-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
 .us-info { margin-top: 16px; padding: 14px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); font-size: 13px; color: var(--text-muted); }
 .us-info ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
@@ -27,7 +27,7 @@
 .us-filtros { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 28px 0 18px; }
 .us-pills { display: flex; gap: 8px; flex-wrap: wrap; }
 .us-pill { height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text); font: 500 12.5px 'JetBrains Mono', monospace; cursor: pointer; transition: border-color .15s ease, color .15s ease; }
-.us-pill.activo { border-color: var(--amber); color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.us-pill.activo { border-color: var(--amber); color: var(--accent-text); background: color-mix(in srgb, var(--amber) 10%, transparent); }
 .us-pill:hover { border-color: var(--amber); }
 .us-buscar { display: flex; align-items: center; gap: 8px; width: min(360px, 100%); height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text-muted); }
 .us-buscar input, .us-buscar input:focus { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--text); font: 14px 'Inter', sans-serif; outline: none; }

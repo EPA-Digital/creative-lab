@@ -58,11 +58,11 @@ watch(cargando, (activo) => {
     align-items: center;
     justify-content: center;
     gap: 18px;
-    background: color-mix(in srgb, var(--bg, #161826) 94%, transparent);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
     backdrop-filter: blur(4px);
 }
 .carga-texto {
-    color: var(--text-muted, #9397ab);
+    color: var(--text-muted);
     font-size: 0.85rem;
     letter-spacing: 0.02em;
 }

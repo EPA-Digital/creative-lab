@@ -142,7 +142,7 @@ async function asignar(fila) {
 .page { padding: 32px 32px 64px; }
 .page-inner { max-width: 1200px; margin: 0 auto; }
 .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
-.eyebrow { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--amber); }
+.eyebrow { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-text); }
 .title { margin: 6px 0 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; }
 .subtitle { margin: 6px 0 0; max-width: 760px; font-size: 14px; color: var(--text-muted); }
 .sc-volver { flex: none; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; font-size: 13px; }

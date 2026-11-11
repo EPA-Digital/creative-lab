@@ -198,7 +198,7 @@ const errores = computed(() => {
     const e = {};
     if (!form.nombre.trim()) e.nombre = 'Escribe el nombre de la cuenta.';
     if (!form.cliente.trim()) e.cliente = 'Elige un cliente o crea uno nuevo.';
-    if (!/^#[0-9a-fA-F]{6}$/.test(form.color)) e.color = 'Usa un color hex de 6 dígitos, como #9184d9.';
+    if (!/^#[0-9a-fA-F]{6}$/.test(form.color)) e.color = 'Usa un color hex de 6 dígitos, como #003ad6.';
     if (!form.objetivos.length) e.objetivos = 'Elige al menos un objetivo para saber qué métricas mostrarte.';
     if (!form.medios.length) e.medios = 'Elige al menos un medio.';
     if (form.multi_pais && form.paises.length < 2) e.paises = 'Elige al menos dos países, o apaga la opción.';
