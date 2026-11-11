@@ -59,3 +59,26 @@ it('cuando la tanda completa funciona, no se parte en absoluto (comportamiento a
     expect($status)->toBe(['1' => 'ACTIVE', '2' => 'PAUSED']);
     Http::assertSentCount(1);
 });
+
+/**
+ * Gasto por día (2026-11-11): insights con time_increment=1 trae un renglón
+ * por ad y por día; se suman para el total y el detalle queda en `dias`.
+ */
+it('junta los renglones diarios de Meta en un total por anuncio con su detalle', function () {
+    Http::fake(['graph.facebook.com/*/act_1/insights*' => Http::response(['data' => [
+        ['ad_id' => '9', 'ad_name' => 'AD', 'campaign_name' => 'C', 'date_start' => '2026-10-01', 'spend' => '10.10', 'impressions' => '100', 'inline_link_clicks' => '3'],
+        ['ad_id' => '9', 'ad_name' => 'AD', 'campaign_name' => 'C', 'date_start' => '2026-10-02', 'spend' => '20.20', 'impressions' => '50', 'inline_link_clicks' => '1'],
+    ]])]);
+
+    $enriquecedor = new EnriquecedorCostosMeta(new MetaApiClient('token'), new ImagenCacheService);
+    $filas = (new ReflectionMethod(EnriquecedorCostosMeta::class, 'traerCostos'))->invoke($enriquecedor, '1', '2026-10-01', '2026-10-31');
+
+    expect($filas)->toHaveCount(1)
+        ->and($filas[0]['cost'])->toBe(30.3)
+        ->and($filas[0]['impressions'])->toBe(150)
+        ->and($filas[0]['dias'])->toBe([
+            '2026-10-01' => ['cost' => 10.1, 'impressions' => 100, 'clicks' => 3],
+            '2026-10-02' => ['cost' => 20.2, 'impressions' => 50, 'clicks' => 1],
+        ]);
+    Http::assertSent(fn ($req) => $req['time_increment'] === '1');
+});

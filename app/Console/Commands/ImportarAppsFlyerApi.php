@@ -121,7 +121,7 @@ class ImportarAppsFlyerApi extends Command
     {
         [$desde, $hasta, $bufferDias] = $this->resolverRango();
 
-        if ($this->option('hasta') && $this->option('hasta') > now()->subDays($bufferDias)->toDateString()) {
+        if ($this->option('hasta') && $this->option('hasta') > now(config('app.zona_horaria_negocio'))->subDays($bufferDias)->toDateString()) {
             $this->warn("Estás importando datos hasta {$hasta} -- los últimos {$bufferDias} día(s) pueden estar subcontados por lag de atribución de AppsFlyer (las conversiones siguen llegando después del install).");
         }
 
@@ -209,7 +209,7 @@ class ImportarAppsFlyerApi extends Command
     private function resolverRango(): array
     {
         $bufferDias = (int) ($this->option('buffer-dias') ?? config('services.appsflyer.buffer_atribucion_dias', 5));
-        $hasta = $this->option('hasta') ?: now()->subDays($bufferDias)->toDateString();
+        $hasta = $this->option('hasta') ?: now(config('app.zona_horaria_negocio'))->subDays($bufferDias)->toDateString();
         // desde se deriva del MES de hasta (ya ajustado por el buffer), no
         // del mes de hoy -- así, si el buffer empuja hasta al mes anterior
         // (primeros días de un mes nuevo), desde cae solo en ese mismo mes

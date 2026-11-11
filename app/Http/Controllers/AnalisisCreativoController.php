@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Importacion;
 use App\Models\Pais;
 use App\Models\Resultado;
 use App\Services\ImagenFirmadaService;
@@ -130,6 +131,10 @@ class AnalisisCreativoController extends Controller
             'hasta' => $usaRango ? $hasta : null,
             'rangoDiarioMin' => $rangoDiario['min'],
             'rangoDiarioMax' => $rangoDiario['max'],
+            // Última importación terminada del país (ISO en UTC; el front la
+            // muestra en hora de CDMX).
+            'ultimaActualizacion' => Importacion::where('pais_id', $paisModelo->id)->where('estado', 'completado')
+                ->latest('creado_en')->value('creado_en')?->toIso8601String(),
         ]);
     }
 

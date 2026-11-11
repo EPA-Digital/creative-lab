@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { formatMoneyExacto, formatNumeroExacto } from '@/motor';
+import InfoTip from '@/Components/InfoTip.vue';
 
 // "Double check" de una importación (2026-10-05, ver
 // App\Services\Ingesta\ConciliacionImportacion) -- por plataforma: qué trajo
@@ -116,8 +117,10 @@ function adsTotales(p) {
             </p>
 
             <div v-if="p.sin_cuenta.campanias.length" class="conciliacion-grupo">
-                <h4>Campañas con conversiones de AppsFlyer pero sin costo en ninguna cuenta</h4>
-                <p class="date-hint">Si una campaña tiene NC acá, probablemente su cuenta publicitaria no está cargada.</p>
+                <h4 class="h4-con-info">
+                    Campañas con conversiones de AppsFlyer pero sin costo en ninguna cuenta
+                    <InfoTip etiqueta="Qué significa">Si una campaña tiene NC aquí, probablemente su cuenta publicitaria no está cargada.</InfoTip>
+                </h4>
                 <table class="conciliacion-tabla">
                     <thead>
                         <tr><th>Campaña</th><th class="num">Anuncios</th><th class="num">NC AppsFlyer</th><th class="num">Órdenes AppsFlyer</th></tr>
@@ -134,8 +137,10 @@ function adsTotales(p) {
             </div>
 
             <div v-if="p.dtc_no_paid.campanias.length" class="conciliacion-grupo">
-                <h4>DTC no paid (MLM / NON)</h4>
-                <p class="date-hint">Informativo: estos anuncios también entran al reparto de venta real, como todos los canales.</p>
+                <h4 class="h4-con-info">
+                    DTC no paid (MLM / NON)
+                    <InfoTip etiqueta="Qué significa">Informativo: estos anuncios también entran al reparto de venta real, como todos los canales.</InfoTip>
+                </h4>
                 <table class="conciliacion-tabla">
                     <thead>
                         <tr><th>Campaña</th><th class="num">Anuncios</th><th class="num">NC AppsFlyer</th><th class="num">Órdenes AppsFlyer</th></tr>
@@ -162,6 +167,11 @@ function adsTotales(p) {
 </template>
 
 <style scoped>
+.h4-con-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
 .conciliacion {
     display: flex;
     flex-direction: column;

@@ -36,6 +36,7 @@ class CuentaPublicitaria extends Model
         'pais_id',
         'plataforma',
         'id_externo',
+        'moneda',
         'nombre',
         'tipo',
         'activa',

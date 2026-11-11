@@ -11,10 +11,13 @@ use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
 use App\Models\Resultado;
+use App\Models\ResultadoDiario;
 use App\Models\TareaMedios;
+use App\Services\Divisas\Divisas;
 use App\Support\CuentaActual;
 use Closure;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -305,15 +308,22 @@ class ImportadorDatos
             // reporta su avance interno (tandas de Meta, nombres/portadas de
             // TikTok) para que la barra no se quede fija en este paso.
             $nCuentas = $cuentas->count();
+            // Todo se guarda en USD (2026-11-11): el gasto de una cuenta en
+            // otra moneda (TikTok México: MXN) se convierte por día.
+            $divisas = new Divisas;
             $costos = self::traerCostosDeCuentas(
                 $cuentas,
-                fn (string $cuentaId, int $i, CuentaPublicitaria $cuenta) => $enriquecedor->enriquecer(
-                    $cuentaId, $desde, $hasta,
-                    fn (float $fraccion, string $etapa) => self::avisar(
-                        $progreso,
-                        $inicio + $tramo * 0.4 * (($i + $fraccion) / $nCuentas),
-                        $etapa.($nCuentas > 1 && $cuenta->nombre ? " ({$cuenta->nombre})" : ''),
+                fn (string $cuentaId, int $i, CuentaPublicitaria $cuenta) => $divisas->filasAUsd(
+                    $enriquecedor->enriquecer(
+                        $cuentaId, $desde, $hasta,
+                        fn (float $fraccion, string $etapa) => self::avisar(
+                            $progreso,
+                            $inicio + $tramo * 0.4 * (($i + $fraccion) / $nCuentas),
+                            $etapa.($nCuentas > 1 && $cuenta->nombre ? " ({$cuenta->nombre})" : ''),
+                        ),
                     ),
+                    self::monedaDeCuenta($cuenta, $enriquecedor, $desde, $hasta),
+                    $hasta,
                 ),
             );
 
@@ -472,6 +482,28 @@ class ImportadorDatos
 
         return "{$pais->nombre} no tiene cuentas publicitarias activas de {$nombres}, así que no hay costo con qué cruzar los datos y no se importó nada. "
             .'Un superadmin las agrega en Ajustes → Cuentas publicitarias; después vuelve a importar.';
+    }
+
+    /**
+     * Moneda de la cuenta publicitaria: la guardada o, la primera vez, la que
+     * diga la plataforma (se guarda para no volver a preguntar). Sin dato se
+     * asume USD, como hasta ahora, y queda en el log.
+     */
+    private static function monedaDeCuenta(CuentaPublicitaria $cuenta, EnriquecedorCostosMeta|EnriquecedorCostosTiktok $enriquecedor, string $desde, string $hasta): ?string
+    {
+        if ($cuenta->moneda) {
+            return $cuenta->moneda;
+        }
+        $moneda = $enriquecedor instanceof EnriquecedorCostosMeta
+            ? $enriquecedor->moneda($cuenta->id_externo)
+            : $enriquecedor->moneda($cuenta->id_externo, $desde, $hasta);
+        if ($moneda) {
+            $cuenta->update(['moneda' => $moneda]);
+        } else {
+            Log::warning("No se sabe la moneda de la cuenta {$cuenta->plataforma} {$cuenta->id_externo}; se toma como USD.");
+        }
+
+        return $moneda;
     }
 
     /**
@@ -755,6 +787,12 @@ class ImportadorDatos
             );
             $resultadosTocados++;
             $conciliacion->registrar($card, self::participaEnVentaReal($card, $cuentasPorId), $nc, $orders);
+
+            // Detalle por día (2026-11-11): los días del rango se reemplazan
+            // y el mes queda como la suma de TODOS sus días -- subir un día
+            // suelto ya no pisa el resto del mes.
+            self::guardarDias($creativo->id, $card, $desde, $hasta, $ventaReal['ncRecalculado'], $ventaReal['ordersRecalculado']);
+            self::consolidarMesDesdeDias($creativo->id, $mes);
         }
 
         return [
@@ -769,6 +807,135 @@ class ImportadorDatos
             'conciliacion' => $conciliacion->toArray($sinActividadDescartados),
             'imagenesPendientes' => $imagenesPendientes,
         ];
+    }
+
+    /**
+     * resultados_diarios de un anuncio en [desde, hasta]: gasto por día de la
+     * API + installs/NC/órdenes por día de AppsFlyer. La venta real del
+     * rango (ya repartida entre anuncios) se reparte entre sus días con el
+     * mismo peso que entre anuncios: NC por nuevos clientes, órdenes por
+     * primeras + recompras (VentaRealYAgrupacion). Sin total real en esta
+     * corrida, cada día conserva la venta real que ya tenía.
+     */
+    private static function guardarDias(int $creativoId, array $card, string $desde, string $hasta, bool $huboNc, bool $huboOrders): void
+    {
+        $dias = [];
+        foreach ($card['diasCosto'] ?? [] as $fecha => $c) {
+            if ($fecha >= $desde && $fecha <= $hasta) {
+                $dias[$fecha] = ['cost' => $c['cost'], 'impressions' => $c['impressions'], 'clicks' => $c['clicks'], 'installs' => 0, 'nc' => 0, 'orders' => 0];
+            }
+        }
+        foreach ($card['serieAppsFlyer'] ?? [] as $punto) {
+            $fecha = self::fechaOrdenable($punto['fecha']);
+            if ($fecha < $desde || $fecha > $hasta) {
+                continue;
+            }
+            $dias[$fecha] ??= ['cost' => 0.0, 'impressions' => 0, 'clicks' => 0, 'installs' => 0, 'nc' => 0, 'orders' => 0];
+            $dias[$fecha]['installs'] += (int) ($punto['installs'] ?? 0);
+            $dias[$fecha]['nc'] += (int) ($punto['newCustomers'] ?? 0);
+            $dias[$fecha]['orders'] += (int) ($punto['orders'] ?? 0);
+        }
+        $dias = array_filter($dias, fn (array $d) => $d['cost'] > 0 || $d['impressions'] > 0 || $d['clicks'] > 0 || $d['installs'] > 0 || $d['nc'] > 0 || $d['orders'] > 0);
+        ksort($dias);
+
+        $anteriores = ResultadoDiario::where('creativo_id', $creativoId)->whereBetween('fecha', [$desde, $hasta])->get()
+            ->keyBy(fn (ResultadoDiario $d) => $d->fecha->toDateString());
+
+        $ncPorDia = self::repartirPorDia($huboNc ? ($card['ncReal'] ?? null) : null, $dias, fn (array $d) => $d['nc']);
+        $ordersPorDia = self::repartirPorDia($huboOrders ? ($card['ordersReal'] ?? null) : null, $dias, fn (array $d) => $d['nc'] + $d['orders']);
+
+        $filas = [];
+        foreach ($dias as $fecha => $d) {
+            $filas[] = [
+                'creativo_id' => $creativoId,
+                'fecha' => $fecha,
+                'cost' => round($d['cost'], 2),
+                'impressions' => $d['impressions'],
+                'clicks' => $d['clicks'],
+                'installs' => $d['installs'],
+                'nc' => $d['nc'],
+                'repurchases' => 0,
+                'orders' => $d['orders'],
+                'nc_real' => $huboNc ? $ncPorDia[$fecha] : $anteriores->get($fecha)?->nc_real,
+                'orders_real' => $huboOrders ? $ordersPorDia[$fecha] : $anteriores->get($fecha)?->orders_real,
+                'creado_en' => now(),
+            ];
+        }
+
+        DB::transaction(function () use ($creativoId, $desde, $hasta, $filas) {
+            ResultadoDiario::where('creativo_id', $creativoId)->whereBetween('fecha', [$desde, $hasta])->delete();
+            foreach (array_chunk($filas, 500) as $tanda) {
+                ResultadoDiario::insert($tanda);
+            }
+        });
+    }
+
+    /**
+     * Reparte un total entre días según $peso; sin peso en ningún día, por
+     * installs y luego por gasto. Decimales (la suma da el total exacto).
+     *
+     * @param  array<string, array<string, int|float>>  $dias
+     * @return array<string, ?float>
+     */
+    private static function repartirPorDia(mixed $total, array $dias, Closure $peso): array
+    {
+        if ($total === null || $dias === []) {
+            return array_fill_keys(array_keys($dias), null);
+        }
+        foreach ([$peso, fn (array $d) => $d['installs'], fn (array $d) => $d['cost']] as $criterio) {
+            $pesos = array_map($criterio, $dias);
+            $suma = array_sum($pesos);
+            if ($suma > 0) {
+                return array_map(fn ($p) => round((float) $total * $p / $suma, 2), $pesos);
+            }
+        }
+
+        // Ningún día con señal: todo al primero.
+        $reparto = array_fill_keys(array_keys($dias), 0.0);
+        $reparto[array_key_first($dias)] = (float) $total;
+
+        return $reparto;
+    }
+
+    /**
+     * El Resultado del mes = suma de sus días (gasto, impresiones, clicks,
+     * installs). NC/órdenes: si todos los días tienen venta real, su suma;
+     * si no, se queda lo que resolvió la corrida (real preservado o null).
+     */
+    private static function consolidarMesDesdeDias(int $creativoId, string $mes): void
+    {
+        $primerDia = "{$mes}-01";
+        $dias = ResultadoDiario::where('creativo_id', $creativoId)
+            ->whereBetween('fecha', [$primerDia, date('Y-m-t', strtotime($primerDia))])
+            ->get();
+        $resultado = Resultado::where('creativo_id', $creativoId)->where('mes', $mes)->first();
+        if ($dias->isEmpty() || ! $resultado) {
+            return;
+        }
+
+        $cost = round((float) $dias->sum('cost'), 2);
+        $impressions = (int) $dias->sum('impressions');
+        $clicks = (int) $dias->sum('clicks');
+        $installs = (int) $dias->sum('installs');
+        $nc = $dias->every(fn ($d) => $d->nc_real !== null) ? (int) round($dias->sum('nc_real')) : $resultado->nc;
+        $orders = $dias->every(fn ($d) => $d->orders_real !== null) ? (int) round($dias->sum('orders_real')) : $resultado->orders;
+
+        $resultado->update([
+            'fecha_inicio' => $dias->min('fecha'),
+            'fecha_fin' => $dias->max('fecha'),
+            'cost' => $cost,
+            'impressions' => $impressions,
+            'clicks' => $clicks,
+            'installs' => $installs,
+            'cpi' => ($installs > 0 && $cost > 0) ? $cost / $installs : null,
+            'nc' => $nc,
+            'cac' => ($nc !== null && $nc > 0 && $cost > 0) ? $cost / $nc : null,
+            'orders' => $orders,
+            'cpo' => ($orders !== null && $orders > 0 && $cost > 0) ? $cost / $orders : null,
+            'tiene_venta_real' => $nc !== null && $orders !== null,
+            'ctr' => $impressions > 0 ? ($clicks / $impressions) * 100 : null,
+            'cpm' => ($impressions > 0 && $cost > 0) ? ($cost / $impressions) * 1000 : null,
+        ]);
     }
 
     /**

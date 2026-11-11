@@ -4,6 +4,7 @@ import { computed, ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
+import InfoTip from '@/Components/InfoTip.vue';
 
 // Cola "Sin creativo" (2026-11-05): anuncios que el catálogo de la cuenta no
 // pudo asignar a un creativo -- casi siempre Spark Ads de TikTok, cuyo
@@ -60,11 +61,12 @@ async function asignar(fila) {
                 <header class="header">
                     <div>
                         <p class="eyebrow mono">Ajustes</p>
-                        <h1 class="title">Anuncios sin creativo</h1>
-                        <p class="subtitle">
-                            Los que el catálogo de la cuenta no reconoce, casi siempre Spark Ads (su nombre es el texto del post).
-                            Asigna el creativo una vez por post: se guarda en el catálogo y los anuncios nuevos de ese post lo heredan.
-                        </p>
+                        <h1 class="title title-con-info">
+                            Anuncios sin creativo
+                            <InfoTip etiqueta="Sobre los anuncios sin creativo">
+                                Los que el catálogo de la cuenta no reconoce, casi siempre Spark Ads (su nombre es el texto del post). Asigna el creativo una vez por post: se guarda en el catálogo y los anuncios nuevos de ese post lo heredan.
+                            </InfoTip>
+                        </h1>
                     </div>
                     <Link :href="`${urlPais(pais)}/ajustes`" class="sc-volver">‹ Ajustes</Link>
                 </header>
@@ -132,6 +134,11 @@ async function asignar(fila) {
 </template>
 
 <style scoped>
+.title-con-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 .page { padding: 32px 32px 64px; }
 .page-inner { max-width: 1200px; margin: 0 auto; }
 .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 24px; }

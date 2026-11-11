@@ -1,8 +1,9 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import EpaLoader from '@/Components/EpaLoader.vue';
 
 // Progreso de una importación (2026-10-06, pedido explícito) -- mismo
-// lenguaje visual que CargandoOverlay (las cervezas), pero con avance REAL:
+// lenguaje visual que CargandoOverlay (el loader EPA), pero con avance REAL:
 // `porcentaje`/`etapa` vienen del pipeline (ImportadorDatos reporta, el Job
 // guarda en importaciones.progreso/etapa, el panel hace polling).
 //
@@ -57,10 +58,8 @@ const transcurrido = computed(() => {
 <template>
     <div class="progreso-overlay" role="status" aria-live="polite">
         <div class="progreso-card">
-            <div class="progreso-cervezas" aria-hidden="true">
-                <span class="progreso-cerveza progreso-cerveza-izq">🍺</span>
-                <span class="progreso-cerveza progreso-cerveza-der">🍺</span>
-            </div>
+            <!-- Las barras entran y salen volando: se recortan al cuadro del logo. -->
+            <div class="progreso-logo" aria-hidden="true"><EpaLoader :tamano="76" /></div>
 
             <h2 class="progreso-titulo">{{ terminado ? 'Importación completa' : 'Importando datos' }}</h2>
 
@@ -115,31 +114,14 @@ const transcurrido = computed(() => {
     gap: 10px;
     text-align: center;
 }
-.progreso-cervezas {
+.progreso-logo {
+    align-self: center;
     display: flex;
+    align-items: center;
     justify-content: center;
-    align-items: flex-end;
-    gap: 2px;
-    font-size: 2.4rem;
-    line-height: 1;
-}
-.progreso-cerveza {
-    display: inline-block;
-}
-.progreso-cerveza-izq {
-    animation: progreso-clink-izq 1.1s ease-in-out infinite;
-}
-.progreso-cerveza-der {
-    transform: scaleX(-1);
-    animation: progreso-clink-der 1.1s ease-in-out infinite;
-}
-@keyframes progreso-clink-izq {
-    0%, 20%, 100% { transform: translateX(0) rotate(0deg); }
-    45%, 55% { transform: translateX(9px) rotate(-14deg); }
-}
-@keyframes progreso-clink-der {
-    0%, 20%, 100% { transform: scaleX(-1) translateX(0) rotate(0deg); }
-    45%, 55% { transform: scaleX(-1) translateX(9px) rotate(-14deg); }
+    width: 120px;
+    height: 110px;
+    overflow: hidden;
 }
 .progreso-titulo {
     font-family: 'Space Grotesk', 'Inter', sans-serif;
@@ -181,10 +163,6 @@ const transcurrido = computed(() => {
     margin-top: 4px;
 }
 @media (prefers-reduced-motion: reduce) {
-    .progreso-cerveza-izq,
-    .progreso-cerveza-der {
-        animation: none;
-    }
     .progreso-fill {
         transition: none;
     }

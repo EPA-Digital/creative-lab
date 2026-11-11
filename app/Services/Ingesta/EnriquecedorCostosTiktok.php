@@ -76,6 +76,32 @@ class EnriquecedorCostosTiktok
     }
 
     /**
+     * Moneda del anunciante (ej. "MXN"). /advertiser/info/ no está permitido
+     * para este token (ver ValidadorCuentaPublicitaria), pero el reporte a
+     * nivel anunciante sí trae la moneda. Null si no hubo gasto en el rango.
+     */
+    public function moneda(string $advertiserId, string $desde, string $hasta): ?string
+    {
+        try {
+            $data = $this->tiktok->get('/report/integrated/get/', [
+                'advertiser_id' => $advertiserId,
+                'report_type' => 'BASIC',
+                'data_level' => 'AUCTION_ADVERTISER',
+                'dimensions' => ['advertiser_id'],
+                'metrics' => ['currency'],
+                'start_date' => $desde,
+                'end_date' => $hasta,
+            ]);
+
+            return strtoupper((string) ($data['list'][0]['metrics']['currency'] ?? '')) ?: null;
+        } catch (Throwable $e) {
+            Log::warning("No se pudo leer la moneda del anunciante de TikTok {$advertiserId}: {$e->getMessage()}");
+
+            return null;
+        }
+    }
+
+    /**
      * URL remota de la portada del video de cada ad (expira en horas) --
      * SIN guardarla en el bucket ni tocar nada. Para el reporte de
      * creativos (ReporteCreativosService) cuando un creativo no tiene la
@@ -169,7 +195,7 @@ class EnriquecedorCostosTiktok
      * (ver comentario de traerNombreYVideoId más abajo), no el costo -- no
      * hace falta ningún endpoint distinto para Smart+.
      *
-     * @return list<array{adId: string, cost: float, impressions: int, clicks: int}>
+     * @return list<array{adId: string, cost: float, impressions: int, clicks: int, dias: array<string, array{cost: float, impressions: int, clicks: int}>}>
      */
     private function traerCostos(string $advertiserId, string $desde, string $hasta): array
     {
@@ -181,7 +207,9 @@ class EnriquecedorCostosTiktok
                 'advertiser_id' => $advertiserId,
                 'report_type' => 'BASIC',
                 'data_level' => 'AUCTION_AD',
-                'dimensions' => ['ad_id'],
+                // Por ad y por DÍA (2026-11-11): se suman abajo para el total
+                // del rango y el detalle queda en `dias`.
+                'dimensions' => ['ad_id', 'stat_time_day'],
                 'metrics' => ['spend', 'impressions', 'clicks'],
                 'start_date' => $desde,
                 'end_date' => $hasta,
@@ -189,16 +217,25 @@ class EnriquecedorCostosTiktok
                 // (caso real Panamá sep-2026: $207 visibles de $4,982 reales).
                 'filtering' => [['field_name' => 'ad_status', 'filter_type' => 'IN', 'filter_value' => json_encode(['STATUS_ALL'])]],
                 'page' => $page,
-                'page_size' => 100,
+                'page_size' => 1000,
             ]);
 
             foreach ($data['list'] ?? [] as $row) {
-                $filas[] = [
-                    'adId' => $row['dimensions']['ad_id'],
+                $adId = $row['dimensions']['ad_id'];
+                $filas[$adId] ??= ['adId' => $adId, 'cost' => 0.0, 'impressions' => 0, 'clicks' => 0, 'dias' => []];
+                $dia = [
                     'cost' => (float) ($row['metrics']['spend'] ?? 0),
                     'impressions' => (int) ($row['metrics']['impressions'] ?? 0),
                     'clicks' => (int) ($row['metrics']['clicks'] ?? 0),
                 ];
+                $filas[$adId]['cost'] += $dia['cost'];
+                $filas[$adId]['impressions'] += $dia['impressions'];
+                $filas[$adId]['clicks'] += $dia['clicks'];
+                // El reporte trae también los días en 0 de cada ad: no se guardan.
+                $fecha = substr((string) ($row['dimensions']['stat_time_day'] ?? ''), 0, 10);
+                if ($fecha !== '' && ($dia['cost'] > 0 || $dia['impressions'] > 0 || $dia['clicks'] > 0)) {
+                    $filas[$adId]['dias'][$fecha] = $dia;
+                }
             }
 
             $totalPage = $data['page_info']['total_page'] ?? 1;
@@ -208,7 +245,7 @@ class EnriquecedorCostosTiktok
             $page++;
         }
 
-        return $filas;
+        return array_values(array_map(fn (array $f) => [...$f, 'cost' => round($f['cost'], 2)], $filas));
     }
 
     /**

@@ -107,7 +107,6 @@
 .us-panel-titulo { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
 .us-punto { width: 8px; height: 8px; border-radius: 999px; }
 .us-panel-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
-.us-confirmar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--text); }
 
 .us-modal-pie { display: flex; align-items: center; gap: 10px; padding-top: 18px; border-top: 1px solid var(--border); }
 .us-modal-pie .us-espacio { flex: 1; }

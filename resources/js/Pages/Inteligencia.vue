@@ -8,6 +8,7 @@ import SeleccionCard from '@/Components/Inteligencia/SeleccionCard.vue';
 import ComparacionCreativos from '@/Components/Inteligencia/ComparacionCreativos.vue';
 import CreativeModal from '@/Components/Creativo/CreativeModal.vue';
 import { cardDesdeCreativo, placeholderPorTipo, promediosDeGrupo, FUNNEL_ORDER, opcionesTipoCuenta, etiquetaFiltroTipoCuenta, resultadoDeMes, etiquetaFunnel } from '@/motor';
+import InfoTip from '@/Components/InfoTip.vue';
 
 // Inteligencia -- comparación head-to-head de 2-4 creativos (2026-08-27,
 // ver plan). El controller manda el historial COMPLETO de `resultados`
@@ -174,8 +175,12 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
                 <header class="header">
                     <div>
                         <p class="eyebrow mono">{{ pais }}</p>
-                        <h1 class="title">Pon a competir tus creativos</h1>
-                        <p class="subtitle">Elige 2 para un cara a cara directo, o hasta 4 para verlos comparados a la vez.</p>
+                        <h1 class="title title-con-info">
+                            Pon a competir tus creativos
+                            <InfoTip etiqueta="Cómo comparar creativos">
+                                Elige 2 para un cara a cara directo, o hasta 4 para verlos comparados a la vez.
+                            </InfoTip>
+                        </h1>
                     </div>
                 </header>
 
@@ -274,6 +279,11 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
 </template>
 
 <style scoped>
+.title-con-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 /* Mismo page-chrome que AnalisisCreativo.vue (.page/.page-inner/.header/
    .eyebrow/.title/.subtitle/.section son scoped por página en este
    proyecto -- no viven en app.css, cada página los repite). */

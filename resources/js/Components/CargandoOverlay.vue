@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { cargando, rutaDestino } from '@/loadingState';
+import EpaLoader from '@/Components/EpaLoader.vue';
 
 // Overlay global de navegación (2026-09-24, pedido explícito) -- en
 // TODAS las pantallas, pero solo si de verdad hay que esperar: el
@@ -41,10 +42,7 @@ watch(cargando, (activo) => {
 <template>
     <Transition name="carga-fade">
         <div v-if="cargando" class="carga-overlay" role="status" aria-live="polite">
-            <div class="carga-cervezas" aria-hidden="true">
-                <span class="carga-cerveza carga-cerveza-izq">🍺</span>
-                <span class="carga-cerveza carga-cerveza-der">🍺</span>
-            </div>
+            <EpaLoader :tamano="130" />
             <p class="carga-texto mono">{{ fases[faseIndex] }}</p>
         </div>
     </Transition>
@@ -60,38 +58,11 @@ watch(cargando, (activo) => {
     align-items: center;
     justify-content: center;
     gap: 18px;
-    background: color-mix(in srgb, var(--bg, #161826) 85%, transparent);
-    backdrop-filter: blur(2px);
-}
-.carga-cervezas {
-    display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    font-size: 3rem;
-    line-height: 1;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
-}
-.carga-cerveza {
-    display: inline-block;
-}
-.carga-cerveza-izq {
-    animation: carga-clink-izq 1.1s ease-in-out infinite;
-}
-.carga-cerveza-der {
-    display: inline-block;
-    transform: scaleX(-1);
-    animation: carga-clink-der 1.1s ease-in-out infinite;
-}
-@keyframes carga-clink-izq {
-    0%, 20%, 100% { transform: translateX(0) rotate(0deg); }
-    45%, 55% { transform: translateX(9px) rotate(-14deg); }
-}
-@keyframes carga-clink-der {
-    0%, 20%, 100% { transform: scaleX(-1) translateX(0) rotate(0deg); }
-    45%, 55% { transform: scaleX(-1) translateX(9px) rotate(-14deg); }
+    background: color-mix(in srgb, var(--bg, #161826) 94%, transparent);
+    backdrop-filter: blur(4px);
 }
 .carga-texto {
-    color: var(--text, #e9e9ed);
+    color: var(--text-muted, #9397ab);
     font-size: 0.85rem;
     letter-spacing: 0.02em;
 }
