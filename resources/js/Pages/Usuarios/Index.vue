@@ -1,5 +1,7 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import axios from 'axios';
+import { fechaHora } from '@/fechas';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import AvatarUsuario from '@/Components/Perfil/AvatarUsuario.vue';
@@ -25,6 +27,43 @@ const props = defineProps({
 
 const ROL_LABEL = { cliente: 'Solo lectura', junior: 'Junior', senior: 'Senior', gerente: 'Gerente', director: 'Director', superadmin: 'Superadmin' };
 const miId = computed(() => usePage().props.auth?.user?.id);
+
+// --- Presencia (2026-11-11) -----------------------------------------------------
+// Círculo sobre el avatar: verde = usándolo (últimos 5 min), amarillo = sesión
+// abierta sin uso reciente, rojo = cerró sesión o se le venció. Se refresca
+// cada minuto (ver Presencia.php y presencia.js).
+const presencia = ref(Object.fromEntries(props.usuarios.map((u) => [u.id, u.presencia])));
+const ahora = ref(Date.now());
+let refresco = null;
+async function refrescarPresencia() {
+    if (document.visibilityState !== 'visible') return;
+    try {
+        presencia.value = (await axios.get('/usuarios/presencia')).data;
+        ahora.value = Date.now();
+    } catch {
+        // Sin red: se queda con lo último que se supo.
+    }
+}
+onMounted(() => {
+    refresco = setInterval(refrescarPresencia, 60 * 1000);
+});
+onBeforeUnmount(() => clearInterval(refresco));
+
+const PRESENCIA_LABEL = { en_linea: 'En línea', inactivo: 'Inactivo', desconectado: 'Desconectado' };
+function hace(iso) {
+    if (!iso) return '';
+    const min = Math.max(0, Math.round((ahora.value - new Date(iso).getTime()) / 60000));
+    if (min < 1) return 'hace un momento';
+    if (min < 60) return `hace ${min} min`;
+    const horas = Math.round(min / 60);
+    if (horas < 24) return `hace ${horas} h`;
+    return `el ${fechaHora(iso)}`;
+}
+function presenciaDe(u) {
+    const p = presencia.value[u.id] ?? { estado: 'desconectado', ultima_actividad: null };
+    const cuando = p.estado === 'en_linea' ? '' : (p.ultima_actividad ? ` · última vez ${hace(p.ultima_actividad)}` : ' · sin actividad registrada');
+    return { estado: p.estado, titulo: `${PRESENCIA_LABEL[p.estado]}${cuando}` };
+}
 
 // --- Filtros ------------------------------------------------------------------
 const filtro = ref('todos');
@@ -158,7 +197,16 @@ async function copiarLink() {
                             <tr v-for="u in visibles" :key="u.id" :class="{ inactivo: !u.activo && !u.pendiente }">
                                 <td>
                                     <div class="us-persona">
-                                        <AvatarUsuario :usuario="u" :tamano="40" />
+                                        <span class="us-avatar-presencia">
+                                            <AvatarUsuario :usuario="u" :tamano="40" />
+                                            <span
+                                                class="us-presencia"
+                                                :class="`us-presencia--${presenciaDe(u).estado}`"
+                                                role="img"
+                                                :aria-label="presenciaDe(u).titulo"
+                                                :title="presenciaDe(u).titulo"
+                                            />
+                                        </span>
                                         <div style="min-width: 0">
                                             <div class="us-persona-nombre">{{ u.name }}<span v-if="u.id === miId" class="us-tu">Tú</span></div>
                                             <div class="us-persona-correo">{{ u.email }}</div>

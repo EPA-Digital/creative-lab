@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ResuelvePaisDeContexto;
 use App\Models\Pais;
 use App\Models\User;
 use App\Services\Auditoria;
+use App\Services\Presencia\Presencia;
 use App\Services\SesionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -66,8 +67,11 @@ class UsuariosController extends Controller
             // estrictamente por debajo, más la propia fila (para verse a
             // sí mismo en la lista, nunca para autoadministrarse).
             ->filter(fn (User $u) => $u->id === $yo->id || $yo->puedeGestionarA($u))
-            ->values()
+            ->values();
+        $presencia = Presencia::de($usuarios);
+        $usuarios = $usuarios
             ->map(fn (User $u) => [
+                'presencia' => $presencia[$u->id],
                 ...$u->only(['id', 'name', 'email', 'rol', 'activo', 'metodo_auth', 'pais_ids_propuestos', 'cuenta_ids_propuestos']),
                 ...$u->perfilPublico(),
                 'pendiente' => $u->estaPendienteDeAprobacion(),
@@ -90,6 +94,20 @@ class UsuariosController extends Controller
             'roles' => self::ROLES,
             'pais' => $this->paisDeContexto($request),
         ]);
+    }
+
+    /**
+     * Presencia de los usuarios que quien pregunta ve en la lista (la página
+     * la vuelve a pedir cada minuto para que el círculo se mantenga al día).
+     */
+    public function presencia(Request $request): JsonResponse
+    {
+        $yo = $request->user();
+        $usuarios = User::all(['id', 'rol', 'ultima_actividad_en'])
+            ->filter(fn (User $u) => $u->id === $yo->id || $yo->puedeGestionarA($u))
+            ->values();
+
+        return response()->json(Presencia::de($usuarios));
     }
 
     public function store(Request $request): JsonResponse

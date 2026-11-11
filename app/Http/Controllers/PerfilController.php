@@ -25,6 +25,23 @@ class PerfilController extends Controller
 {
     public const COLORES = ['#7fa2ff', '#59e0bd', '#4fb6ff', '#d8a94a', '#ff8f84'];
 
+    /**
+     * Aviso de actividad (presencia, 2026-11-11): la pestaña lo manda cada
+     * minuto mientras alguien la está usando. El request en sí ya refresca
+     * `last_activity` de la sesión; además se guarda la hora en el usuario
+     * (a lo más una vez por minuto) para el "última vez" tras cerrar sesión.
+     */
+    public function actividad(Request $request): Response
+    {
+        $usuario = $request->user();
+        if (! $usuario->ultima_actividad_en || $usuario->ultima_actividad_en->lt(now()->subMinute())) {
+            // Sin tocar actualizado_en: no es un cambio del perfil.
+            User::whereKey($usuario->id)->toBase()->update(['ultima_actividad_en' => now()]);
+        }
+
+        return response()->noContent();
+    }
+
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([

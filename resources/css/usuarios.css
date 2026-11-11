@@ -40,6 +40,14 @@
 .us-tabla tr:last-child td { border-bottom: 0; }
 .us-tabla tr.inactivo td { opacity: .6; }
 .us-persona { display: flex; align-items: center; gap: 12px; min-width: 0; }
+/* Presencia (2026-11-11): círculo chico abajo a la derecha del avatar. */
+.us-avatar-presencia { position: relative; display: inline-flex; flex: none; }
+.us-presencia { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; border-radius: 999px; border: 2px solid var(--surface); cursor: help; }
+.us-presencia--en_linea { background: var(--mint); box-shadow: 0 0 0 0 color-mix(in srgb, var(--mint) 60%, transparent); animation: us-latido 2s ease-out infinite; }
+.us-presencia--inactivo { background: var(--yellow); }
+.us-presencia--desconectado { background: var(--coral); }
+@keyframes us-latido { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--mint) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+@media (prefers-reduced-motion: reduce) { .us-presencia--en_linea { animation: none; } }
 .us-persona-nombre { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .us-persona-correo { font: 13px 'JetBrains Mono', monospace; color: var(--text-muted); }
 .us-tu { padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); font: 600 10px 'JetBrains Mono', monospace; letter-spacing: .06em; text-transform: uppercase; }
