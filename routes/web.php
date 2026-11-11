@@ -142,6 +142,7 @@ Route::middleware('auth')->group(function () {
 
     Route::middleware('can:ver-usuarios')->group(function () {
         Route::get('/usuarios', [UsuariosController::class, 'index'])->name('usuarios.index');
+        Route::get('/usuarios/presencia', [UsuariosController::class, 'presencia'])->name('usuarios.presencia');
         Route::post('/usuarios', [UsuariosController::class, 'store'])->name('usuarios.store');
     });
 
@@ -181,6 +182,8 @@ Route::middleware('auth')->group(function () {
 
     // "Editar perfil" del nav: cada quien el suyo (ver PerfilController).
     Route::patch('/perfil', [PerfilController::class, 'update'])->name('perfil.update');
+    // Presencia (2026-11-11): cada pestaña avisa mientras alguien la usa.
+    Route::post('/perfil/actividad', [PerfilController::class, 'actividad'])->name('perfil.actividad');
     Route::post('/perfil/foto', [PerfilController::class, 'subirFoto'])->name('perfil.foto.store');
     Route::delete('/perfil/foto', [PerfilController::class, 'quitarFoto'])->name('perfil.foto.destroy');
     Route::get('/usuarios/{usuario}/foto', [PerfilController::class, 'foto'])->name('usuarios.foto');

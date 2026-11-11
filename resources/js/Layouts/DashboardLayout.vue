@@ -7,6 +7,7 @@ import { iniciales } from '@/cuentas';
 import LogoCuenta from '@/Components/Cuenta/LogoCuenta.vue';
 import AvatarUsuario from '@/Components/Perfil/AvatarUsuario.vue';
 import PerfilModal from '@/Components/Perfil/PerfilModal.vue';
+import { iniciarPresencia } from '@/presencia';
 
 // Nav (diseño 2026-11-05, pedido explícito): logo de EPA, selector de cuenta
 // desplegable (buscador con ⌘K, cuentas con sus países, "Nueva cuenta" y
@@ -155,6 +156,7 @@ function alternarPanel() {
 }
 
 onMounted(() => {
+    iniciarPresencia();
     document.addEventListener('click', alClicFuera);
     document.addEventListener('keydown', alTeclear);
     aplicarTemaGuardado();

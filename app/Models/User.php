@@ -98,6 +98,7 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'ultima_actividad_en' => 'datetime',
             'password' => 'hashed',
             'activo' => 'boolean',
             'pais_ids_propuestos' => 'array',
