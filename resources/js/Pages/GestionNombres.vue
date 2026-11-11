@@ -178,7 +178,7 @@ async function guardarFila(fila) {
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--amber);
+    color: var(--accent-text);
     margin: 0 0 4px;
 }
 .title {
@@ -230,7 +230,7 @@ async function guardarFila(fila) {
     border-radius: 999px;
 }
 .gestion-nombres-progreso-pct {
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .gestion-nombres-tabla {
     width: 100%;

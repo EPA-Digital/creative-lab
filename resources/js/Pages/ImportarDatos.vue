@@ -975,7 +975,7 @@ onMounted(() => cargarResumen());
     background: none;
     border: none;
     padding: 0;
-    color: var(--amber);
+    color: var(--accent-text);
     font: inherit;
     text-decoration: underline;
     cursor: pointer;
@@ -1010,7 +1010,7 @@ onMounted(() => cargarResumen());
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--amber);
+    color: var(--accent-text);
     margin: 0 0 4px;
 }
 .tab-row {
@@ -1096,7 +1096,7 @@ onMounted(() => cargarResumen());
 }
 .resumen-comparacion-atajos button.activo {
     background: var(--surface-2);
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .resumen-comparacion-personalizado {
     display: flex;
@@ -1161,7 +1161,7 @@ onMounted(() => cargarResumen());
 }
 .resumen-tabla thead th button:hover,
 .resumen-tabla thead th.activa button {
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .resumen-tabla thead th button:focus-visible {
     outline: 2px solid var(--amber);

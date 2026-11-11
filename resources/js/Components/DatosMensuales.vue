@@ -484,7 +484,7 @@ async function abrirEliminar() {
 }
 .datos-tabla thead th button:hover,
 .datos-tabla thead th.activa button {
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .datos-flecha {
     font-size: 0.6rem;

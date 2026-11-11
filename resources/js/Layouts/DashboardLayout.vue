@@ -549,7 +549,7 @@ onBeforeUnmount(() => {
 }
 .selector-check {
     display: flex;
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .selector-vacio {
     margin: 0;
@@ -570,7 +570,7 @@ onBeforeUnmount(() => {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: var(--amber);
+    color: var(--accent-text);
     font-weight: 600;
     text-decoration: none;
 }
@@ -639,7 +639,7 @@ onBeforeUnmount(() => {
     border-color: var(--amber);
 }
 .pais-chip.activo {
-    color: var(--amber);
+    color: var(--accent-text);
     border-color: var(--amber);
     background: color-mix(in srgb, var(--amber) 12%, transparent);
 }
@@ -678,7 +678,7 @@ onBeforeUnmount(() => {
     background: var(--surface-2);
 }
 .nav-item.activo {
-    color: var(--amber);
+    color: var(--accent-text);
     background: color-mix(in srgb, var(--amber) 14%, transparent);
     font-weight: 600;
 }
@@ -709,7 +709,7 @@ onBeforeUnmount(() => {
 }
 .nav-contador {
     font-size: 12px;
-    color: var(--amber);
+    color: var(--accent-text);
 }
 
 .usuario-zona {

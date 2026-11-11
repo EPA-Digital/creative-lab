@@ -11,82 +11,93 @@
    vez evita repetirlas en cada componente. El toggle de tema real usa el
    atributo `data-theme` en <html>, no una clase.
    ========================================================================= */
-/* Paleta "Nocturne" (2026-08-04, pedido explícito del usuario) -- reemplaza
-   solo el modo oscuro. Mono-acento: un único hue morado ("blurple") para
-   toda la UI de marca/interacción (links, borde de botón primario, focus
-   ring, ítem de nav activo) en vez del ámbar anterior -- el nombre de
-   variable --amber queda igual a propósito (blast radius: se usa en
-   decenas de componentes vía var(--amber), renombrarla no cambia nada
-   visual y sí arriesga romper algo), pero ya no es literalmente ámbar.
-   --surface-2/--border/--text-faint no vinieron especificados en la
-   paleta que pasó el usuario -- se derivaron del mismo criterio que ya
-   usaba el tema anterior (border/faint como el color de texto en baja
-   opacidad), confirmar si hace falta ajustarlos. mint/coral/sky/violet
-   (código de color por status/funnel, no de marca) se dejaron sin tocar --
-   "mono-acento" se interpretó como la marca/UI chrome, no como eliminar
-   el código de color de datos (badge activo/pausado, tags de funnel). */
+/* Paleta: todos los colores salen de estos tokens (oscuro por defecto,
+   claro con data-theme="light"). Los componentes solo usan var(--token). */
 :root {
-    --bg: #161826;
-    --surface: #232532;
-    --surface-2: #2b2d3c;
-    --text: #e9e9ed;
-    --text-muted: #9397ab;
-    --text-faint: rgba(233, 233, 237, 0.38);
-    --border: rgba(233, 233, 237, 0.1);
-    --amber: #9184d9;
-    --amber-tag-light: #b5abfc;
-    --amber-tag-lighter: #d2cefd;
-    --amber-tag-dark: #423a6a;
-    --amber-tag-darker: #2b2741;
-    --mint: #59e0bd;
-    --violet: #8b6bff;
-    --coral: #ff6b5e;
-    --sky: #4fb6ff;
+    /* Paleta EPA (2026-11-11, pedido explícito): reemplaza la "Nocturne"
+       morada. --amber se queda con su nombre por compatibilidad, pero ahora
+       es el azul EPA (acento de marca). */
+    --bg: #0a0a0a;
+    --surface: #121212;
+    --surface-2: #1a1a1a;
+    --text: #fafafa;
+    --text-muted: #a3a3a3;
+    --text-faint: #8f8f8f;
+    --border: #262626;
+    --amber: #003ad6;
+    /* Acento como TEXTO o ícono (eyebrow, nav activo, pills activas): el
+       azul EPA sobre #0a0a0a no llega a 4.5:1, por eso uno más claro. Donde
+       el acento es fondo o borde se sigue usando --amber. */
+    --accent-text: #7fa2ff;
+    --amber-tag-light: #7fa2ff;
+    --amber-tag-lighter: #b3c8ff;
+    --amber-tag-dark: #0b2a80;
+    --amber-tag-darker: #071a4d;
+    --mint: #4ade80;
+    --violet: #003ad6;
+    --coral: #ef4444;
+    --sky: #03b0ff;
     /* --yellow (2026-08-21, pedido explícito): dedicado a Awareness en el
-       semáforo de funnel -- --amber ya no es literalmente ámbar (ver nota
-       arriba, es el morado de marca desde la paleta Nocturne), así que no
-       sirve para "amarillo" sin romper su otro uso. */
-    --yellow: #d8a94a;
-    --amber-ink: #161826;
-    --mint-ink: #06231b;
-    --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+       semáforo de funnel. */
+    --yellow: #facc15;
+    --amber-ink: #ffffff;
+    --mint-ink: #052e16;
+    --shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    /* Sombra azul sutil (hover del botón de Google en el login). */
+    --accent-shadow: 0 6px 16px rgba(0, 58, 214, 0.2);
     /* Pantallas de Cuentas (diseño 2026-11-03): texto de badges sobre
        tintes, texto sobre --coral sólido y velo de modales. */
-    --amber-strong: #b5abfc;
-    --mint-strong: #59e0bd;
-    --coral-ink: #1a0b09;
-    --overlay: rgba(10, 11, 20, 0.62);
+    --amber-strong: #7fa2ff;
+    --mint-strong: #4ade80;
+    --coral-ink: #1a0505;
+    --overlay: rgba(0, 0, 0, 0.62);
     /* Referenciado también por DashboardLayout.vue (altura del rail) --
        vh se calcula contra el viewport REAL, sin enterarse del `zoom` de
        más abajo, así que cualquier alto en vh necesita dividirse por este
        mismo número o queda corto en pantalla (ver comentario en .rail).
        Si cambiás el zoom, actualizá los dos lugares. */
     --zoom-factor: 0.85;
-    /* Logo EPA del loader (EpaLoader.vue). */
-    --epa-logo: #2f7bff;
+    /* Loader EPA "Ensamble" (EpaLoader.vue): una barra de cada azul. */
+    --epa-barra-1: #00199c;
+    --epa-barra-2: #03b0ff;
+    --epa-barra-3: #003ad6;
+    /* Triángulo de fondo del login (AuthCardLayout.vue). */
+    --login-bg-logo-opacity: 0.24;
+    /* Iniciales sobre los colores claros de avatar (AvatarUsuario.vue). */
+    --avatar-ink: #0a0a0a;
+    --avatar-default: #7fa2ff;
+    /* Texto sobre los velos oscuros encima de imágenes (badges de la card):
+       el velo es oscuro en los dos temas. */
+    --on-scrim: #fafafa;
+    --accent-on-scrim: #7fa2ff;
 }
 :root[data-theme='light'] {
-    --epa-logo: #0057d0;
-    --bg: #fcfcfb;
+    --bg: #fafafa;
     --surface: #ffffff;
-    --surface-2: #f3efe4;
-    --text: #1b1424;
-    --text-muted: rgba(27, 20, 36, 0.62);
-    --text-faint: rgba(27, 20, 36, 0.4);
-    --border: rgba(27, 20, 36, 0.1);
-    --amber: #b8790a;
-    --mint: #0e9e7d;
-    --violet: #6b46e8;
-    --coral: #d9432f;
-    --sky: #1c7ed6;
-    --yellow: #b8790a;
-    --amber-ink: #fff8ec;
-    --mint-ink: #f0fffa;
-    --shadow: 0 20px 50px rgba(20, 15, 10, 0.12);
-    --amber-strong: #8a5a05;
-    --mint-strong: #0a7a60;
+    --surface-2: #f5f5f5;
+    --text: #0a0a0a;
+    --text-muted: #6b6b6b;
+    --text-faint: #737373;
+    --border: #e5e5e5;
+    --amber: #003ad6;
+    --accent-text: #003ad6;
+    --amber-tag-light: #003ad6;
+    --amber-tag-lighter: #00199c;
+    --amber-tag-dark: #dce6ff;
+    --amber-tag-darker: #eef3ff;
+    --mint: #16a34a;
+    --violet: #00199c;
+    --coral: #dc2626;
+    --sky: #03b0ff;
+    --yellow: #d97706;
+    --amber-ink: #ffffff;
+    --mint-ink: #f0fdf4;
+    --shadow: 0 20px 50px rgba(10, 10, 10, 0.1);
+    --amber-strong: #003ad6;
+    --mint-strong: #15803d;
     --coral-ink: #ffffff;
-    --overlay: rgba(27, 20, 36, 0.35);
+    --overlay: rgba(10, 10, 10, 0.35);
+    --login-bg-logo-opacity: 0.14;
 }
 
 body {
@@ -136,14 +147,14 @@ h1, h2, .num, .kpi-value {
     top: 8px;
     left: 8px;
     background: rgba(0, 0, 0, 0.6);
-    color: var(--amber);
+    color: var(--accent-on-scrim);
 }
 .badge-tipo {
     bottom: 8px;
     left: 8px;
     right: 8px;
     background: rgba(0, 0, 0, 0.65);
-    color: var(--text);
+    color: var(--on-scrim);
     text-align: center;
 }
 .badge-estado {
@@ -213,6 +224,7 @@ h1, h2, .num, .kpi-value {
     height: 22px;
     border-radius: 50%;
     background: var(--amber);
+    color: var(--amber-ink);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -424,7 +436,7 @@ h1, h2, .num, .kpi-value {
 .podio-puesto-1 .podio-base {
     height: 96px;
     font-size: 2.4rem;
-    color: var(--amber);
+    color: var(--accent-text);
     border-top-color: var(--amber);
 }
 .podio-puesto-2 .podio-base {
@@ -520,7 +532,7 @@ input[type='month'] {
 }
 .date-range-nota {
     font-size: 0.72rem;
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .date-range-nota:empty {
     display: none;
@@ -602,7 +614,7 @@ input[type='month'] {
 }
 .btn-primary {
     background: transparent;
-    color: var(--amber);
+    color: var(--accent-text);
     border: 1px solid var(--amber);
     border-radius: 10px;
     padding: 12px 22px;
@@ -732,7 +744,7 @@ input[type='month'] {
 .resumen-filtros .toggle-btn.active {
     background: transparent;
     border-color: var(--amber);
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .resumen-filtros .toggle-btn .count {
     background: var(--surface-2);
@@ -740,7 +752,7 @@ input[type='month'] {
 }
 .resumen-filtros .toggle-btn.active .count {
     background: color-mix(in srgb, var(--amber) 20%, transparent);
-    color: var(--amber);
+    color: var(--accent-text);
 }
 
 /* ---------- topbar + theme toggle (Landing, rail) ---------- */
@@ -1923,7 +1935,7 @@ button.video-play-overlay:disabled {
     padding: 0;
 }
 .comparacion-volver:hover {
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .comparacion-titulo {
     display: flex;
@@ -2014,7 +2026,7 @@ button.video-play-overlay:disabled {
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 800;
     font-size: 0.95rem;
-    color: var(--amber);
+    color: var(--accent-text);
     letter-spacing: 0.02em;
 }
 .comparacion-vs-lado {
@@ -2388,10 +2400,9 @@ button.video-play-overlay:disabled {
 /* ---------- Login / auth (rediseño 2026-09-25, pedido explícito) ----------
    Página de login + todo lo que viene de la misma "familia" (aceptar
    invitación/reset de contraseña, verificar/enrolar TOTP, códigos de
-   recuperación) -- ver AuthCardLayout.vue. Paleta y tipografía fijas
-   (siempre oscuro, no sigue --theme de la app) a propósito: es la
-   pantalla ANTES de loguearse, no hay tema de usuario que aplicar
-   todavía. Inter ya se carga global vía bunny.net (ver app.blade.php) --
+   recuperación) -- ver AuthCardLayout.vue. Desde la paleta EPA
+   (2026-11-11) sigue el tema (data-theme lo pone app.blade.php desde
+   sessionStorage antes de pintar). Inter ya se carga global vía bunny.net (ver app.blade.php) --
    no se agrega fonts.googleapis.com aparte, ya está permitido por la CSP
    (font-src) y es la fuente que pide el diseño.
    Nunca mayúscula forzada en texto real (pedido explícito: "ningún texto
@@ -2404,7 +2415,7 @@ button.video-play-overlay:disabled {
     justify-content: center;
     gap: 28px;
     padding: 40px 16px;
-    background: radial-gradient(60% 55% at 50% 38%, #2b2741 0%, #161826 70%);
+    background: radial-gradient(60% 55% at 50% 38%, color-mix(in srgb, var(--amber) 14%, var(--bg)) 0%, var(--bg) 70%);
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
     position: relative;
@@ -2417,7 +2428,7 @@ button.video-play-overlay:disabled {
     overflow: hidden;
 }
 .auth-page :focus-visible {
-    outline: 2px solid #9184d9;
+    outline: 2px solid var(--amber);
     outline-offset: 2px;
 }
 /* Spotlight que sigue al cursor por TODA la página (pedido explícito
@@ -2441,7 +2452,7 @@ button.video-play-overlay:disabled {
     position: fixed;
     inset: 0;
     z-index: -1;
-    background: radial-gradient(600px circle at var(--brillo-x, 50%) var(--brillo-y, 30%), rgba(145, 132, 217, 0.16), transparent 70%);
+    background: radial-gradient(600px circle at var(--brillo-x, 50%) var(--brillo-y, 30%), color-mix(in srgb, var(--amber) 16%, transparent), transparent 70%);
     opacity: 0;
     transition: opacity 0.3s ease;
     pointer-events: none;
@@ -2458,13 +2469,13 @@ button.video-play-overlay:disabled {
     width: 64px;
     height: 64px;
     border-radius: 14px;
-    box-shadow: 0 0 40px #423a6a;
+    box-shadow: 0 0 40px color-mix(in srgb, var(--amber) 22%, transparent);
     display: block;
 }
 .auth-logo-sep {
     width: 2px;
     height: 40px;
-    background: #9184d9;
+    background: var(--amber);
     border-radius: 1px;
 }
 .auth-logo-epa {
@@ -2474,13 +2485,36 @@ button.video-play-overlay:disabled {
     mix-blend-mode: screen;
     opacity: 0.9;
 }
+:root[data-theme='light'] .auth-logo-epa,
+:root[data-theme='light'] .auth-footer-epa {
+    /* En claro, el logo de EPA va a color; multiply funde su fondo blanco. */
+    filter: none;
+    mix-blend-mode: multiply;
+    opacity: 1;
+}
+/* Triángulo de EPA en líneas finas detrás de la tarjeta (fijo, decorativo). */
+.login-bg-logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1100px;
+    height: 1100px;
+    transform: translate(-50%, -50%);
+    opacity: var(--login-bg-logo-opacity);
+    pointer-events: none;
+    z-index: -1;
+}
+.auth-loader {
+    display: flex;
+    margin-bottom: -12px;
+}
 .auth-card {
     width: 420px;
     max-width: calc(100vw - 32px);
     padding: 32px;
-    background: #232532;
+    background: var(--surface);
     border-radius: 14px;
-    box-shadow: 0 0 0 1px #595d6c, 0 6px 18px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 0 0 1px var(--border), var(--shadow);
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -2489,14 +2523,14 @@ button.video-play-overlay:disabled {
     margin: 0;
     font-size: 22px;
     font-weight: 500;
-    color: #e9e9ed;
+    color: var(--text);
 }
 .auth-status {
     margin: -8px 0 0;
     font-size: 13px;
     line-height: 1.5;
-    color: #b9bbc4;
-    background: #2b2741;
+    color: var(--text-muted);
+    background: var(--surface-2);
     border-radius: 8px;
     padding: 10px 12px;
 }
@@ -2507,22 +2541,23 @@ button.video-play-overlay:disabled {
     gap: 10px;
     height: 46px;
     width: 100%;
-    background: transparent;
-    border: 1px solid #9184d9;
+    background: var(--amber);
+    border: 1px solid var(--amber);
     border-radius: 8px;
-    color: #e9e9ed;
+    color: var(--amber-ink);
     font-size: 15px;
     text-decoration: none;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .auth-btn-google:hover {
-    background: #2b2741;
+    transform: translateY(-2px);
+    box-shadow: var(--accent-shadow);
 }
 .auth-btn-google:active {
-    border-color: #b5abfc;
+    transform: translateY(0);
 }
 .auth-btn-google-domain {
-    color: #8b8e99;
+    color: color-mix(in srgb, var(--amber-ink) 75%, transparent);
 }
 .auth-btn-ghost {
     display: flex;
@@ -2533,12 +2568,12 @@ button.video-play-overlay:disabled {
     width: 100%;
     background: none;
     border: none;
-    color: #b9bbc4;
+    color: var(--text-muted);
     font-size: 14px;
     cursor: pointer;
 }
 .auth-btn-ghost:hover {
-    color: #e9e9ed;
+    color: var(--text);
 }
 .auth-form {
     display: flex;
@@ -2552,30 +2587,30 @@ button.video-play-overlay:disabled {
 }
 .auth-label {
     font-size: 13px;
-    color: #b9bbc4;
+    color: var(--text-muted);
 }
 .auth-input {
     height: 44px;
     padding: 0 12px;
-    background: #161826;
-    border: 1px solid #3f424d;
+    background: var(--bg);
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
     border-radius: 8px;
-    color: #e9e9ed;
+    color: var(--text);
     font-size: 14px;
     font-family: inherit;
 }
 .auth-input::placeholder {
-    color: #6b6e79;
+    color: var(--text-faint);
 }
 .auth-input:focus {
     outline: none;
-    border-color: #9184d9;
-    box-shadow: 0 0 0 2px #423a6a;
+    border-color: var(--amber);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 35%, transparent);
 }
 .auth-input-error {
     margin: 0;
     font-size: 12px;
-    color: #f2a7a7;
+    color: var(--coral);
 }
 .auth-row-between {
     display: flex;
@@ -2589,36 +2624,36 @@ button.video-play-overlay:disabled {
     align-items: center;
     gap: 8px;
     font-size: 13px;
-    color: #b9bbc4;
+    color: var(--text-muted);
 }
 .auth-checkbox-label input[type='checkbox'] {
-    accent-color: #9184d9;
+    accent-color: var(--amber);
     width: 15px;
     height: 15px;
 }
 .auth-link {
     font-size: 13px;
-    color: #d2cefd;
+    color: var(--accent-text);
     text-decoration: none;
 }
 .auth-link:hover {
-    color: #e7e5fe;
+    color: var(--text);
     text-decoration: underline;
 }
 .auth-btn-secondary {
     height: 44px;
     width: 100%;
     background: transparent;
-    border: 1px solid #3f424d;
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
     border-radius: 8px;
-    color: #e9e9ed;
+    color: var(--text);
     font-size: 15px;
     font-weight: 500;
     cursor: pointer;
     transition: background-color 0.15s ease;
 }
 .auth-btn-secondary:hover {
-    background: #292b31;
+    background: var(--surface-2);
 }
 .auth-btn-secondary:disabled {
     opacity: 0.45;
@@ -2651,7 +2686,7 @@ button.video-play-overlay:disabled {
     align-items: center;
     gap: 6px;
     font-size: 12px;
-    color: #6b6e79;
+    color: var(--text-faint);
     white-space: nowrap;
 }
 .auth-footer-epa {
@@ -2665,12 +2700,12 @@ button.video-play-overlay:disabled {
     grid-template-columns: 1fr 1fr;
     gap: 8px;
     padding: 16px;
-    background: #161826;
-    border: 1px solid #3f424d;
+    background: var(--bg);
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
     border-radius: 8px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    color: #e9e9ed;
+    color: var(--text);
 }
 .auth-qr-wrap {
     display: flex;
@@ -2686,7 +2721,7 @@ button.video-play-overlay:disabled {
 .auth-secret {
     text-align: center;
     font-size: 12px;
-    color: #8b8e99;
+    color: var(--text-faint);
     word-break: break-all;
 }
 @media (max-width: 480px) {

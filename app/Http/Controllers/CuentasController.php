@@ -409,7 +409,7 @@ class CuentasController extends Controller
         ], [
             'nombre.required' => 'Escribe el nombre de la cuenta.',
             'cliente.required' => 'Elige un cliente o crea uno nuevo.',
-            'color.regex' => 'Usa un color hex de 6 dígitos, como #9184d9.',
+            'color.regex' => 'Usa un color hex de 6 dígitos, como #003ad6.',
             'objetivos.required' => 'Elige al menos un objetivo para saber qué métricas mostrarte.',
             'objetivos.min' => 'Elige al menos un objetivo para saber qué métricas mostrarte.',
             'medios.required' => 'Elige al menos un medio.',
