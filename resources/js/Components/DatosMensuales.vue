@@ -4,8 +4,9 @@ import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
 import { formatMoneyExacto, formatNumeroExacto, etiquetaFunnel } from '@/motor';
-import { notificar } from '@/avisos';
+import { confirmar, notificar } from '@/avisos';
 import { seguirTareaMedios } from '@/seguimientoMedios';
+import { fechaHora } from '@/fechas';
 
 // "Datos por mes" (2026-10-05, pedido explícito) -- la data importada de un
 // mes como si fuera un Excel: mismas columnas que el sheet de QA, por arte
@@ -257,34 +258,38 @@ async function recuperarImagenes() {
 }
 
 // --- Eliminar mes (solo superadmin) --------------------------------------
-const modalEliminar = ref(false);
-const confirmacion = ref('');
-const eliminando = ref(false);
-const eliminarError = ref('');
-const eliminadoOk = ref('');
-
-function abrirEliminar() {
-    confirmacion.value = '';
-    eliminarError.value = '';
-    modalEliminar.value = true;
-}
-async function eliminarMes() {
-    if (confirmacion.value !== mes.value || eliminando.value) return;
-    eliminando.value = true;
-    eliminarError.value = '';
-    try {
-        const { data } = await axios.delete(`${urlPais(props.pais)}/importar/mensual/${mes.value}`, {
-            data: { confirmacion: confirmacion.value },
-        });
-        eliminadoOk.value = `Se eliminó ${etiquetaMes(data.mes)}: ${formatNumeroExacto(data.resultados)} resultado(s).`;
-        modalEliminar.value = false;
-        mes.value = null;
-        await cargar();
-    } catch (err) {
-        eliminarError.value = err.response?.data?.message || 'No se pudo eliminar el mes.';
-    } finally {
-        eliminando.value = false;
-    }
+// Confirmación estilo SweetAlert (avisos.js) escribiendo el mes, igual que
+// exige el backend.
+async function abrirEliminar() {
+    const objetivo = mes.value;
+    if (!objetivo) return;
+    let borrados = null;
+    const ok = await confirmar({
+        tipo: 'peligro',
+        titulo: `¿Eliminar ${etiquetaMes(objetivo)}?`,
+        texto: `Se borran los resultados de este mes para ${props.pais}, con sus datos por día.`,
+        detalle: [
+            'Los creativos, sus nombres amigables y los otros meses no se tocan.',
+            'No se puede deshacer: para recuperarlo hay que volver a importar el mes.',
+        ],
+        escribir: objetivo,
+        confirmar: 'Sí, eliminar mes',
+        accion: async () => {
+            const { data } = await axios.delete(`${urlPais(props.pais)}/importar/mensual/${objetivo}`, {
+                data: { confirmacion: objetivo },
+            });
+            borrados = data;
+        },
+    });
+    if (!ok) return;
+    notificar({
+        tipo: 'exito',
+        titulo: `Se eliminó ${etiquetaMes(borrados.mes)}`,
+        texto: `${formatNumeroExacto(borrados.resultados)} resultado(s) borrados.`,
+        duracion: 6000,
+    });
+    mes.value = null;
+    await cargar();
 }
 </script>
 
@@ -305,7 +310,7 @@ async function eliminarMes() {
             <span class="import-status">
                 {{ formatNumeroExacto(filasFiltradas.length) }} fila(s)
                 <template v-if="importaciones[0]">
-                    · última importación {{ new Date(importaciones[0].creado_en).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) }}
+                    · última importación {{ fechaHora(importaciones[0].creado_en) }} (hora CDMX)
                     ({{ importaciones[0].origen === 'csv' ? 'CSV' : 'API' }})
                 </template>
             </span>
@@ -325,7 +330,6 @@ async function eliminarMes() {
                 <button v-if="puedeEliminar" type="button" class="btn-eliminar" @click="abrirEliminar">Eliminar mes</button>
             </div>
         </div>
-        <p v-if="eliminadoOk" class="datos-ok">{{ eliminadoOk }}</p>
 
         <p v-if="error" class="datos-error">{{ error }}</p>
         <p v-else-if="cargando && !filas.length" class="empty-note">Cargando…</p>
@@ -373,26 +377,6 @@ async function eliminarMes() {
                 </tfoot>
             </table>
         </div>
-
-        <div v-if="modalEliminar" class="modal-overlay" @click.self="modalEliminar = false">
-            <div class="datos-modal" role="dialog" aria-modal="true" aria-labelledby="eliminarTitulo">
-                <h2 id="eliminarTitulo">Eliminar {{ etiquetaMes(mes) }}</h2>
-                <p class="hint">
-                    Se borran los resultados de este mes para {{ pais }} (y sus datos diarios, si hay). Los creativos, sus
-                    nombres amigables y los otros meses no se tocan. No se puede deshacer; para recuperarlo hay que volver a
-                    importar el mes.
-                </p>
-                <label for="confirmacionInput" class="filtro-label">Escribe {{ mes }} para confirmar</label>
-                <input id="confirmacionInput" v-model="confirmacion" type="text" :placeholder="mes" autocomplete="off" />
-                <p v-if="eliminarError" class="datos-error">{{ eliminarError }}</p>
-                <div class="import-actions">
-                    <button type="button" class="btn-eliminar datos-btn-confirmar" :disabled="confirmacion !== mes || eliminando" @click="eliminarMes">
-                        {{ eliminando ? 'Eliminando…' : 'Eliminar mes' }}
-                    </button>
-                    <button type="button" class="modal-copy-btn" @click="modalEliminar = false">Cancelar</button>
-                </div>
-            </div>
-        </div>
     </div>
 </template>
 
@@ -415,19 +399,7 @@ async function eliminarMes() {
     color: var(--text-muted);
 }
 .datos-buscador input,
-.datos-modal input {
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-size: 0.85rem;
-}
 .datos-buscador input:focus,
-.datos-modal input:focus {
-    outline: none;
-    border-color: var(--amber);
-}
 .datos-acciones {
     display: flex;
     align-items: center;
@@ -544,40 +516,10 @@ async function eliminarMes() {
     color: var(--coral);
     font-size: 0.82rem;
 }
-.datos-ok {
-    color: var(--mint);
-    font-size: 0.82rem;
-    margin: 0 0 12px;
-}
 .empty-note {
     color: var(--text-muted);
     text-align: center;
     padding: 24px 0;
     margin: 0;
-}
-.datos-modal {
-    width: 100%;
-    max-width: 460px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    box-shadow: var(--shadow);
-    padding: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.datos-modal h2 {
-    font-size: 1.05rem;
-    margin: 0;
-}
-.datos-modal .hint {
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    margin: 0 0 6px;
-}
-.datos-btn-confirmar {
-    padding: 9px 16px;
-    font-size: 0.85rem;
 }
 </style>

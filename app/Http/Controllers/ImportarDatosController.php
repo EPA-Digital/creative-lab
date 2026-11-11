@@ -75,7 +75,7 @@ class ImportarDatosController extends Controller
      */
     private static function mesMinimoImportable(): string
     {
-        return now()->startOfMonth()->subMonths(self::MESES_ATRAS_PERMITIDOS)->format('Y-m');
+        return now(config('app.zona_horaria_negocio'))->startOfMonth()->subMonths(self::MESES_ATRAS_PERMITIDOS)->format('Y-m');
     }
 
     private function rechazarMesHistorico(Request $request, string $desde): ?JsonResponse
@@ -374,26 +374,50 @@ class ImportarDatosController extends Controller
             $hasta = $rangoMax;
         }
 
+        // Filtros (2026-11-11, mismos que "Datos por mes"): por arte o por
+        // anuncio, plataforma, etapa y búsqueda -- en el servidor para que el
+        // total de abajo también los respete.
+        $porAnuncio = $request->query('agrupar') === 'anuncio';
+        $plataforma = in_array($request->query('plataforma'), ['meta', 'tiktok'], true) ? $request->query('plataforma') : null;
+        $funnel = $request->query('funnel');
+        $buscar = trim((string) $request->query('buscar', ''));
+
         $filas = collect();
         if ($desde && $hasta) {
-            $filas = DB::table('resultados_diarios')
+            $consulta = DB::table('resultados_diarios')
                 ->join('creativos', 'creativos.id', '=', 'resultados_diarios.creativo_id')
                 ->where('creativos.cuenta_id', CuentaActual::id())
                 ->where('creativos.pais_id', $paisModelo->id)
                 ->whereBetween('resultados_diarios.fecha', [$desde, $hasta])
-                ->groupBy('creativos.nombre_comun', 'resultados_diarios.fecha')
+                ->when($plataforma, fn ($q) => $q->where('creativos.plataforma', $plataforma))
+                ->when($funnel === 'SIN', fn ($q) => $q->whereNull('creativos.funnel'))
+                ->when($funnel && $funnel !== 'SIN' && $funnel !== 'TODOS', fn ($q) => $q->where('creativos.funnel', $funnel))
+                ->when($buscar !== '', function ($q) use ($buscar) {
+                    $like = '%'.addcslashes($buscar, '%_\\').'%';
+                    $q->where(fn ($w) => $w->where('creativos.nombre_comun', 'like', $like)
+                        ->orWhere('creativos.nombre_completo', 'like', $like)
+                        ->orWhere('creativos.ad_id', 'like', $like)
+                        ->orWhere('creativos.nombre_campania', 'like', $like));
+                });
+
+            // Por arte: arte + plataforma + etapa, igual que "Datos por mes"
+            // (antes un arte con anuncios en dos etapas salía en una sola
+            // fila con la etapa de uno solo).
+            $consulta = $porAnuncio
+                ? $consulta->groupBy('creativos.id', 'resultados_diarios.fecha')
+                : $consulta->groupBy('creativos.nombre_comun', 'creativos.plataforma', 'creativos.funnel', 'resultados_diarios.fecha');
+
+            $filas = $consulta
                 ->orderByDesc('resultados_diarios.fecha')
-                ->orderByRaw('creativos.nombre_comun is null, creativos.nombre_comun')
+                ->orderByRaw('MIN(creativos.nombre_comun) is null, MIN(creativos.nombre_comun)')
                 ->get([
                     'resultados_diarios.fecha',
-                    'creativos.nombre_comun',
-                    // MIN(): la agrupación sigue siendo por (arte, fecha), no
-                    // por (arte, funnel, fecha) -- no toco los totales
-                    // financieros, solo expongo la etapa para contexto visual
-                    // en esta tabla de QA (pedido explícito 2026-09-17). Un
-                    // mismo arte casi nunca cambia de funnel entre ad_id's
-                    // reales; si alguna vez pasara, MIN() elige uno de forma
-                    // determinística en vez de romper la fila.
+                    DB::raw('MIN(creativos.nombre_comun) as nombre_comun'),
+                    DB::raw('MIN(creativos.ad_id) as ad_id'),
+                    DB::raw('MIN(creativos.nombre_campania) as campania'),
+                    DB::raw('MIN(creativos.plataforma) as plataforma'),
+                    DB::raw('COUNT(DISTINCT creativos.plataforma) as plataformas'),
+                    DB::raw('COUNT(DISTINCT creativos.id) as anuncios'),
                     DB::raw('MIN(creativos.funnel) as funnel'),
                     DB::raw('SUM(resultados_diarios.cost) as cost'),
                     DB::raw('SUM(resultados_diarios.impressions) as impressions'),
@@ -402,17 +426,24 @@ class ImportarDatosController extends Controller
                     DB::raw('SUM(COALESCE(resultados_diarios.nc_real, resultados_diarios.nc)) as nc'),
                     DB::raw('SUM(COALESCE(resultados_diarios.orders_real, resultados_diarios.orders)) as orders'),
                 ])
-                ->map(fn ($fila) => $this->filaConEficiencias(
-                    $fila->nombre_comun,
-                    (float) $fila->cost,
-                    (int) $fila->impressions,
-                    (int) $fila->clicks,
-                    (int) $fila->installs,
-                    (float) $fila->nc,
-                    (float) $fila->orders,
-                    substr((string) $fila->fecha, 0, 10),
-                    $fila->funnel,
-                ));
+                ->map(fn ($fila) => [
+                    ...$this->filaConEficiencias(
+                        $fila->nombre_comun,
+                        (float) $fila->cost,
+                        (int) $fila->impressions,
+                        (int) $fila->clicks,
+                        (int) $fila->installs,
+                        (float) $fila->nc,
+                        (float) $fila->orders,
+                        substr((string) $fila->fecha, 0, 10),
+                        $fila->funnel,
+                    ),
+                    // Por arte un mismo arte puede venir de Meta y TikTok.
+                    'plataforma' => (int) $fila->plataformas > 1 ? 'ambas' : $fila->plataforma,
+                    'adId' => $porAnuncio ? $fila->ad_id : null,
+                    'anuncios' => (int) $fila->anuncios,
+                    'campania' => $porAnuncio ? $fila->campania : null,
+                ]);
         }
 
         $totales = $this->filaConEficiencias(

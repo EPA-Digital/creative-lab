@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import axios from 'axios';
 import { router } from '@inertiajs/vue3';
 import AvatarUsuario from '@/Components/Perfil/AvatarUsuario.vue';
+import { alerta, confirmar, notificar } from '@/avisos';
 
 // "Editar perfil" (diseño 2026-11-05): cómo te ve el equipo en el
 // dashboard -- foto o iniciales sobre tu color, nombre y puesto. La foto
@@ -42,7 +43,8 @@ function cerrar() {
     emit('close');
 }
 function alTeclear(e) {
-    if (e.key === 'Escape') cerrar();
+    // Con una confirmación abierta, Esc la cierra a ella, no al modal.
+    if (e.key === 'Escape' && !alerta.value) cerrar();
 }
 onBeforeUnmount(() => document.removeEventListener('keydown', alTeclear));
 
@@ -71,13 +73,16 @@ async function elegirFoto(e) {
 
 async function quitarFoto() {
     errores.value = {};
-    try {
-        await axios.delete('/perfil/foto');
-        foto.value = null;
-        router.reload({ only: ['auth'] });
-    } catch (err) {
-        errores.value = primerError(err, 'No se pudo quitar la foto.');
-    }
+    const ok = await confirmar({
+        tipo: 'advertencia',
+        titulo: '¿Quitar tu foto?',
+        texto: 'El equipo verá tus iniciales sobre tu color. Puedes subir otra cuando quieras.',
+        confirmar: 'Sí, quitar',
+        accion: () => axios.delete('/perfil/foto'),
+    });
+    if (!ok) return;
+    foto.value = null;
+    router.reload({ only: ['auth'] });
 }
 
 async function guardar() {
@@ -90,6 +95,7 @@ async function guardar() {
     try {
         await axios.patch('/perfil', { ...form });
         router.reload({ only: ['auth'] });
+        notificar({ tipo: 'exito', titulo: 'Perfil actualizado', duracion: 4000 });
         cerrar();
     } catch (err) {
         errores.value = primerError(err, 'No se pudo guardar tu perfil.');

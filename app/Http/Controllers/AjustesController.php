@@ -6,6 +6,7 @@ use App\Models\AppsflyerApp;
 use App\Models\CuentaPublicitaria;
 use App\Models\Importacion;
 use App\Models\Pais;
+use App\Models\TipoCambio;
 use App\Services\Ingesta\ClasificadorNombres;
 use App\Services\Ingesta\ValidadorCuentaPublicitaria;
 use App\Support\CuentaActual;
@@ -48,6 +49,9 @@ class AjustesController extends Controller
                 ->whereIn('pais_id', $paisesPermitidos->pluck('id'))
                 ->orderBy('pais_id')->orderBy('plataforma')->orderBy('id')->get(),
             'puedeGestionarCuentas' => $request->user()->can('gestionar-cuentas-publicitarias'),
+            // Divisas (2026-11-11): todo se reporta en USD.
+            'tiposCambio' => TipoCambio::orderBy('moneda')->orderByDesc('vigente_desde')
+                ->get(['id', 'moneda', 'vigente_desde', 'por_usd', 'actualizado_en']),
             // Double check (2026-10-05) -- las últimas importaciones de ESTE
             // país con conciliación, la más nueva primero.
             'campanias' => $paisActualId ? self::campaniasDelPais($paisActualId) : [],
@@ -171,11 +175,52 @@ class AjustesController extends Controller
             'tipo' => ['sometimes', Rule::in(CuentaPublicitaria::TIPOS)],
             'activa' => ['sometimes', 'boolean'],
             'cuenta_en_venta_real' => ['sometimes', 'boolean'],
+            // Se detecta sola al importar; esto es para corregirla a mano.
+            'moneda' => ['sometimes', 'nullable', 'string', 'size:3', 'alpha'],
         ]);
+        if (isset($data['moneda'])) {
+            $data['moneda'] = strtoupper($data['moneda']);
+        }
 
         $cuentaPublicitaria->update($data);
 
         return response()->json($cuentaPublicitaria->load('pais:id,nombre'));
+    }
+
+    /**
+     * Tipo de cambio (2026-11-11): unidades de la moneda por 1 USD desde una
+     * fecha. Misma moneda + misma fecha corrige en vez de duplicar. Aplica a
+     * lo que se importe después; lo ya importado cambia al volver a importar.
+     */
+    public function storeTipoCambio(Request $request, string $pais): JsonResponse
+    {
+        abort_unless(config("paises.{$pais}"), 404, "País \"{$pais}\" no existe en config/paises.php.");
+
+        $data = $request->validate([
+            'moneda' => ['required', 'string', 'size:3', 'alpha', Rule::notIn(['USD', 'usd'])],
+            'vigente_desde' => ['required', 'date_format:Y-m-d'],
+            'por_usd' => ['required', 'numeric', 'gt:0', 'max:100000'],
+        ], [
+            'moneda.not_in' => 'El dashboard ya reporta en USD: no hace falta tipo de cambio para USD.',
+        ]);
+
+        $tipo = TipoCambio::updateOrCreate(
+            ['moneda' => strtoupper($data['moneda']), 'vigente_desde' => $data['vigente_desde']],
+            ['por_usd' => $data['por_usd'], 'actualizado_por' => $request->user()->id],
+        );
+
+        return response()->json($tipo->only(['id', 'moneda', 'vigente_desde', 'por_usd', 'actualizado_en']));
+    }
+
+    public function destroyTipoCambio(string $pais, TipoCambio $tipoCambio): JsonResponse
+    {
+        abort_unless(config("paises.{$pais}"), 404, "País \"{$pais}\" no existe en config/paises.php.");
+        abort_if(TipoCambio::where('moneda', $tipoCambio->moneda)->count() <= 1, 422,
+            "Es el único tipo de cambio de {$tipoCambio->moneda}: sin él no se pueden importar cuentas en esa moneda.");
+
+        $tipoCambio->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     /**

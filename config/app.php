@@ -67,6 +67,10 @@ return [
 
     'timezone' => 'UTC',
 
+    // Horario de NEGOCIO (2026-11-11): la base guarda en UTC, pero "hoy" y
+    // todo lo que se muestra es hora de CDMX (el front usa resources/js/fechas.js).
+    'zona_horaria_negocio' => 'America/Mexico_City',
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration

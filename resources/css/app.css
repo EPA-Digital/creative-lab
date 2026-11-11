@@ -62,8 +62,11 @@
        mismo número o queda corto en pantalla (ver comentario en .rail).
        Si cambiás el zoom, actualizá los dos lugares. */
     --zoom-factor: 0.85;
+    /* Logo EPA del loader (EpaLoader.vue). */
+    --epa-logo: #2f7bff;
 }
 :root[data-theme='light'] {
+    --epa-logo: #0057d0;
     --bg: #fcfcfb;
     --surface: #ffffff;
     --surface-2: #f3efe4;
@@ -479,7 +482,8 @@ h1, h2, .num, .kpi-value {
     font-size: 0.8rem;
     font-weight: 600;
 }
-.date-field input[type='date'] {
+.date-field input[type='date'],
+.date-field input[type='month'] {
     background: var(--bg);
     color: var(--text);
     border: 1px solid var(--border);
@@ -487,6 +491,14 @@ h1, h2, .num, .kpi-value {
     padding: 8px 10px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.78rem;
+}
+input[type='date'],
+input[type='month'] {
+    color-scheme: dark;
+}
+:root[data-theme='light'] input[type='date'],
+:root[data-theme='light'] input[type='month'] {
+    color-scheme: light;
 }
 .date-field input[type='date']:disabled {
     opacity: 0.4;
@@ -539,7 +551,8 @@ h1, h2, .num, .kpi-value {
     margin-bottom: 8px;
     line-height: 1.5;
 }
-.import-col input[type='number'] {
+.import-col input[type='number'],
+.import-col input[type='date'] {
     width: 100%;
     background: var(--bg);
     color: var(--text);

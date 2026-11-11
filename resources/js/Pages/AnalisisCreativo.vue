@@ -1,4 +1,5 @@
 <script setup>
+import { alerta } from '@/avisos';
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
@@ -10,6 +11,8 @@ import CreativeBars from '@/Components/Creativo/CreativeBars.vue';
 import VistaSwitch from '@/Components/Creativo/VistaSwitch.vue';
 import CreativeModal from '@/Components/Creativo/CreativeModal.vue';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
+import InfoTip from '@/Components/InfoTip.vue';
+import { fechaHora } from '@/fechas';
 import { formatNumeroExacto, formatMoneyExacto, FUNNEL_ORDER, opcionesTipoCuenta, etiquetaFiltroTipoCuenta, promediosDeGrupo, etiquetaFunnel } from '@/motor';
 
 const props = defineProps({
@@ -27,6 +30,7 @@ const props = defineProps({
     hasta: { type: String, default: null },
     rangoDiarioMin: { type: String, default: null },
     rangoDiarioMax: { type: String, default: null },
+    ultimaActualizacion: { type: String, default: null },
 });
 
 // A diferencia de Plataforma/Tipo de cuenta/Formato (que filtran EN CLIENTE
@@ -52,13 +56,48 @@ function cambiarMes(nuevoMes) {
 const usandoRango = computed(() => !!(props.desde && props.hasta));
 const rangoDesde = ref(props.desde || props.rangoDiarioMax || '');
 const rangoHasta = ref(props.hasta || props.rangoDiarioMax || '');
+watch(() => [props.desde, props.hasta], ([d, h]) => {
+    if (d && h) {
+        rangoDesde.value = d;
+        rangoHasta.value = h;
+    }
+});
+function irARango(desde, hasta) {
+    if (!desde || !hasta) return;
+    router.get(window.location.pathname, { desde, hasta }, { preserveState: true, preserveScroll: true, replace: true });
+}
 function aplicarRango() {
-    if (!rangoDesde.value || !rangoHasta.value) return;
-    router.get(window.location.pathname, { desde: rangoDesde.value, hasta: rangoHasta.value }, { preserveState: true, preserveScroll: true, replace: true });
+    irARango(rangoDesde.value, rangoHasta.value);
 }
 function volverAMes() {
     router.get(window.location.pathname, { mes: props.mes }, { preserveState: true, preserveScroll: true, replace: true });
 }
+
+// Por mes / Por día (2026-11-11). Los atajos se cuentan desde el último día
+// con datos, no desde hoy (AppsFlyer va unos días atrás).
+function restarDias(iso, dias) {
+    const [a, m, d] = iso.split('-').map(Number);
+    return new Date(Date.UTC(a, m - 1, d - dias)).toISOString().slice(0, 10);
+}
+function verPorDia() {
+    if (!props.tieneDatosDiarios || usandoRango.value) return;
+    const fin = props.rangoDiarioMax;
+    irARango(restarDias(fin, 6), fin);
+}
+const ATAJOS_DIA = [
+    { key: 'dia', label: 'Último día', rango: (fin) => [fin, fin] },
+    { key: 'semana', label: 'Últimos 7 días', rango: (fin) => [restarDias(fin, 6), fin] },
+    { key: 'mes', label: 'Todo el mes', rango: (fin) => [`${fin.slice(0, 7)}-01`, fin] },
+];
+function atajoActivo(atajo) {
+    const [d, h] = atajo.rango(props.rangoDiarioMax || '');
+    return usandoRango.value && props.desde === d && props.hasta === h;
+}
+function aplicarAtajo(atajo) {
+    const [d, h] = atajo.rango(props.rangoDiarioMax);
+    irARango(d, h);
+}
+const ultimaActualizacionTexto = computed(() => (props.ultimaActualizacion ? fechaHora(props.ultimaActualizacion) : ''));
 
 // Puerto literal de METRICAS_RANKING + calcularRanking + ETIQUETA_CORTA_POR_
 // CAMPO + formatearValorMetrica + estrellaActual (motor.js:1654-1689,
@@ -465,7 +504,7 @@ function promediosParaCreativo(creativo) {
 }
 const promediosDelAbierto = computed(() => promediosParaCreativo(creativoAbierto.value));
 function onKeydownGlobal(e) {
-    if (e.key === 'Escape') cerrarModal();
+    if (e.key === 'Escape' && !alerta.value) cerrarModal();
 }
 onMounted(() => document.addEventListener('keydown', onKeydownGlobal));
 onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
@@ -481,30 +520,58 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                 <div>
                     <p class="eyebrow mono">{{ pais }}{{ plataforma ? ` · ${plataforma}` : '' }}</p>
                     <h1 class="title">Análisis creativo</h1>
-                    <p class="subtitle">{{ creativos.length }} creativo(s) cargados</p>
+                    <p class="subtitle">
+                        {{ creativos.length }} creativo(s) cargados
+                        <template v-if="ultimaActualizacionTexto">
+                            · <span class="ultima-actualizacion">Última actualización: {{ ultimaActualizacionTexto }} <span class="mono">(hora CDMX)</span></span>
+                        </template>
+                    </p>
                 </div>
             </header>
 
             <div class="resumen-filtros">
+                <div class="periodo">
+                    <span class="periodo-label mono">
+                        Periodo
+                        <InfoTip etiqueta="Sobre los datos por periodo">
+                            Los datos por mes, semana y día pueden variar: AppsFlyer sigue atribuyendo conversiones varios
+                            días después, y la venta real por día es un reparto proporcional del total del periodo importado.
+                        </InfoTip>
+                    </span>
+                    <div class="periodo-toggle" role="group" aria-label="Periodo">
+                        <button type="button" :class="{ activo: !usandoRango }" @click="usandoRango && volverAMes()">Por mes</button>
+                        <button
+                            type="button"
+                            :class="{ activo: usandoRango }"
+                            :disabled="!tieneDatosDiarios"
+                            :title="tieneDatosDiarios ? '' : 'Este país todavía no tiene datos por día: vuelve a importar el mes para cargarlos.'"
+                            @click="verPorDia"
+                        >
+                            Por día
+                        </button>
+                    </div>
+                </div>
                 <FiltroDropdown v-if="!usandoRango" label="Mes" :modelValue="mes" :options="mesOptions" @update:modelValue="cambiarMes" />
-                <div v-if="tieneDatosDiarios" class="rango-control">
-                    <template v-if="usandoRango">
-                        <input v-model="rangoDesde" type="date" :min="rangoDiarioMin" :max="rangoDiarioMax" @change="aplicarRango" />
-                        <span>→</span>
-                        <input v-model="rangoHasta" type="date" :min="rangoDiarioMin" :max="rangoDiarioMax" @change="aplicarRango" />
-                        <button type="button" class="chip" @click="volverAMes">Volver a Mes</button>
-                    </template>
-                    <button v-else type="button" class="chip" @click="aplicarRango">Rango personalizado</button>
+                <div v-else class="periodo">
+                    <span class="periodo-label mono">Días</span>
+                    <div class="rango-control">
+                        <input v-model="rangoDesde" type="date" aria-label="Desde" :min="rangoDiarioMin" :max="rangoDiarioMax" @change="aplicarRango" />
+                        <span class="rango-flecha">→</span>
+                        <input v-model="rangoHasta" type="date" aria-label="Hasta" :min="rangoDiarioMin" :max="rangoDiarioMax" @change="aplicarRango" />
+                        <button v-for="a in ATAJOS_DIA" :key="a.key" type="button" class="chip" :class="{ activo: atajoActivo(a) }" @click="aplicarAtajo(a)">{{ a.label }}</button>
+                    </div>
                 </div>
                 <FiltroDropdown v-if="filtroTipoCampania.visible.value" label="Tipo de campaña" v-model="tipoCampaniaSeleccionado" :options="filtroTipoCampania.opciones.value" :counts="filtroTipoCampania.counts.value" />
                 <FiltroDropdown label="Plataforma" v-model="plataformaSeleccionada" :options="PLATAFORMA_OPCIONES" :counts="plataformaCounts" />
                 <FiltroDropdown :label="etiquetaFiltroTipoCuenta()" v-model="tipoCuentaSeleccionado" :options="opcionesTipoCuenta(pais)" :counts="tipoCuentaCounts" />
                 <FiltroDropdown label="Formato" v-model="formatoSeleccionado" :options="FORMATO_OPCIONES" :counts="formatoCounts" />
                 <!-- Pista propia de la nomenclatura de TaDa (BI, CNV/CON). -->
-                <p v-if="usePage().props.cuentaActual?.slug === 'tada'" class="date-hint resumen-filtros-hint">
-                    Acá sí se mezclan Meta y TikTok en el mismo ranking -- útil justamente porque el mismo tipo de
-                    campaña (ej. BI) usa segmentos de funnel distintos por plataforma (Meta: CNV, TikTok: CON → CONS).
-                </p>
+                <span v-if="usePage().props.cuentaActual?.slug === 'tada'" class="filtros-info">
+                    <InfoTip etiqueta="Sobre Meta y TikTok en el ranking">
+                        Acá sí se mezclan Meta y TikTok en el mismo ranking: útil justamente porque el mismo tipo de
+                        campaña (ej. BI) usa segmentos de funnel distintos por plataforma (Meta: CNV, TikTok: CON → CONS).
+                    </InfoTip>
+                </span>
             </div>
 
             <div class="ranking-controls">
@@ -529,13 +596,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                         {{ etiquetaFunnel(f) || f }}
                     </button>
                 </div>
-                <p v-if="ranking.excluidosPorVolumen > 0" class="umbral-nota">
-                    Mínimo aplicado: {{ pisoFunnelTexto }}
-                    <template v-if="metricaActual.tipo === 'ratio' && pisoRatioAplica">
-                        · {{ metricaActual.umbralDefault }} {{ metricaActual.labelVolumen }} (para {{ metricaActual.label.toLowerCase() }})
-                    </template>
-                    · {{ ranking.excluidosPorVolumen }} anuncio(s) excluido(s) del Top 3 por bajo volumen.
-                </p>
+                <span v-if="ranking.excluidosPorVolumen > 0" class="umbral-nota">
+                    <InfoTip etiqueta="Mínimo de volumen aplicado" lado="izquierda">
+                        Mínimo aplicado: {{ pisoFunnelTexto }}
+                        <template v-if="metricaActual.tipo === 'ratio' && pisoRatioAplica">
+                            · {{ metricaActual.umbralDefault }} {{ metricaActual.labelVolumen }} (para {{ metricaActual.label.toLowerCase() }})
+                        </template>
+                        · {{ ranking.excluidosPorVolumen }} anuncio(s) excluido(s) del Top 3 por bajo volumen.
+                    </InfoTip>
+                </span>
             </div>
 
             <section class="section">
@@ -745,10 +814,9 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
     color: var(--amber-ink);
 }
 .umbral-nota {
-    width: 100%;
-    font-size: 11px;
-    color: var(--text-faint);
-    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
 }
 .section {
     margin-bottom: 40px;
@@ -835,6 +903,71 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
     align-items: center;
     gap: 8px;
 }
+.periodo {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.periodo-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+.periodo-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+}
+.periodo-toggle button {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.periodo-toggle button:hover:not(:disabled) {
+    color: var(--text);
+}
+.periodo-toggle button.activo {
+    background: var(--amber);
+    color: var(--amber-ink);
+    font-weight: 600;
+}
+.periodo-toggle button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.periodo-toggle button:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
+.rango-control {
+    flex-wrap: wrap;
+}
+.rango-flecha {
+    color: var(--text-faint);
+}
+.periodo-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.filtros-info {
+    align-self: flex-end;
+    padding-bottom: 10px;
+}
+.ultima-actualizacion .mono {
+    font-size: 0.85em;
+    color: var(--text-faint);
+}
 .rango-control input[type='date'] {
     background: var(--surface-2);
     color: var(--text);
@@ -845,10 +978,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
 }
 .resumen-filtros {
     align-items: flex-start;
-}
-.resumen-filtros-hint {
-    margin: 0;
-    flex: 1 1 260px;
-    padding-top: 26px;
+    /* Los globos de InfoTip quedan por encima del panel de ranking. */
+    position: relative;
+    z-index: 5;
 }
 </style>

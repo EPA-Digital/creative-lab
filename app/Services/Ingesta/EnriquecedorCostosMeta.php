@@ -60,8 +60,20 @@ class EnriquecedorCostosMeta
         return $filas;
     }
 
+    /** Moneda de la cuenta publicitaria (ej. "USD"), o null si Meta no la da. */
+    public function moneda(string $adAccountId): ?string
+    {
+        try {
+            return strtoupper((string) ($this->meta->get("act_{$adAccountId}", ['fields' => 'currency'])['currency'] ?? '')) ?: null;
+        } catch (Throwable $e) {
+            Log::warning("No se pudo leer la moneda de la cuenta de Meta {$adAccountId}: {$e->getMessage()}");
+
+            return null;
+        }
+    }
+
     /**
-     * @return list<array{adId: string, adName: string, campaignName: string, cost: float, impressions: int, clicks: int}>
+     * @return list<array{adId: string, adName: string, campaignName: string, cost: float, impressions: int, clicks: int, dias: array<string, array{cost: float, impressions: int, clicks: int}>}>
      */
     private function traerCostos(string $adAccountId, string $desde, string $hasta): array
     {
@@ -81,6 +93,9 @@ class EnriquecedorCostosMeta
                 // respaldo cuando el nombre no lo dice.
                 'fields' => 'ad_id,ad_name,campaign_name,adset_name,objective,spend,impressions,inline_link_clicks',
                 'time_range' => json_encode(['since' => $desde, 'until' => $hasta]),
+                // Un renglón por ad y por DÍA (2026-11-11): se suman abajo para
+                // el total del rango y el detalle queda en `dias`.
+                'time_increment' => '1',
                 'limit' => '500',
             ];
             if ($after) {
@@ -89,16 +104,30 @@ class EnriquecedorCostosMeta
 
             $data = $this->meta->get("act_{$adAccountId}/insights", $params);
             foreach ($data['data'] ?? [] as $row) {
-                $filas[] = [
-                    'adId' => $row['ad_id'],
+                $adId = $row['ad_id'];
+                $filas[$adId] ??= [
+                    'adId' => $adId,
                     'adName' => $row['ad_name'] ?? '',
                     'campaignName' => $row['campaign_name'] ?? '',
                     'conjuntoName' => ($row['adset_name'] ?? '') ?: null,
                     'objetivo' => ($row['objective'] ?? '') ?: null,
+                    'cost' => 0.0,
+                    'impressions' => 0,
+                    'clicks' => 0,
+                    'dias' => [],
+                ];
+                $dia = [
                     'cost' => (float) ($row['spend'] ?? 0),
                     'impressions' => (int) ($row['impressions'] ?? 0),
                     'clicks' => (int) ($row['inline_link_clicks'] ?? 0),
                 ];
+                $filas[$adId]['cost'] += $dia['cost'];
+                $filas[$adId]['impressions'] += $dia['impressions'];
+                $filas[$adId]['clicks'] += $dia['clicks'];
+                $fecha = $row['date_start'] ?? null;
+                if ($fecha) {
+                    $filas[$adId]['dias'][$fecha] = $dia;
+                }
             }
 
             $after = ! empty($data['paging']['next']) ? ($data['paging']['cursors']['after'] ?? null) : null;
@@ -107,7 +136,7 @@ class EnriquecedorCostosMeta
             }
         }
 
-        return $filas;
+        return array_values(array_map(fn (array $f) => [...$f, 'cost' => round($f['cost'], 2)], $filas));
     }
 
     /**

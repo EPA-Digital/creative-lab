@@ -1,4 +1,5 @@
 <script setup>
+import { alerta } from '@/avisos';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -46,7 +47,8 @@ const close = () => {
 };
 
 const closeOnEscape = (e) => {
-    if (e.key === 'Escape') {
+    // Con una confirmación (avisos.js) abierta, Esc la cierra a ella.
+    if (e.key === 'Escape' && !alerta.value) {
         e.preventDefault();
 
         if (props.show) {

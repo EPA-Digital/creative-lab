@@ -88,3 +88,22 @@ it('detectarEliminados sigue sin pedir STATUS_ALL (depende de que TikTok omita l
     expect($eliminados)->toBe(['111']);
     Http::assertSent(fn ($req) => ! array_key_exists('primary_status', json_decode($req['filtering'], true)));
 });
+
+it('junta el reporte diario de TikTok por anuncio y no guarda los días en 0', function () {
+    Http::fake(['business-api.tiktok.com/open_api/v1.3/report/integrated/get/*' => Http::response(['code' => 0, 'message' => 'OK', 'data' => [
+        'list' => [
+            ['dimensions' => ['ad_id' => '7', 'stat_time_day' => '2026-10-01 00:00:00'], 'metrics' => ['spend' => '5.5', 'impressions' => '10', 'clicks' => '1']],
+            ['dimensions' => ['ad_id' => '7', 'stat_time_day' => '2026-10-02 00:00:00'], 'metrics' => ['spend' => '0', 'impressions' => '0', 'clicks' => '0']],
+            ['dimensions' => ['ad_id' => '7', 'stat_time_day' => '2026-10-03 00:00:00'], 'metrics' => ['spend' => '4.5', 'impressions' => '30', 'clicks' => '2']],
+        ],
+        'page_info' => ['total_page' => 1],
+    ]])]);
+
+    $enriquecedor = new EnriquecedorCostosTiktok(new TiktokApiClient('token'), new ImagenCacheService);
+    $filas = (new ReflectionMethod(EnriquecedorCostosTiktok::class, 'traerCostos'))->invoke($enriquecedor, 'adv-1', '2026-10-01', '2026-10-31');
+
+    expect($filas)->toHaveCount(1)
+        ->and($filas[0]['cost'])->toBe(10.0)
+        ->and(array_keys($filas[0]['dias']))->toBe(['2026-10-01', '2026-10-03']);
+    Http::assertSent(fn ($req) => json_decode($req['dimensions'], true) === ['ad_id', 'stat_time_day']);
+});

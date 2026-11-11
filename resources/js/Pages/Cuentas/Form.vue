@@ -5,6 +5,8 @@ import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import { MEDIO_CODIGO, METRICAS_POR_OBJETIVO, COLORES_CUENTA } from '@/cuentas';
 import LogoCuenta from '@/Components/Cuenta/LogoCuenta.vue';
+import { fechaCorta } from '@/fechas';
+import { confirmar } from '@/avisos';
 import '../../../css/cuentas.css';
 
 // Crear / editar cuenta (diseño "Cuentas — Dashboard de creativos",
@@ -69,9 +71,6 @@ async function probarBigQuery() {
 const quitarTokenAppsFlyer = ref(false);
 const credAppsFlyer = computed(() => props.cuenta?.credenciales?.appsflyer ?? { tiene_token: false });
 const tendraTokenAppsFlyer = computed(() => !!tokenAppsFlyer.value.trim() || (credAppsFlyer.value.tiene_token && !quitarTokenAppsFlyer.value));
-function fechaCorta(iso) {
-    return iso ? new Date(iso).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
-}
 const activa = ref(c?.activa ?? true);
 const conexionesActivas = reactive(Object.fromEntries((c?.conexiones ?? []).map((x) => [x.id, x.activa])));
 // Tras guardar, la página recarga `cuenta`: las conexiones recién creadas
@@ -307,6 +306,29 @@ async function guardar() {
     guardado.value = '';
     if (Object.keys(errores.value).length) return;
 
+    // Al editar, se pregunta antes de guardar y se resume lo que cambia.
+    if (!nueva) {
+        const detalle = [];
+        if (borradoresVigentes.value.length) detalle.push(`${borradoresVigentes.value.length} cuenta(s) publicitaria(s) nueva(s).`);
+        if (appsVigentes.value.length) detalle.push(`${appsVigentes.value.length} app(s) de AppsFlyer nueva(s).`);
+        const pausadas = (c.conexiones ?? []).filter((x) => x.activa && conexionesActivas[x.id] === false).length;
+        const reanudadas = (c.conexiones ?? []).filter((x) => !x.activa && conexionesActivas[x.id] === true).length;
+        if (pausadas) detalle.push(`Se pausan ${pausadas} conexión(es): dejan de importarse.`);
+        if (reanudadas) detalle.push(`Se reanudan ${reanudadas} conexión(es).`);
+        if (tokenAppsFlyer.value.trim()) detalle.push('Se reemplaza el token de AppsFlyer.');
+        if (quitarTokenAppsFlyer.value) detalle.push('Se quita el token de AppsFlyer: la importación por API dejará de funcionar.');
+        if (logoArchivo.value) detalle.push('Se cambia el logo.');
+        else if (quitarLogo.value) detalle.push('Se quita el logo.');
+        const ok = await confirmar({
+            tipo: quitarTokenAppsFlyer.value ? 'advertencia' : 'pregunta',
+            titulo: `¿Guardar los cambios de ${c.nombre}?`,
+            texto: 'Aplican a toda la cuenta y a las siguientes importaciones.',
+            detalle,
+            confirmar: 'Sí, guardar',
+        });
+        if (!ok) return;
+    }
+
     guardando.value = true;
     const payload = {
         ...form,
@@ -464,6 +486,15 @@ function aplicarRespuesta(data) {
     guardado.value = '';
 }
 async function proponerNomenclatura() {
+    if (reglas.value) {
+        const ok = await confirmar({
+            tipo: 'advertencia',
+            titulo: '¿Reemplazar las reglas actuales?',
+            texto: 'La IA propone reglas nuevas desde el cuestionario; lo que editaste a mano se reemplaza (el catálogo de creativos se conserva).',
+            confirmar: 'Sí, proponer de nuevo',
+        });
+        if (!ok) return;
+    }
     nomenclaturaError.value = '';
     nomenclaturaEstado.value = 'proponiendo';
     try {
@@ -493,7 +524,15 @@ async function probarNomenclatura() {
         nomenclaturaEstado.value = '';
     }
 }
-function quitarNomenclatura() {
+async function quitarNomenclatura() {
+    const ok = await confirmar({
+        tipo: 'peligro',
+        titulo: '¿Quitar las reglas de clasificación?',
+        texto: 'Se borran del formulario todas las reglas propuestas o editadas.',
+        detalle: ['Se aplica al guardar la cuenta.', 'Sin reglas, los anuncios se importan sin tipo, etapa ni dimensiones propias.'],
+        confirmar: 'Sí, quitar reglas',
+    });
+    if (!ok) return;
     reglas.value = null;
     vistaPrevia.value = [];
     resumen.value = { tipos: [], etapas: [] };
@@ -591,28 +630,35 @@ const filaMal = (f) => !f.ok || (f.tipo === 'anuncio' && (!f.es_de_la_cuenta || 
 const NIVEL_CORTO = { campania: 'CAMP', conjunto: 'CONJ', anuncio: 'AD' };
 
 // --- Desactivar / reactivar -------------------------------------------------
-const modalAbierto = ref(false);
-const confirmacion = ref('');
-const errorModal = ref('');
+// Confirmación estilo SweetAlert (avisos.js); desactivar pide escribir el
+// nombre, igual que exige el backend.
 async function desactivar() {
-    errorModal.value = '';
-    try {
-        await axios.post(`/cuentas/${c.slug}/desactivar`, { confirmacion: confirmacion.value });
-        activa.value = false;
-        modalAbierto.value = false;
-        guardado.value = 'Cuenta desactivada.';
-    } catch (e) {
-        errorModal.value = e.response?.data?.errors?.confirmacion?.[0] || e.response?.data?.message || 'No se pudo desactivar.';
-    }
+    const ok = await confirmar({
+        tipo: 'peligro',
+        titulo: `¿Desactivar ${c.nombre}?`,
+        texto: 'La cuenta deja de aparecer en el selector y sus datos dejan de actualizarse.',
+        detalle: [
+            'Los datos históricos se conservan.',
+            'Sus conexiones se pausan, no se borran.',
+            'Puedes reactivarla desde esta misma página.',
+        ],
+        escribir: c.nombre,
+        confirmar: 'Sí, desactivar',
+        accion: () => axios.post(`/cuentas/${c.slug}/desactivar`, { confirmacion: c.nombre }),
+        exito: { titulo: 'Cuenta desactivada', texto: c.nombre },
+    });
+    if (ok) activa.value = false;
 }
 async function reactivar() {
-    try {
-        await axios.post(`/cuentas/${c.slug}/reactivar`);
-        activa.value = true;
-        guardado.value = 'Cuenta reactivada.';
-    } catch (e) {
-        erroresServidor.value = { general: e.response?.data?.message || 'No se pudo reactivar.' };
-    }
+    const ok = await confirmar({
+        tipo: 'pregunta',
+        titulo: `¿Reactivar ${c.nombre}?`,
+        texto: 'Vuelve a aparecer en el selector y sus conexiones se reanudan.',
+        confirmar: 'Sí, reactivar',
+        accion: () => axios.post(`/cuentas/${c.slug}/reactivar`),
+        exito: { titulo: 'Cuenta reactivada', texto: c.nombre },
+    });
+    if (ok) activa.value = true;
 }
 </script>
 
@@ -1343,7 +1389,7 @@ async function reactivar() {
                         </section>
 
                         <div class="cu-actionbar">
-                            <button v-if="!nueva && activa && puedeDesactivar" type="button" class="cu-btn cu-btn-danger" @click="modalAbierto = true; confirmacion = ''; errorModal = ''">
+                            <button v-if="!nueva && activa && puedeDesactivar" type="button" class="cu-btn cu-btn-danger" @click="desactivar">
                                 <svg class="cu-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0" /></svg>
                                 Desactivar cuenta
                             </button>
@@ -1362,27 +1408,6 @@ async function reactivar() {
                 </div>
             </div>
 
-            <div v-if="modalAbierto" class="cu-overlay" @click.self="modalAbierto = false">
-                <div class="cu-modal" role="dialog" aria-modal="true" aria-labelledby="m-titulo">
-                    <div class="cu-modal-ic"><svg class="cu-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0" /></svg></div>
-                    <h2 id="m-titulo" class="cu-panel-title" style="font-size: 20px; margin: 0 0 6px">¿Desactivar {{ cuenta.nombre }}?</h2>
-                    <p class="cu-hint" style="font-size: 13px">La cuenta deja de aparecer en el selector y sus datos dejan de actualizarse.</p>
-                    <ul>
-                        <li>Los datos históricos se conservan.</li>
-                        <li>Sus conexiones se pausan, no se borran.</li>
-                        <li>Puedes reactivarla desde esta misma página.</li>
-                    </ul>
-                    <div class="cu-field" style="margin-top: 20px">
-                        <label class="cu-field-label" for="m-confirmar">Escribe <span class="mono" style="color: var(--coral)">{{ cuenta.nombre }}</span> para confirmar</label>
-                        <input id="m-confirmar" v-model="confirmacion" class="cu-input" autocomplete="off">
-                        <span v-if="errorModal" class="cu-field-err">{{ errorModal }}</span>
-                    </div>
-                    <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; flex-wrap: wrap">
-                        <button type="button" class="cu-btn cu-btn-ghost" @click="modalAbierto = false">Cancelar</button>
-                        <button type="button" class="cu-btn cu-btn-danger-solid" :disabled="confirmacion.trim() !== cuenta.nombre" @click="desactivar">Desactivar cuenta</button>
-                    </div>
-                </div>
-            </div>
         </div>
     </DashboardLayout>
 </template>

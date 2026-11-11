@@ -260,6 +260,11 @@ class CruceCostosAppsFlyer
                 'newCustomers' => $newCustomers,
                 'orders' => $orders,
                 'cpi' => $cpi,
+                // Detalle por día (2026-11-11) para resultados_diarios: gasto
+                // de la API (YYYY-MM-DD => {cost, impressions, clicks}) y la
+                // serie de AppsFlyer (fecha DD-MM-YYYY).
+                'diasCosto' => $costos['dias'] ?? [],
+                'serieAppsFlyer' => $af['serie'] ?? [],
             ];
         }
 

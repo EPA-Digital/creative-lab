@@ -4,6 +4,7 @@ import axios from 'axios';
 import { usePage } from '@inertiajs/vue3';
 import AvatarUsuario from '@/Components/Perfil/AvatarUsuario.vue';
 import LogoCuenta from '@/Components/Cuenta/LogoCuenta.vue';
+import { alerta, confirmar } from '@/avisos';
 
 // "Editar usuario" (diseño 2026-11-05). Cada control usa el endpoint que ya
 // existía y respeta sus permisos (la guardia real vive en el servidor, aquí
@@ -46,7 +47,6 @@ const cuentasFuera = computed(() => (u.value?.cuentas ?? []).filter((c) => !misC
 const form = reactive({ rol: 'cliente', activo: true, metodo: 'password', cuentaIds: [], paisIds: [] });
 const guardando = ref(false);
 const errores = ref({});
-const confirmando = ref(null); // 'eliminar' | 'totp' | 'password'
 const aviso = ref('');
 
 watch(() => [props.show, props.usuario], ([abierto]) => {
@@ -62,7 +62,6 @@ watch(() => [props.show, props.usuario], ([abierto]) => {
         paisIds: pendiente ? [...(u.value.pais_ids_propuestos ?? [])] : u.value.paises.map((p) => p.id),
     });
     errores.value = {};
-    confirmando.value = null;
     aviso.value = '';
     document.addEventListener('keydown', alTeclear);
 }, { immediate: true });
@@ -72,7 +71,8 @@ function cerrar() {
     emit('close');
 }
 function alTeclear(e) {
-    if (e.key === 'Escape') cerrar();
+    // Con una confirmación abierta, Esc la cierra a ella, no al modal.
+    if (e.key === 'Escape' && !alerta.value) cerrar();
 }
 onBeforeUnmount(() => document.removeEventListener('keydown', alTeclear));
 
@@ -89,6 +89,34 @@ const googleDeshabilitado = computed(() => u.value?.metodo_auth === 'password');
 
 async function guardar() {
     if (!u.value?.editable) return cerrar();
+    const nombre = u.value.name;
+    if (u.value.pendiente) {
+        if (!puedeAprobar.value) return cerrar();
+        const ok = await confirmar({
+            tipo: 'pregunta',
+            titulo: `¿Aprobar a ${nombre}?`,
+            texto: `Podrá entrar con ${form.cuentaIds.length} cuenta(s) y ${form.paisIds.length} país(es).`,
+            confirmar: 'Sí, aprobar',
+        });
+        if (!ok) return;
+    } else {
+        const detalle = [];
+        if (form.rol !== u.value.rol) detalle.push(`Rol: ${ROL_LABEL[u.value.rol] || u.value.rol} → ${ROL_LABEL[form.rol] || form.rol}.`);
+        if (puedeDesactivar.value && form.activo !== u.value.activo) {
+            detalle.push(form.activo ? 'Se reactiva: vuelve a poder entrar.' : 'Se desactiva: ya no podrá entrar.');
+        }
+        if (form.metodo === 'password' && u.value.metodo_auth === 'google') {
+            detalle.push('Pasa a entrar con contraseña: se genera un link y deja de poder entrar con Google.');
+        }
+        detalle.push('Se actualizan las cuentas y países que puede ver.');
+        const ok = await confirmar({
+            tipo: !form.activo && u.value.activo ? 'peligro' : 'pregunta',
+            titulo: `¿Guardar los cambios de ${nombre}?`,
+            detalle,
+            confirmar: 'Sí, guardar',
+        });
+        if (!ok) return;
+    }
     guardando.value = true;
     errores.value = {};
     let link = null;
@@ -114,35 +142,51 @@ async function guardar() {
     }
 }
 
+// Acciones sensibles: confirmación estilo SweetAlert (avisos.js). El error,
+// si lo hay, se muestra dentro de la misma alerta.
 async function restablecerTotp() {
-    try {
-        await axios.post(`/usuarios/${u.value.id}/resetear-totp`);
-        confirmando.value = null;
-        aviso.value = 'Listo: en su próximo inicio de sesión escaneará un código nuevo.';
-        emit('guardado', { link: null, cerrar: false });
-    } catch (e) {
-        errores.value = { general: errorDe(e, 'No se pudo restablecer el 2FA.') };
-    }
+    const ok = await confirmar({
+        tipo: 'advertencia',
+        titulo: `¿Restablecer el 2FA de ${u.value.name}?`,
+        texto: 'En su próximo inicio de sesión tendrá que escanear un código nuevo en Google Authenticator.',
+        confirmar: 'Sí, restablecer',
+        accion: () => axios.post(`/usuarios/${u.value.id}/resetear-totp`),
+    });
+    if (!ok) return;
+    aviso.value = 'Listo: en su próximo inicio de sesión escaneará un código nuevo.';
+    emit('guardado', { link: null, cerrar: false });
 }
 
 async function nuevaContrasena() {
-    try {
-        const { data } = await axios.post(`/usuarios/${u.value.id}/resetear-password`);
-        emit('guardado', { link: data.linkInvitacion, motivoLink: 'contraseña nueva' });
-        cerrar();
-    } catch (e) {
-        errores.value = { general: errorDe(e, 'No se pudo generar la contraseña nueva.') };
-    }
+    let link = null;
+    const ok = await confirmar({
+        tipo: 'advertencia',
+        titulo: `¿Generar contraseña nueva para ${u.value.name}?`,
+        texto: 'Se cierran sus sesiones hasta que use el link para poner su contraseña.',
+        confirmar: 'Sí, generar link',
+        accion: async () => {
+            link = (await axios.post(`/usuarios/${u.value.id}/resetear-password`)).data.linkInvitacion;
+        },
+    });
+    if (!ok) return;
+    emit('guardado', { link, motivoLink: 'contraseña nueva' });
+    cerrar();
 }
 
 async function eliminar() {
-    try {
-        await axios.delete(`/usuarios/${u.value.id}/eliminar`);
-        emit('guardado', { link: null });
-        cerrar();
-    } catch (e) {
-        errores.value = { general: errorDe(e, 'No se pudo eliminar.') };
-    }
+    const ok = await confirmar({
+        tipo: 'peligro',
+        titulo: `¿Eliminar a ${u.value.name}?`,
+        texto: u.value.email,
+        detalle: ['Pierde el acceso y se borra su usuario.', 'No se puede deshacer.'],
+        escribir: u.value.email,
+        confirmar: 'Eliminar definitivamente',
+        accion: () => axios.delete(`/usuarios/${u.value.id}/eliminar`),
+        exito: { titulo: 'Usuario eliminado', texto: u.value.email },
+    });
+    if (!ok) return;
+    emit('guardado', { link: null });
+    cerrar();
 }
 </script>
 
@@ -214,19 +258,9 @@ async function eliminar() {
                             {{ u.tiene_2fa ? 'Google Authenticator configurado' : 'Google Authenticator sin configurar' }}
                         </span>
                         <span class="us-hint">{{ u.tiene_2fa ? 'Si lo restableces, escaneará un código nuevo al entrar.' : 'Lo configurará la primera vez que entre con su contraseña.' }}</span>
-                        <div v-if="confirmando === 'totp'" class="us-confirmar">
-                            ¿Restablecer su 2FA?
-                            <button type="button" class="us-btn-sec us-btn-sm" @click="restablecerTotp">Sí, restablecer</button>
-                            <button type="button" class="us-btn-sec us-btn-sm" @click="confirmando = null">No</button>
-                        </div>
-                        <div v-else-if="confirmando === 'password'" class="us-confirmar">
-                            ¿Generar contraseña nueva? Se cierran sus sesiones hasta que use el link.
-                            <button type="button" class="us-btn-sec us-btn-sm" @click="nuevaContrasena">Sí, generar link</button>
-                            <button type="button" class="us-btn-sec us-btn-sm" @click="confirmando = null">No</button>
-                        </div>
-                        <div v-else class="us-panel-acciones">
-                            <button type="button" class="us-btn-sec us-btn-sm" :disabled="!u.editable || !puedeAprobar || !u.tiene_2fa" :title="puedeAprobar ? '' : 'Solo gerente, director o superadmin'" @click="confirmando = 'totp'">Restablecer 2FA</button>
-                            <button type="button" class="us-btn-sec us-btn-sm" :disabled="!u.editable || !puedeAprobar" :title="puedeAprobar ? '' : 'Solo gerente, director o superadmin'" @click="confirmando = 'password'">Nueva contraseña</button>
+                        <div class="us-panel-acciones">
+                            <button type="button" class="us-btn-sec us-btn-sm" :disabled="!u.editable || !puedeAprobar || !u.tiene_2fa" :title="puedeAprobar ? '' : 'Solo gerente, director o superadmin'" @click="restablecerTotp">Restablecer 2FA</button>
+                            <button type="button" class="us-btn-sec us-btn-sm" :disabled="!u.editable || !puedeAprobar" :title="puedeAprobar ? '' : 'Solo gerente, director o superadmin'" @click="nuevaContrasena">Nueva contraseña</button>
                         </div>
                         <span v-if="aviso" class="us-hint" style="color: var(--mint)">{{ aviso }}</span>
                     </div>
@@ -265,12 +299,7 @@ async function eliminar() {
 
                 <footer class="us-modal-pie">
                     <template v-if="esSuperadmin && u.editable">
-                        <span v-if="confirmando === 'eliminar'" class="us-confirmar">
-                            No se puede deshacer.
-                            <button type="button" class="us-btn-peligro" @click="eliminar">Eliminar definitivamente</button>
-                            <button type="button" class="us-btn-sec us-btn-sm" @click="confirmando = null">No</button>
-                        </span>
-                        <button v-else type="button" class="us-btn-peligro" @click="confirmando = 'eliminar'">
+                        <button type="button" class="us-btn-peligro" @click="eliminar">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3" /></svg>
                             Eliminar usuario
                         </button>

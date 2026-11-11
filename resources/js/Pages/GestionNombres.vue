@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
+import InfoTip from '@/Components/InfoTip.vue';
 
 // Taxonomía legible (2026-08-27, ver plan del rediseño de Creativos/
 // Inteligencia) -- panel de gestión completo, mismo endpoint de guardado
@@ -72,11 +73,12 @@ async function guardarFila(fila) {
                 <header class="header">
                     <div>
                         <p class="eyebrow mono">Ajustes</p>
-                        <h1 class="title">Gestionar nombres de creativos</h1>
-                        <p class="subtitle">
-                            Mapea cada nombre técnico a un nombre amigable -- se aplica en Creativos e Inteligencia,
-                            el nombre técnico original nunca se pierde (queda como referencia debajo).
-                        </p>
+                        <h1 class="title title-con-info">
+                            Gestionar nombres de creativos
+                            <InfoTip etiqueta="Sobre los nombres de creativos">
+                                Mapea cada nombre técnico a un nombre amigable: se aplica en Creativos e Inteligencia, y el nombre técnico original nunca se pierde (queda como referencia debajo).
+                            </InfoTip>
+                        </h1>
                     </div>
                     <Link :href="`${urlPais(pais)}/ajustes`" class="cargar-datos-btn">‹ Ajustes</Link>
                 </header>
@@ -149,6 +151,11 @@ async function guardarFila(fila) {
 </template>
 
 <style scoped>
+.title-con-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 .page {
     min-height: 100vh;
     background: var(--bg);

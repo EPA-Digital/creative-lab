@@ -17,11 +17,12 @@ Artisan::command('inspire', function () {
 // atribución (5 días default) ya evita pedir datos todavía inestables, y
 // nc/orders/cac/cpo de meses ya cerrados quedan protegidos por
 // ImportadorDatos::resolverNcOrdersFinal (nunca se pisan sin totales nuevos).
-// 11:00 UTC ~= 06:00 en Ecuador (UTC-5) -- ajustar si se agregan países en
+// 05:00 CDMX = 11:00 UTC ~= 06:00 en Ecuador (UTC-5) -- ajustar si se agregan países en
 // otro huso horario donde ese horario deje de tener sentido como "arranque
 // del día".
 Schedule::command('importar:appsflyer-api')
-    ->dailyAt('11:00')
+    ->timezone('America/Mexico_City')
+    ->dailyAt('05:00') // = 11:00 UTC, mismo momento de siempre
     ->withoutOverlapping();
 
 // meta:sincronizar-estado-ads -- 2026-08-28, pedido explícito: Meta solo
@@ -31,5 +32,6 @@ Schedule::command('importar:appsflyer-api')
 // diario, no cada 2 días, para dejar colchón si un día falla (rate limit,
 // token vencido) y el día siguiente igual recupera todo sin huecos.
 Schedule::command('meta:sincronizar-estado-ads')
-    ->dailyAt('11:15')
+    ->timezone('America/Mexico_City')
+    ->dailyAt('05:15') // = 11:15 UTC
     ->withoutOverlapping();

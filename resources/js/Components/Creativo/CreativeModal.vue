@@ -3,6 +3,7 @@ import { urlPais } from '@/rutas';
 import { computed, ref, watch } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import axios from 'axios';
+import InfoTip from '@/Components/InfoTip.vue';
 import {
     cardDesdeCreativo,
     placeholderPorTipo,
@@ -552,8 +553,13 @@ watch(() => props.creativo?.id, () => {
                                 <template v-if="card.rangosActividad?.length">
                                     <span class="k">Fechas activas</span>
                                     <span class="v modal-vigencia">
-                                        <span class="modal-vigencia-tramo">{{ formatearRangoFecha(card.rangosActividad[0]) }}</span>
-                                        <span class="modal-vigencia-nota">Aproximado: primer día con impresiones o costo real hasta el último -- no es el registro exacto de encendido/apagado de Meta.</span>
+                                        <span class="modal-vigencia-tramo">
+                                            {{ formatearRangoFecha(card.rangosActividad[0]) }}
+                                            <InfoTip etiqueta="Sobre las fechas activas" lado="izquierda">
+                                                Aproximado: primer día con impresiones o costo real hasta el último. No es el registro
+                                                exacto de encendido/apagado de Meta.
+                                            </InfoTip>
+                                        </span>
                                     </span>
                                 </template>
 

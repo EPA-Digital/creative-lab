@@ -1,4 +1,5 @@
 <script setup>
+import { alerta } from '@/avisos';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import axios from 'axios';
 import { usePage } from '@inertiajs/vue3';
@@ -44,7 +45,7 @@ function cerrar() {
     emit('close');
 }
 function alTeclear(e) {
-    if (e.key === 'Escape') cerrar();
+    if (e.key === 'Escape' && !alerta.value) cerrar();
 }
 onBeforeUnmount(() => document.removeEventListener('keydown', alTeclear));
 

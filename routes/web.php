@@ -99,6 +99,8 @@ Route::middleware('auth')->group(function () {
                     ->name('ajustes.cuentas-publicitarias.store');
                 Route::patch('/ajustes/cuentas-publicitarias/{cuentaPublicitaria}', [AjustesController::class, 'updateCuentaPublicitaria'])
                     ->name('ajustes.cuentas-publicitarias.update');
+                Route::post('/ajustes/tipos-cambio', [AjustesController::class, 'storeTipoCambio'])->name('ajustes.tipos-cambio.store');
+                Route::delete('/ajustes/tipos-cambio/{tipoCambio}', [AjustesController::class, 'destroyTipoCambio'])->name('ajustes.tipos-cambio.destroy');
             });
         });
     });
