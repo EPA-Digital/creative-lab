@@ -267,6 +267,6 @@ function adsTotales(p) {
 }
 .estado.pendiente {
     background: color-mix(in srgb, var(--amber) 18%, transparent);
-    color: var(--amber);
+    color: var(--accent-text);
 }
 </style>

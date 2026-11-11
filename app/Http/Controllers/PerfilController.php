@@ -23,7 +23,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class PerfilController extends Controller
 {
-    public const COLORES = ['#9184d9', '#59e0bd', '#4fb6ff', '#d8a94a', '#ff8f84'];
+    public const COLORES = ['#7fa2ff', '#59e0bd', '#4fb6ff', '#d8a94a', '#ff8f84'];
 
     public function update(Request $request): JsonResponse
     {

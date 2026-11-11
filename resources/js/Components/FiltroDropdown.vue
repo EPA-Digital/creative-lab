@@ -145,13 +145,13 @@ onUnmounted(() => {
     color: var(--text);
 }
 .filtro-dropdown-opcion.seleccionada {
-    color: var(--amber);
+    color: var(--accent-text);
     background: color-mix(in srgb, var(--amber) 12%, transparent);
 }
 .filtro-dropdown-check {
     flex: 0 0 auto;
     width: 12px;
-    color: var(--amber);
+    color: var(--accent-text);
     font-size: 12px;
 }
 </style>

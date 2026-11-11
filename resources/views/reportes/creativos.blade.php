@@ -31,7 +31,7 @@
     .nombre { font-size: 10.5px; font-weight: bold; margin: 0; }
     .tecnico { color: #9397ab; font-size: 7.5px; margin: 1px 0 0; }
     .chips { margin: 5px 0; }
-    .chip { display: inline-block; padding: 1px 6px; margin: 0 3px 3px 0; border-radius: 8px; background: #efedfb; color: #4b3f9e; font-size: 7.5px; }
+    .chip { display: inline-block; padding: 1px 6px; margin: 0 3px 3px 0; border-radius: 8px; background: #eef3ff; color: #003ad6; font-size: 7.5px; }
     .etiqueta { color: #6b6f80; font-size: 7px; text-transform: uppercase; letter-spacing: .4px; margin: 6px 0 1px; }
     .texto { margin: 0; line-height: 1.35; }
     .metricas { width: 100%; border-collapse: collapse; margin-top: 7px; }

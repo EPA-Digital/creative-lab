@@ -203,7 +203,7 @@ function seleccionarPais(pais) {
     align-items: center;
     gap: 12px;
     margin: 0 0 14px;
-    color: var(--amber);
+    color: var(--accent-text);
     font-size: 12px;
     letter-spacing: 0.08em;
     text-transform: uppercase;

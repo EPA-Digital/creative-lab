@@ -14,8 +14,8 @@ const props = defineProps({
 });
 const emit = defineEmits(['close']);
 
-const COLORES = ['#9184d9', '#59e0bd', '#4fb6ff', '#d8a94a', '#ff8f84'];
-const NOMBRES_COLOR = { '#9184d9': 'Morado', '#59e0bd': 'Menta', '#4fb6ff': 'Azul', '#d8a94a': 'Ámbar', '#ff8f84': 'Coral' };
+const COLORES = ['#7fa2ff', '#59e0bd', '#4fb6ff', '#d8a94a', '#ff8f84'];
+const NOMBRES_COLOR = { '#7fa2ff': 'Azul EPA', '#59e0bd': 'Menta', '#4fb6ff': 'Azul', '#d8a94a': 'Ámbar', '#ff8f84': 'Coral' };
 
 const form = reactive({ name: '', puesto: '', avatar_color: COLORES[0] });
 const foto = ref(null);

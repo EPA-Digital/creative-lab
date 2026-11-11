@@ -190,7 +190,7 @@ function etiquetaMes(m) {
 }
 .estado.pendiente {
     background: color-mix(in srgb, var(--amber) 18%, transparent);
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .estado.neutro {
     background: var(--surface-2);

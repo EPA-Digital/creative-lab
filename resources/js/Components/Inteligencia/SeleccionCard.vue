@@ -42,7 +42,7 @@ const nombre = computed(() => nombrePrincipalYTecnico(card.value.nombreAmigable,
             <img v-if="card.imageUrl" :src="card.imageUrl" alt="" loading="lazy" />
             <span v-if="card.tipoCreativo === 'VIDEO'" class="badge badge-tipo">▶ Video</span>
             <span v-if="seleccionada" class="seleccion-card-check" aria-hidden="true">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#161826" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
             </span>
         </div>
         <div class="resumen-card-body">

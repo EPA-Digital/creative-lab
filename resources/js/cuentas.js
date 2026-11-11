@@ -27,7 +27,7 @@ export const METRICAS_POR_OBJETIVO = {
     'Visitas a tienda': ['Visitas a tienda', 'Costo por visita'],
 };
 
-export const COLORES_CUENTA = ['#9184d9', '#8b6bff', '#4fb6ff', '#59e0bd', '#d8a94a', '#ff8f84', '#e58fb6', '#9397ab'];
+export const COLORES_CUENTA = ['#003ad6', '#7fa2ff', '#4fb6ff', '#59e0bd', '#d8a94a', '#ff8f84', '#e58fb6', '#9397ab'];
 
 // Iniciales del logo de respaldo: "Coppel Branding" -> "CB", "TaDa" -> "TA".
 export function iniciales(nombre) {

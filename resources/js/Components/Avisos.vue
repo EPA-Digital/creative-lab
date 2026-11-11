@@ -151,7 +151,7 @@ function puedeAceptar(a) {
     align-items: center;
     justify-content: center;
     padding: 24px;
-    background: color-mix(in srgb, var(--bg, #161826) 78%, transparent);
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
     backdrop-filter: blur(3px);
 }
 .aviso-card {
@@ -384,7 +384,7 @@ function puedeAceptar(a) {
     align-items: center;
     justify-content: center;
     border: 2px solid currentColor;
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .notificacion-icono.exito { color: var(--mint); }
 .notificacion-icono.error { color: var(--coral); }

@@ -41,7 +41,7 @@ defineProps({
 }
 .info-tip-btn:hover,
 .info-tip-btn:focus-visible {
-    color: var(--amber);
+    color: var(--accent-text);
 }
 .info-tip-btn:focus-visible {
     outline: 2px solid var(--amber);
