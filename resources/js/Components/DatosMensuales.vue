@@ -398,8 +398,21 @@ async function abrirEliminar() {
     text-transform: uppercase;
     color: var(--text-muted);
 }
-.datos-buscador input,
-.datos-buscador input:focus,
+.datos-buscador input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+}
+.datos-buscador input::placeholder {
+    color: var(--text-faint);
+}
+.datos-buscador input:focus {
+    outline: none;
+    border-color: var(--amber);
+}
 .datos-acciones {
     display: flex;
     align-items: center;
