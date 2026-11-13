@@ -6,6 +6,7 @@ import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import { useFiltroTipoCampania } from '@/tiposCampania';
 import PodiumTop3 from '@/Components/Creativo/PodiumTop3.vue';
 import CreativeCarousel from '@/Components/Creativo/CreativeCarousel.vue';
+import CreativeCard from '@/Components/Creativo/CreativeCard.vue';
 import CreativeTable from '@/Components/Creativo/CreativeTable.vue';
 import CreativeBars from '@/Components/Creativo/CreativeBars.vue';
 import VistaSwitch from '@/Components/Creativo/VistaSwitch.vue';
@@ -479,6 +480,23 @@ const todasOrdenadas = computed(() => {
     }), ...sinMetrica];
 });
 
+// Buscador (2026-11-13, pedido explícito): filtra sobre los mismos
+// creativos de la vista (respeta filtros y etapa). Mientras hay texto se
+// ocultan el Top y el carrusel: los resultados se ven en cuadrícula.
+// Sin distinguir mayúsculas ni acentos.
+const busqueda = ref('');
+const sinAcentos = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const buscando = computed(() => busqueda.value.trim() !== '');
+const resultadosBusqueda = computed(() => {
+    const q = sinAcentos(busqueda.value.trim());
+    if (!q) return todasOrdenadas.value;
+    return todasOrdenadas.value.filter((c) =>
+        [c.nombre_amigable, c.nombre_comun, c.nombre_completo, c.nombre_campania, c.ad_id, ...(c.adIdsMostrables || [])]
+            .some((v) => sinAcentos(v).includes(q)),
+    );
+});
+const creativosVista = computed(() => (buscando.value ? resultadosBusqueda.value : todasOrdenadas.value));
+
 // Tipos de gráfica para "Todos los creativos" (2026-08-27, ver plan del
 // rediseño) -- Cards/Tabla/Barras sobre el MISMO dataset (todasOrdenadas),
 // solo cambia el componente que lo pinta.
@@ -596,7 +614,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                         {{ etiquetaFunnel(f) || f }}
                     </button>
                 </div>
-                <span v-if="ranking.excluidosPorVolumen > 0" class="umbral-nota">
+                <div class="buscador-creativos">
+                    <label for="buscadorCreativos" class="periodo-label mono">Buscar</label>
+                    <div class="buscador-campo">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+                        <input id="buscadorCreativos" v-model="busqueda" type="search" placeholder="Nombre, Ad ID, campaña…" @keydown.esc.stop="busqueda = ''" />
+                        <button v-if="buscando" type="button" class="buscador-limpiar" aria-label="Limpiar búsqueda" @click="busqueda = ''">×</button>
+                    </div>
+                </div>
+                <span v-if="ranking.excluidosPorVolumen > 0 && !buscando" class="umbral-nota">
                     <InfoTip etiqueta="Mínimo de volumen aplicado" lado="izquierda">
                         Mínimo aplicado: {{ pisoFunnelTexto }}
                         <template v-if="metricaActual.tipo === 'ratio' && pisoRatioAplica">
@@ -607,7 +633,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                 </span>
             </div>
 
-            <section class="section">
+            <section v-if="!buscando" class="section">
                 <div class="section-header">
                     <h2 class="section-title">Análisis creativo{{ funnelSeleccionado === 'TODOS' ? '' : ` — ${etiquetaFunnel(funnelSeleccionado) || funnelSeleccionado}` }}</h2>
                     <div class="chip-group">
@@ -692,16 +718,30 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
             <section class="section">
                 <div class="section-header">
                     <div class="section-header-titulo">
-                        <h2 class="section-title">Todos los creativos</h2>
-                        <span class="section-count mono">{{ todasOrdenadas.length }} anuncio{{ todasOrdenadas.length === 1 ? '' : 's' }}</span>
+                        <h2 class="section-title">{{ buscando ? 'Resultados de búsqueda' : 'Todos los creativos' }}</h2>
+                        <span class="section-count mono">{{ creativosVista.length }} anuncio{{ creativosVista.length === 1 ? '' : 's' }}</span>
                     </div>
                     <VistaSwitch v-model="vistaActiva" />
                 </div>
-                <CreativeCarousel v-if="vistaActiva === 'cards'" :creativos="todasOrdenadas" :estrella-override="estrellaActual" :mes="mes" @abrir="abrirDetalle" />
-                <CreativeTable v-else-if="vistaActiva === 'tabla'" :creativos="todasOrdenadas" :estrella-override="estrellaActual" @abrir="abrirDetalle" />
+                <p v-if="buscando && !creativosVista.length" class="empty-note">Ningún creativo coincide con “{{ busqueda.trim() }}” con los filtros actuales.</p>
+                <template v-else-if="vistaActiva === 'cards'">
+                    <div v-if="buscando" class="busqueda-grid">
+                        <CreativeCard
+                            v-for="(c, i) in creativosVista"
+                            :key="c.id"
+                            :creativo="c"
+                            :rank="i + 1"
+                            :estrella-override="estrellaActual(c)"
+                            :mes="mes"
+                            @abrir="abrirDetalle"
+                        />
+                    </div>
+                    <CreativeCarousel v-else :creativos="todasOrdenadas" :estrella-override="estrellaActual" :mes="mes" @abrir="abrirDetalle" />
+                </template>
+                <CreativeTable v-else-if="vistaActiva === 'tabla'" :creativos="creativosVista" :estrella-override="estrellaActual" @abrir="abrirDetalle" />
                 <CreativeBars
                     v-else
-                    :creativos="todasOrdenadas"
+                    :creativos="creativosVista"
                     :estrella-override="estrellaActual"
                     :valor-numerico="(c) => valorCampo(c, metricaActual.campo)"
                     @abrir="abrirDetalle"
@@ -975,6 +1015,65 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
     border-radius: 8px;
     padding: 6px 10px;
     font-size: 12px;
+}
+.buscador-creativos {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 240px;
+    max-width: 360px;
+    margin-left: auto;
+}
+.buscador-campo {
+    position: relative;
+    display: flex;
+    align-items: center;
+    color: var(--text-faint);
+}
+.buscador-campo svg {
+    position: absolute;
+    left: 12px;
+    pointer-events: none;
+}
+.buscador-campo input {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 34px 10px 36px;
+    font-size: 0.85rem;
+    transition: border-color 0.15s ease;
+}
+.buscador-campo input::-webkit-search-cancel-button {
+    display: none;
+}
+.buscador-campo input::placeholder {
+    color: var(--text-faint);
+}
+.buscador-campo input:focus {
+    outline: none;
+    border-color: var(--amber);
+}
+.buscador-limpiar {
+    position: absolute;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1;
+}
+.buscador-limpiar:hover {
+    color: var(--text);
+}
+.busqueda-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
 }
 .resumen-filtros {
     align-items: flex-start;
