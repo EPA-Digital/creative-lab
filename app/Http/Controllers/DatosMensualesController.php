@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\RecuperarImagenesMes;
 use App\Models\Pais;
 use App\Services\Auditoria;
+use App\Services\Reportes\BenchmarkMes;
 use App\Services\Reportes\ExportadorExcelCreativos;
 use App\Services\Reportes\ExportadorPdfCreativos;
 use App\Services\Reportes\ReporteCreativosService;
@@ -132,6 +133,8 @@ class DatosMensualesController extends Controller
             'plataforma' => ['nullable', 'string', 'max:10'],
             'funnel' => ['nullable', 'string', 'max:10'],
             'q' => ['nullable', 'string', 'max:200'],
+            // Solo PDF: cada creativo contra los demás del mes (BenchmarkMes).
+            'benchmark' => ['nullable', 'boolean'],
         ]);
         set_time_limit(0);
         ini_set('memory_limit', '1024M');
@@ -139,16 +142,23 @@ class DatosMensualesController extends Controller
         $agrupar = $datos['agrupar'] ?? 'arte';
         $filas = $reporte->filas($paisModelo->id, $mes, $agrupar, $datos);
         $miniaturas = $reporte->miniaturas($paisModelo->id, $filas);
+        // El benchmark es contra el mes completo, sin los filtros del reporte.
+        $benchmark = $datos['formato'] === 'pdf' && ($datos['benchmark'] ?? false)
+            ? new BenchmarkMes($reporte->filas($paisModelo->id, $mes, $agrupar))
+            : null;
 
         $etiquetaMes = Carbon::createFromFormat('Y-m', $mes)->locale('es')->translatedFormat('F Y');
         $titulo = "Reporte de creativos — {$paisModelo->nombre} · {$etiquetaMes}";
         $subtitulo = ($agrupar === 'arte' ? 'Por arte' : 'Por anuncio').' · '.count($filas).' creativo(s) · generado el '.now()->locale('es')->translatedFormat('j \d\e F Y, H:i');
 
-        $archivo = "reporte-creativos-{$pais}-{$mes}.{$datos['formato']}";
+        if ($benchmark) {
+            $subtitulo .= ' · con benchmark del mes';
+        }
+        $archivo = 'reporte-creativos-'.($benchmark ? 'benchmark-' : '')."{$pais}-{$mes}.{$datos['formato']}";
         $ruta = tempnam(sys_get_temp_dir(), 'reporte-');
         $datos['formato'] === 'xlsx'
             ? (new ExportadorExcelCreativos)->generar($filas, $miniaturas, $titulo, $subtitulo, $ruta)
-            : (new ExportadorPdfCreativos)->generar($filas, $miniaturas, $titulo, $subtitulo, $ruta);
+            : (new ExportadorPdfCreativos)->generar($filas, $miniaturas, $titulo, $subtitulo, $ruta, $benchmark);
 
         return response()->download($ruta, $archivo)->deleteFileAfterSend();
     }

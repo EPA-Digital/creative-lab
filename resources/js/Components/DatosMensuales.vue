@@ -207,12 +207,22 @@ function descargarCsv() {
 // copy, formato y cuenta (ver DatosMensualesController::exportar). Se pide
 // como blob para poder mostrar "Generando…" y avisar si falla.
 const generando = ref(null); // 'xlsx' | 'pdf' | null
+// Solo PDF (2026-11-13): cada creativo contra los demás del mes, misma
+// plataforma y etapa, en los KPIs de su etapa (ver BenchmarkMes.php).
+const conBenchmark = ref(false);
 async function descargarReporte(formato) {
     if (generando.value || !mes.value) return;
     generando.value = formato;
     try {
         const { data, headers } = await axios.get(`${urlPais(props.pais)}/importar/mensual/${mes.value}/exportar`, {
-            params: { formato, agrupar: agrupar.value, plataforma: plataforma.value, funnel: funnel.value, q: busqueda.value || undefined },
+            params: {
+                formato,
+                agrupar: agrupar.value,
+                plataforma: plataforma.value,
+                funnel: funnel.value,
+                q: busqueda.value || undefined,
+                benchmark: formato === 'pdf' && conBenchmark.value ? 1 : undefined,
+            },
             responseType: 'blob',
         });
         const nombre = /filename="?([^";]+)"?/.exec(headers['content-disposition'] || '')?.[1] || `reporte-creativos-${props.pais}-${mes.value}.${formato}`;
@@ -325,6 +335,10 @@ async function abrirEliminar() {
                 <button type="button" class="modal-copy-btn" :disabled="!filasFiltradas.length || !!generando" @click="descargarReporte('pdf')">
                     {{ generando === 'pdf' ? 'Generando PDF…' : 'PDF con imágenes' }}
                 </button>
+                <label class="datos-check" title="El PDF compara cada creativo contra los demás del mes (misma plataforma y etapa): media y mejor en los KPIs de su etapa.">
+                    <input v-model="conBenchmark" type="checkbox" />
+                    Con benchmark
+                </label>
                 <button type="button" class="modal-copy-btn" :disabled="!filasFiltradas.length" @click="descargarCsv">CSV</button>
                 <button type="button" class="modal-copy-btn" @click="emit('actualizar', mes)">Actualizar mes</button>
                 <button v-if="puedeEliminar" type="button" class="btn-eliminar" @click="abrirEliminar">Eliminar mes</button>
@@ -412,6 +426,18 @@ async function abrirEliminar() {
 .datos-buscador input:focus {
     outline: none;
     border-color: var(--amber);
+}
+.datos-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-right: 4px;
+}
+.datos-check input {
+    accent-color: var(--amber);
 }
 .datos-acciones {
     display: flex;
