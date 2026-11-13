@@ -43,13 +43,6 @@
     .metricas .k { display: block; font-size: 6.5px; text-transform: uppercase; color: #9397ab; }
     .metricas .v { font-size: 9px; font-weight: bold; }
     /* Benchmark del mes */
-    .bench-titulo { font-size: 11px; font-weight: bold; margin: 4px 0 2px; }
-    .bench-nota { color: #6b6f80; font-size: 7px; margin: 0 0 6px; }
-    .bench { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-    .bench th { font-size: 6.5px; text-transform: uppercase; color: #6b6f80; text-align: left; padding: 3px 5px; border-bottom: 1px solid #e2e2ea; }
-    .bench td { padding: 3px 5px; border-bottom: 1px solid #eeeef3; font-size: 7.5px; vertical-align: top; }
-    .bench .grupo { font-weight: bold; }
-    .bench .mejor-nombre { color: #6b6f80; font-size: 6.5px; }
     .vs { width: 100%; border-collapse: collapse; margin-top: 7px; }
     .vs th { font-size: 6.5px; text-transform: uppercase; color: #6b6f80; text-align: left; padding: 3px 4px; border-top: 1px solid #eeeef3; }
     .vs td { padding: 3px 4px; font-size: 8px; border-top: 1px solid #eeeef3; }
@@ -58,6 +51,14 @@
     .estado-mejor { color: #16a34a; }
     .estado-peor { color: #dc2626; }
     .estado-media { color: #6b6f80; }
+    .veredicto { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .veredicto td { padding: 6px 8px; font-size: 8px; line-height: 1.4; vertical-align: middle; }
+    .veredicto .sello { width: 62px; text-align: center; font-weight: bold; font-size: 9px; border-radius: 6px; color: #ffffff; }
+    .sello-bueno { background: #16a34a; }
+    .sello-promedio { background: #6b6f80; }
+    .sello-malo { background: #dc2626; }
+    .sello-sin { background: #a3a3a3; }
+    .veredicto .razon { background: #f6f6f9; }
 </style>
 </head>
 <body>
@@ -78,26 +79,6 @@
         </tr>
     </table>
 
-    @if ($benchmark)
-        <p class="bench-titulo">Benchmark del mes</p>
-        <p class="bench-nota">Todos los creativos del mes en el país, por plataforma y etapa (sin los filtros del reporte). Media = promedio simple; mejor = el más barato (o el CTR más alto). Solo cuentan los creativos con volumen suficiente (gasto mayor a $0 y al menos 1,000 impresiones para CPM/CTR, 30 instalaciones para CPI, 10 nuevos clientes para CAC y 10 órdenes para CPO), los mismos pisos que los rankings del dashboard. En cada ficha, el creativo se compara contra los demás de su grupo; ±10% de la media cuenta como "en la media".</p>
-        <table class="bench">
-            <tr><th>Plataforma · etapa</th><th>Creativos</th><th>KPI</th><th>Media</th><th>Mejor</th></tr>
-            @foreach ($benchmark->resumen() as $g)
-                @foreach ($g['kpis'] as $k => $b)
-                    <tr>
-                        @if ($k === 0)
-                            <td class="grupo" rowspan="{{ count($g['kpis']) }}">{{ $g['plataforma'] === 'meta' ? 'Meta' : 'TikTok' }} · {{ $funnels[$g['funnel']] ?? 'Sin clasificar' }}</td>
-                            <td rowspan="{{ count($g['kpis']) }}">{{ $numero($g['creativos']) }}</td>
-                        @endif
-                        <td>{{ $etiquetasKpi[$b['campo']] }}</td>
-                        <td>{{ $kpi($b['campo'], $b['media']) }}</td>
-                        <td>{{ $kpi($b['campo'], $b['mejor']) }} @if ($b['mejorNombre'])<span class="mejor-nombre">· {{ \Illuminate\Support\Str::limit($b['mejorNombre'], 48) }}</span>@endif</td>
-                    </tr>
-                @endforeach
-            @endforeach
-        </table>
-    @endif
 
     @foreach ($filas as $i => $f)
         <table class="creativo">
@@ -152,10 +133,20 @@
                     </table>
 
                     @if ($benchmark)
-                        @php $cmp = $benchmark->comparar($f); @endphp
+                        @php
+                            $cmp = $benchmark->comparar($f);
+                            $ver = \App\Services\Reportes\BenchmarkMes::veredicto($cmp);
+                            $sello = ['bueno' => 'Bueno', 'promedio' => 'Promedio', 'malo' => 'Malo'][$ver['calificacion']] ?? 'Sin dato';
+                        @endphp
+                        <table class="veredicto">
+                            <tr>
+                                <td class="sello sello-{{ $ver['calificacion'] ?? 'sin' }}">{{ $sello }}</td>
+                                <td class="razon">{{ $ver['texto'] }}</td>
+                            </tr>
+                        </table>
                         <table class="vs">
                             <tr>
-                                <th>vs. {{ $cmp['comparables'] }} {{ $cmp['comparables'] === 1 ? 'creativo' : 'creativos' }} del mes ({{ $f['plataforma'] === 'meta' ? 'Meta' : 'TikTok' }} · {{ $funnels[$f['funnel']] ?? 'Sin clasificar' }})</th>
+                                <th>vs. {{ $cmp['comparables'] }} {{ $cmp['comparables'] === 1 ? 'creativo' : 'creativos' }} del mes ({{ $f['plataforma'] === 'meta' ? 'Meta' : 'TikTok' }} · {{ $f['tipoCuenta'] ?? 'Sin tipo' }} · {{ $funnels[$f['funnel']] ?? 'Sin clasificar' }})</th>
                                 <th>Este</th><th>Media</th><th>Mejor</th><th></th>
                             </tr>
                             @foreach ($cmp['kpis'] as $c)
