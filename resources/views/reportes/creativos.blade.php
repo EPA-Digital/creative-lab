@@ -6,6 +6,10 @@
     $porcentaje = fn ($v) => $v === null ? '—' : number_format($v, 2).'%';
     $funnels = ['AWA' => 'Awareness', 'CONS' => 'Consideration', 'CNV' => 'Conversion', 'LOY' => 'Loyalty'];
     // La fuente del PDF (DejaVu) no trae emojis -- salían como cuadritos.
+    // Benchmark (2026-11-13): CTR en %, el resto en dinero.
+    $kpi = fn (string $campo, $v) => $campo === 'ctr' ? $porcentaje($v) : $dinero($v);
+    $etiquetasKpi = \App\Services\Reportes\BenchmarkMes::ETIQUETAS;
+    $estadoTexto = ['mejor' => 'Mejor que la media', 'peor' => 'Peor que la media', 'media' => 'En la media'];
     $sinEmojis = fn (?string $t) => trim(preg_replace('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}\x{FE0F}\x{200D}\x{E000}-\x{F8FF}]/u', '', (string) $t));
 @endphp
 <!DOCTYPE html>
@@ -38,6 +42,22 @@
     .metricas td { border-top: 1px solid #eeeef3; padding: 3px 4px; width: 16.6%; }
     .metricas .k { display: block; font-size: 6.5px; text-transform: uppercase; color: #9397ab; }
     .metricas .v { font-size: 9px; font-weight: bold; }
+    /* Benchmark del mes */
+    .bench-titulo { font-size: 11px; font-weight: bold; margin: 4px 0 2px; }
+    .bench-nota { color: #6b6f80; font-size: 7px; margin: 0 0 6px; }
+    .bench { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    .bench th { font-size: 6.5px; text-transform: uppercase; color: #6b6f80; text-align: left; padding: 3px 5px; border-bottom: 1px solid #e2e2ea; }
+    .bench td { padding: 3px 5px; border-bottom: 1px solid #eeeef3; font-size: 7.5px; vertical-align: top; }
+    .bench .grupo { font-weight: bold; }
+    .bench .mejor-nombre { color: #6b6f80; font-size: 6.5px; }
+    .vs { width: 100%; border-collapse: collapse; margin-top: 7px; }
+    .vs th { font-size: 6.5px; text-transform: uppercase; color: #6b6f80; text-align: left; padding: 3px 4px; border-top: 1px solid #eeeef3; }
+    .vs td { padding: 3px 4px; font-size: 8px; border-top: 1px solid #eeeef3; }
+    .vs .b { font-weight: bold; }
+    .estado { font-weight: bold; }
+    .estado-mejor { color: #16a34a; }
+    .estado-peor { color: #dc2626; }
+    .estado-media { color: #6b6f80; }
 </style>
 </head>
 <body>
@@ -57,6 +77,27 @@
             <td><span class="k">CPO</span><span class="v">{{ $dinero($totales['cpo']) }}</span></td>
         </tr>
     </table>
+
+    @if ($benchmark)
+        <p class="bench-titulo">Benchmark del mes</p>
+        <p class="bench-nota">Todos los creativos del mes en el país, por plataforma y etapa (sin los filtros del reporte). Media = promedio simple; mejor = el más barato (o el CTR más alto). Solo cuentan los creativos con volumen suficiente (gasto mayor a $0 y al menos 1,000 impresiones para CPM/CTR, 30 instalaciones para CPI, 10 nuevos clientes para CAC y 10 órdenes para CPO), los mismos pisos que los rankings del dashboard. En cada ficha, el creativo se compara contra los demás de su grupo; ±10% de la media cuenta como "en la media".</p>
+        <table class="bench">
+            <tr><th>Plataforma · etapa</th><th>Creativos</th><th>KPI</th><th>Media</th><th>Mejor</th></tr>
+            @foreach ($benchmark->resumen() as $g)
+                @foreach ($g['kpis'] as $k => $b)
+                    <tr>
+                        @if ($k === 0)
+                            <td class="grupo" rowspan="{{ count($g['kpis']) }}">{{ $g['plataforma'] === 'meta' ? 'Meta' : 'TikTok' }} · {{ $funnels[$g['funnel']] ?? 'Sin clasificar' }}</td>
+                            <td rowspan="{{ count($g['kpis']) }}">{{ $numero($g['creativos']) }}</td>
+                        @endif
+                        <td>{{ $etiquetasKpi[$b['campo']] }}</td>
+                        <td>{{ $kpi($b['campo'], $b['media']) }}</td>
+                        <td>{{ $kpi($b['campo'], $b['mejor']) }} @if ($b['mejorNombre'])<span class="mejor-nombre">· {{ \Illuminate\Support\Str::limit($b['mejorNombre'], 48) }}</span>@endif</td>
+                    </tr>
+                @endforeach
+            @endforeach
+        </table>
+    @endif
 
     @foreach ($filas as $i => $f)
         <table class="creativo">
@@ -109,6 +150,33 @@
                             <td><span class="k">Ad ID</span><span class="v" style="font-size:7px">{{ implode(', ', array_slice($f['adIds'], 0, 3)) }}{{ count($f['adIds']) > 3 ? '…' : '' }}</span></td>
                         </tr>
                     </table>
+
+                    @if ($benchmark)
+                        @php $cmp = $benchmark->comparar($f); @endphp
+                        <table class="vs">
+                            <tr>
+                                <th>vs. {{ $cmp['comparables'] }} {{ $cmp['comparables'] === 1 ? 'creativo' : 'creativos' }} del mes ({{ $f['plataforma'] === 'meta' ? 'Meta' : 'TikTok' }} · {{ $funnels[$f['funnel']] ?? 'Sin clasificar' }})</th>
+                                <th>Este</th><th>Media</th><th>Mejor</th><th></th>
+                            </tr>
+                            @foreach ($cmp['kpis'] as $c)
+                                <tr>
+                                    <td class="b">{{ $etiquetasKpi[$c['campo']] }}</td>
+                                    <td class="b">{{ $kpi($c['campo'], $c['valor']) }}</td>
+                                    <td>{{ $kpi($c['campo'], $c['media']) }}</td>
+                                    <td>{{ $kpi($c['campo'], $c['mejor']) }}</td>
+                                    <td>
+                                        @if ($c['estado'])
+                                            <span class="estado estado-{{ $c['estado'] }}">{{ $estadoTexto[$c['estado']] }}@if ($c['estado'] !== 'media') ({{ $c['pct'] }}%)@endif</span>
+                                            @if ($c['esElMejor'])<span class="estado estado-mejor"> · el mejor del mes</span>@endif
+                                            @if ($c['pocoVolumen'])<span class="estado-media"> · poco volumen</span>@endif
+                                        @else
+                                            <span class="estado estado-media">Sin con qué comparar</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </table>
+                    @endif
                 </td>
             </tr>
         </table>

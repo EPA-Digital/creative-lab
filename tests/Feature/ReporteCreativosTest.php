@@ -125,6 +125,16 @@ class ReporteCreativosTest extends TestCase
         $this->assertStringStartsWith('%PDF', file_get_contents($respuesta->baseResponse->getFile()->getPathname()));
     }
 
+    public function test_descarga_el_pdf_con_benchmark_del_mes(): void
+    {
+        $this->sembrar();
+
+        $respuesta = $this->actingAs($this->user)->get('/tada/pais/ecuador/importar/mensual/2026-09/exportar?formato=pdf&benchmark=1');
+
+        $respuesta->assertOk()->assertDownload('reporte-creativos-benchmark-ecuador-2026-09.pdf');
+        $this->assertStringStartsWith('%PDF', file_get_contents($respuesta->baseResponse->getFile()->getPathname()));
+    }
+
     public function test_un_cliente_no_puede_descargar_el_reporte(): void
     {
         $cliente = User::factory()->create(['rol' => 'cliente']);

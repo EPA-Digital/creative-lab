@@ -8,7 +8,8 @@ use Dompdf\Options;
 /**
  * Reporte de creativos en PDF (ver ReporteCreativosService): resumen de
  * totales arriba y una ficha por creativo (imagen + datos + métricas),
- * con número de página.
+ * con número de página. Con $benchmark, además el benchmark del mes por
+ * plataforma y etapa y, en cada ficha, sus KPIs contra la media y el mejor.
  */
 class ExportadorPdfCreativos
 {
@@ -16,7 +17,7 @@ class ExportadorPdfCreativos
      * @param  list<array<string, mixed>>  $filas
      * @param  array<int, ?string>  $miniaturas
      */
-    public function generar(array $filas, array $miniaturas, string $titulo, string $subtitulo, string $rutaDestino): void
+    public function generar(array $filas, array $miniaturas, string $titulo, string $subtitulo, string $rutaDestino, ?BenchmarkMes $benchmark = null): void
     {
         $opciones = new Options;
         // Las imágenes van incrustadas (data URI) -- nunca se piden URLs
@@ -32,6 +33,7 @@ class ExportadorPdfCreativos
             'titulo' => $titulo,
             'subtitulo' => $subtitulo,
             'totales' => ReporteCreativosService::totales($filas),
+            'benchmark' => $benchmark,
         ])->render());
         $pdf->setPaper('A4', 'portrait');
         $pdf->render();
