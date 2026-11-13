@@ -4,8 +4,9 @@ namespace App\Services\Reportes;
 
 /**
  * Benchmark del mes para el reporte PDF (pedido explícito 2026-11-13):
- * cada creativo contra los DEMÁS creativos del mismo mes, misma plataforma
- * y misma etapa, en los KPIs principales de su etapa. Se muestra la media
+ * cada creativo contra los DEMÁS creativos del mismo mes, misma plataforma,
+ * mismo tipo de cuenta (DTC / BRD / sin clasificar: nunca se mezclan, igual
+ * que en el resto del dashboard) y misma etapa, en los KPIs principales de su etapa. Se muestra la media
  * (promedio simple) y el mejor del grupo; "en la media" es ±10%, igual que
  * compararConPromedio (motor.js) en el modal del creativo.
  *
@@ -67,29 +68,6 @@ class BenchmarkMes
     }
 
     /**
-     * Resumen por plataforma y etapa (todos los creativos del grupo).
-     *
-     * @return list<array{plataforma: string, funnel: ?string, creativos: int, kpis: list<array{campo: string, media: ?float, mejor: ?float, mejorNombre: ?string}>}>
-     */
-    public function resumen(): array
-    {
-        $orden = array_flip(['AWA', 'CONS', 'CNV', 'LOY']);
-        $resumen = [];
-        foreach ($this->grupos as $filas) {
-            $primera = $filas[0];
-            $resumen[] = [
-                'plataforma' => $primera['plataforma'],
-                'funnel' => $primera['funnel'],
-                'creativos' => count($filas),
-                'kpis' => array_map(fn (string $campo) => ['campo' => $campo, ...self::mediaYMejor($filas, $campo)], self::kpisDe($primera['funnel'])),
-            ];
-        }
-        usort($resumen, fn ($a, $b) => [$a['plataforma'], $orden[$a['funnel']] ?? 9] <=> [$b['plataforma'], $orden[$b['funnel']] ?? 9]);
-
-        return $resumen;
-    }
-
-    /**
      * Un creativo contra los demás de su grupo.
      *
      * @param  array<string, mixed>  $fila
@@ -116,6 +94,91 @@ class BenchmarkMes
         }
 
         return ['comparables' => count($demas), 'kpis' => $kpis];
+    }
+
+    /** Nombre para el cliente (el reporte lo leen fuera de EPA). */
+    private const NOMBRE_CLARO = [
+        'cpm' => 'costo por mil impresiones (CPM)',
+        'ctr' => 'tasa de clics (CTR)',
+        'cpi' => 'costo por instalación (CPI)',
+        'cac' => 'costo por cliente nuevo (CAC)',
+        'cpo' => 'costo por orden (CPO)',
+    ];
+
+    /**
+     * Conclusión del creativo para el cliente: bueno / promedio / malo y por
+     * qué. El KPI principal de la etapa (el primero de KPIS_POR_FUNNEL: CPM,
+     * CPI, CAC o CPO) pesa el triple que los demás -- el costo por resultado
+     * es lo que más importa: un CAC mucho más caro no se compensa solo con
+     * buen CTR. Mejor que la media suma, peor resta, en la media no cuenta.
+     * Puntaje >= 2: bueno; <= -2: malo.
+     *
+     * @param  array{comparables: int, kpis: list<array<string, mixed>>}  $comparacion  resultado de comparar()
+     * @return array{calificacion: ?string, texto: string}
+     */
+    public static function veredicto(array $comparacion): array
+    {
+        $kpis = array_values(array_filter($comparacion['kpis'], fn (array $k) => $k['estado'] !== null));
+        if ($kpis === []) {
+            return ['calificacion' => null, 'texto' => 'No hay suficientes creativos comparables este mes para calificarlo.'];
+        }
+
+        $principal = $comparacion['kpis'][0]['campo'];
+        $puntaje = 0;
+        foreach ($kpis as $k) {
+            $peso = $k['campo'] === $principal ? 3 : 1;
+            $puntaje += match ($k['estado']) {
+                'mejor' => $peso,
+                'peor' => -$peso,
+                default => 0,
+            };
+        }
+        $calificacion = $puntaje >= 2 ? 'bueno' : ($puntaje <= -2 ? 'malo' : 'promedio');
+
+        $frase = fn (array $k) => self::frase($k);
+        $fuertes = array_map($frase, array_values(array_filter($kpis, fn ($k) => $k['estado'] === 'mejor')));
+        $debiles = array_map($frase, array_values(array_filter($kpis, fn ($k) => $k['estado'] === 'peor')));
+        $enMedia = array_map(fn ($k) => self::NOMBRE_CLARO[$k['campo']], array_values(array_filter($kpis, fn ($k) => $k['estado'] === 'media')));
+
+        $partes = [];
+        if ($fuertes) {
+            $partes[] = 'A favor: '.self::lista($fuertes).'.';
+        }
+        if ($debiles) {
+            $partes[] = ($calificacion === 'malo' ? 'En contra: ' : 'A mejorar: ').self::lista($debiles).'.';
+        }
+        if ($enMedia && count($partes) < 2) {
+            $partes[] = 'En línea con la media: '.self::lista($enMedia).'.';
+        }
+        $principalKpi = collect($comparacion['kpis'])->firstWhere('campo', $principal);
+        if (($principalKpi['pocoVolumen'] ?? false)) {
+            $partes[] = 'Tomarlo con cautela: tuvo poco volumen para su '.self::NOMBRE_CLARO[$principal].'.';
+        }
+
+        return ['calificacion' => $calificacion, 'texto' => implode(' ', $partes)];
+    }
+
+    /** "su CAC ($5.58) es 26% más barato que la media ($7.53)" @param  array<string, mixed>  $k */
+    private static function frase(array $k): string
+    {
+        $formato = fn (?float $v) => $k['campo'] === 'ctr' ? number_format((float) $v, 2).'%' : '$'.number_format((float) $v, 2);
+        $sentido = match (true) {
+            $k['campo'] === 'ctr' => $k['valor'] > $k['media'] ? 'más alta' : 'más baja',
+            default => $k['valor'] < $k['media'] ? 'más barato' : 'más caro',
+        };
+        $mejorDelMes = $k['esElMejor'] ? ', el mejor del mes' : '';
+
+        return 'su '.self::NOMBRE_CLARO[$k['campo']].' ('.$formato($k['valor']).") es {$k['pct']}% {$sentido} que la media (".$formato($k['media']).')'.$mejorDelMes;
+    }
+
+    /** @param  list<string>  $items */
+    private static function lista(array $items): string
+    {
+        if (count($items) <= 1) {
+            return $items[0] ?? '';
+        }
+
+        return implode(', ', array_slice($items, 0, -1)).' y '.end($items);
     }
 
     public static function mayorEsMejor(string $campo): bool
@@ -174,6 +237,6 @@ class BenchmarkMes
     /** @param  array<string, mixed>  $fila */
     private static function clave(array $fila): string
     {
-        return $fila['plataforma'].'|'.($fila['funnel'] ?? 'SIN');
+        return $fila['plataforma'].'|'.($fila['tipoCuenta'] ?? 'SIN').'|'.($fila['funnel'] ?? 'SIN');
     }
 }

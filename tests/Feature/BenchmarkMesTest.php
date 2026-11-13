@@ -6,10 +6,10 @@ use App\Services\Reportes\BenchmarkMes;
  * Benchmark del mes en el PDF (2026-11-13): cada creativo contra los demás
  * de su plataforma y etapa, con media y mejor, y mínimos de volumen.
  */
-function filaBench(int $id, string $funnel, float $cost, int $impressions, int $clicks, int $installs = 0, ?int $nc = null, ?int $orders = null, string $plataforma = 'meta'): array
+function filaBench(int $id, string $funnel, float $cost, int $impressions, int $clicks, int $installs = 0, ?int $nc = null, ?int $orders = null, string $plataforma = 'meta', string $tipoCuenta = 'DTC'): array
 {
     return [
-        'creativoId' => $id, 'nombre' => "ARTE-{$id}", 'nombreAmigable' => null, 'plataforma' => $plataforma, 'funnel' => $funnel,
+        'creativoId' => $id, 'nombre' => "ARTE-{$id}", 'nombreAmigable' => null, 'plataforma' => $plataforma, 'tipoCuenta' => $tipoCuenta, 'funnel' => $funnel,
         'cost' => $cost, 'impressions' => $impressions, 'clicks' => $clicks, 'installs' => $installs, 'nc' => $nc, 'orders' => $orders,
         'ctr' => $impressions ? $clicks / $impressions * 100 : null,
         'cpm' => $impressions ? $cost / $impressions * 1000 : null,
@@ -27,6 +27,7 @@ it('compara contra la media y el mejor de los demás de su plataforma y etapa', 
         filaBench(3, 'AWA', 400, 1_000_000, 1000),                       // CPM 0.40
         filaBench(4, 'AWA', 50, 1_000_000, 500, plataforma: 'tiktok'),   // otra plataforma: no cuenta
         filaBench(5, 'CNV', 10, 1_000_000, 500),                         // otra etapa: no cuenta
+        filaBench(6, 'AWA', 10, 1_000_000, 500, tipoCuenta: 'BRD'),      // BRD: no se mezcla con DTC
     ]);
 
     $comparacion = $bench->comparar($este);
@@ -73,4 +74,32 @@ it('marca poco volumen y "en la media" dentro del ±10%', function () {
 
     expect($kpis['cpo']['pocoVolumen'])->toBeTrue()
         ->and($kpis['ctr']['estado'])->toBe('media'); // 1.00% vs 1.00%
+});
+
+it('califica bueno, promedio o malo con el KPI principal pesando más', function () {
+    // Conversion: el CAC (principal) decide aunque el CTR vaya al revés.
+    $grupo = [
+        filaBench(2, 'CNV', 1000, 1_000_000, 10_000, nc: 100),   // CAC 10, CTR 1%, CPM 1
+        filaBench(3, 'CNV', 1000, 1_000_000, 10_000, nc: 100),
+    ];
+    $barato = filaBench(1, 'CNV', 500, 1_000_000, 5_000, nc: 100);    // CAC 5 (mejor), CTR 0.5% (peor)
+    $caro = filaBench(1, 'CNV', 2000, 1_000_000, 20_000, nc: 100);    // CAC 20 (peor), CTR 2% (mejor)
+    $igual = filaBench(1, 'CNV', 1000, 1_000_000, 10_000, nc: 100);
+
+    $bueno = BenchmarkMes::veredicto((new BenchmarkMes([$barato, ...$grupo]))->comparar($barato));
+    $malo = BenchmarkMes::veredicto((new BenchmarkMes([$caro, ...$grupo]))->comparar($caro));
+    $promedio = BenchmarkMes::veredicto((new BenchmarkMes([$igual, ...$grupo]))->comparar($igual));
+
+    expect($bueno['calificacion'])->toBe('bueno')
+        ->and($bueno['texto'])->toContain('costo por cliente nuevo (CAC) ($5.00) es 50% más barato que la media ($10.00)')
+        ->and($bueno['texto'])->toContain('A mejorar: su tasa de clics (CTR)')
+        ->and($malo['calificacion'])->toBe('malo')
+        ->and($malo['texto'])->toContain('En contra: ')
+        ->and($promedio['calificacion'])->toBe('promedio');
+});
+
+it('sin creativos comparables no califica', function () {
+    $solo = filaBench(1, 'AWA', 100, 100_000, 100);
+
+    expect(BenchmarkMes::veredicto((new BenchmarkMes([$solo]))->comparar($solo))['calificacion'])->toBeNull();
 });
