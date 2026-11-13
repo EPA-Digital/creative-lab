@@ -181,13 +181,13 @@ class EnriquecedorCostosMeta
      * @param  list<string>  $adIds
      * @return array{0: array<string, string>, 1: array<string, string>, 2: array<string, array{titulo: ?string, texto: ?string}>} [statusPorAdId, imagenLocalPorAdId, copyPorAdId]
      */
-    public function reintentarImagenYCopy(string $adAccountId, array $adIds): array
+    public function reintentarImagenYCopy(string $adAccountId, array $adIds, string $prefijoArchivo = 'meta-costo'): array
     {
         [$statusPorAdId, $imagenRemotaPorAdId, $copyPorAdId] = $this->traerStatusEImagenParaIds($adAccountId, array_values(array_unique($adIds)));
 
         $imagenLocalPorAdId = $this->imagenes->cachearVarias(
             $imagenRemotaPorAdId,
-            fn (string $adId) => "meta-costo-{$adId}"
+            fn (string $adId) => "{$prefijoArchivo}-{$adId}"
         );
 
         return [$statusPorAdId, $imagenLocalPorAdId, $copyPorAdId];
@@ -272,7 +272,7 @@ class EnriquecedorCostosMeta
     private static function paramsTandaAds(array $tanda): array
     {
         return [
-            'fields' => 'id,effective_status,creative{body,title,image_url,thumbnail_url,asset_feed_spec{bodies,titles,images{hash,adlabels},asset_customization_rules{priority,image_label}}}',
+            'fields' => 'id,effective_status,creative{body,title,image_url,thumbnail_url,asset_feed_spec{bodies,titles,images{hash,adlabels},asset_customization_rules{priority,image_label,customization_spec}}}',
             'filtering' => json_encode([
                 ['field' => 'ad.id', 'operator' => 'IN', 'value' => array_values($tanda)],
                 ['field' => 'effective_status', 'operator' => 'IN', 'value' => self::TODOS_LOS_ESTADOS],
@@ -456,15 +456,20 @@ class EnriquecedorCostosMeta
     /**
      * Un creative Advantage+ puede traer VARIAS imágenes candidatas en
      * asset_feed_spec.images -- NO son recortes del mismo arte, a veces son
-     * creativos totalmente distintos (caso real: 3 hashes, Story/Reels y
-     * Feed correctos mostrando un six-pack, el tercero -- el que
-     * "images[0]" agarraba a ciegas -- un asset viejo/reusado de OTRA
-     * promo). asset_customization_rules mapea cada imagen a su regla de
-     * placement con un `priority` -- se usa la de prioridad MÁS ALTA
-     * (número más bajo), nunca la regla catch-all sin restricción de
-     * plataforma/posición (la de prioridad más baja/genérica), que es
-     * justo la que traía el asset viejo en el caso real. Si el creative no
-     * trae asset_customization_rules (no es Advantage+), cae a images[0].
+     * creativos totalmente distintos. asset_customization_rules mapea cada
+     * imagen a una ubicación.
+     *
+     * Se elige por UBICACIÓN y solo después por `priority` (2026-11-13):
+     *   1. Feed de Facebook / Instagram (lo que más se ve),
+     *   2. Stories / Reels de Facebook / Instagram,
+     *   3. cualquier otra ubicación (Messenger, Audience Network, Threads…),
+     *   4. la regla sin restricción de ubicación (catch-all).
+     * Caso real (Ecuador, ad 120251883716490661): un anuncio duplicado dejó
+     * con priority 1 una regla de SOLO Stories de Messenger con el arte viejo
+     * (six-pack de septiembre); la prioridad sola la elegía y el PDF salía
+     * con la imagen equivocada en vez de la verde del feed. Antes (caso de
+     * octubre) el catch-all traía un asset viejo de otra promo: por eso va
+     * al final. Sin reglas (no es Advantage+), images[0].
      *
      * @param  ?array<string, mixed>  $assetFeedSpec
      */
@@ -476,20 +481,40 @@ class EnriquecedorCostosMeta
         }
 
         $reglas = $assetFeedSpec['asset_customization_rules'] ?? [];
-        if ($reglas !== []) {
-            usort($reglas, fn ($a, $b) => ($a['priority'] ?? PHP_INT_MAX) <=> ($b['priority'] ?? PHP_INT_MAX));
-            $labelId = $reglas[0]['image_label']['id'] ?? null;
-            if ($labelId !== null) {
-                foreach ($images as $img) {
-                    foreach ($img['adlabels'] ?? [] as $label) {
-                        if (($label['id'] ?? null) === $labelId) {
-                            return $img['hash'] ?? null;
-                        }
+        usort($reglas, fn ($a, $b) => [self::rangoUbicacion($a['customization_spec'] ?? []), $a['priority'] ?? PHP_INT_MAX]
+            <=> [self::rangoUbicacion($b['customization_spec'] ?? []), $b['priority'] ?? PHP_INT_MAX]);
+
+        foreach ($reglas as $regla) {
+            $labelId = $regla['image_label']['id'] ?? null;
+            foreach ($images as $img) {
+                foreach ($img['adlabels'] ?? [] as $label) {
+                    if ($labelId !== null && ($label['id'] ?? null) === $labelId && ! empty($img['hash'])) {
+                        return $img['hash'];
                     }
                 }
             }
         }
 
         return $images[0]['hash'] ?? null;
+    }
+
+    /**
+     * 0 = feed de FB/IG, 1 = stories/reels de FB/IG, 2 = otra ubicación,
+     * 3 = sin restricción (ver elegirHashAssetFeedSpec).
+     *
+     * @param  array<string, mixed>  $spec  customization_spec de la regla
+     */
+    private static function rangoUbicacion(array $spec): int
+    {
+        $facebook = $spec['facebook_positions'] ?? [];
+        $instagram = $spec['instagram_positions'] ?? [];
+        $hayRestriccion = ($spec['publisher_platforms'] ?? []) !== [] || $facebook !== [] || $instagram !== [];
+
+        return match (true) {
+            in_array('feed', $facebook, true) || in_array('stream', $instagram, true) => 0,
+            array_intersect(['story', 'facebook_reels'], $facebook) !== [] || array_intersect(['story', 'reels'], $instagram) !== [] => 1,
+            $hayRestriccion => 2,
+            default => 3,
+        };
     }
 }
