@@ -1,15 +1,18 @@
 <?php
 
+use App\Http\Controllers\AfDataController;
 use App\Http\Controllers\AjustesController;
 use App\Http\Controllers\AnalisisCreativoController;
 use App\Http\Controllers\CuentasController;
 use App\Http\Controllers\DatosMensualesController;
 use App\Http\Controllers\EvaluacionCreativoController;
+use App\Http\Controllers\FuentesController;
 use App\Http\Controllers\GestionNombresController;
 use App\Http\Controllers\ImportarDatosController;
 use App\Http\Controllers\InteligenciaController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\LogoCuentaController;
+use App\Http\Controllers\MediosDataController;
 use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SinCreativoController;
@@ -60,6 +63,17 @@ Route::middleware('auth')->group(function () {
         Route::middleware('can:epa')->group(function () {
             Route::post('/creativos/{creativo}/evaluar', [EvaluacionCreativoController::class, 'evaluar'])
                 ->name('creativos.evaluar');
+
+            // AF data (2026-11-13): el export de AppsFlyer limpio por canal, tipo Excel.
+            Route::get('/af-data', [AfDataController::class, 'index'])->name('af-data');
+            Route::post('/af-data/importar', [AfDataController::class, 'importar'])->name('af-data.importar');
+            // Medios data (2026-11-13): gasto por medio y campaña, tipo data.medios.
+            Route::get('/medios-data', [MediosDataController::class, 'index'])->name('medios-data');
+            Route::post('/medios-data/gasto', [MediosDataController::class, 'store'])->name('medios-data.store');
+            Route::delete('/medios-data/gasto/{gasto}', [MediosDataController::class, 'destroy'])->whereNumber('gasto')->name('medios-data.destroy');
+            // Fuentes (2026-11-13): venta real → canales, con inversión y eficiencia.
+            Route::get('/fuentes', [FuentesController::class, 'index'])->name('fuentes');
+            Route::post('/fuentes/venta-real', [FuentesController::class, 'guardarVentaReal'])->name('fuentes.venta-real');
 
             Route::get('/ajustes/nombres', [GestionNombresController::class, 'index'])->name('gestion-nombres');
             // Cola "Sin creativo" (Spark Ads y demás): asignar crea una regla
