@@ -40,6 +40,14 @@
     /* --yellow (2026-08-21, pedido explícito): dedicado a Awareness en el
        semáforo de funnel. */
     --yellow: #facc15;
+    /* Series de gráficas (Fuentes, 2026-11-13): orden fijo, validado para
+       daltonismo contra la superficie oscura (dataviz validate_palette). */
+    --serie-1: #3987e5;
+    --serie-2: #d95926;
+    --serie-3: #199e70;
+    --serie-4: #c98500;
+    --serie-5: #d55181;
+    --serie-6: #9085e9;
     --amber-ink: #ffffff;
     --mint-ink: #052e16;
     --shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
@@ -90,6 +98,12 @@
     --coral: #dc2626;
     --sky: #03b0ff;
     --yellow: #d97706;
+    --serie-1: #2a78d6;
+    --serie-2: #eb6834;
+    --serie-3: #1baf7a;
+    --serie-4: #eda100;
+    --serie-5: #e87ba4;
+    --serie-6: #6250d6;
     --amber-ink: #ffffff;
     --mint-ink: #f0fdf4;
     --shadow: 0 20px 50px rgba(10, 10, 10, 0.1);

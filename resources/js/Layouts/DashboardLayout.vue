@@ -31,7 +31,7 @@ const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director',
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
 // conserva la vista en la que está.
-const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', importar: '/importar', ajustes: '/ajustes' };
+const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
 const SECCION_ANALISIS = computed(() => (esEpa.value
     ? [
@@ -117,6 +117,9 @@ const ICONOS = {
     gear: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
     house: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-9"/></svg>',
     play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><path d="M10 8.7v6.6l6-3.3z" fill="currentColor" stroke="none"/></svg>',
+    tabla: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M3 15h18"/><path d="M9 4v16"/></svg>',
+    medios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.6 5 3.2 5 1.4 5 3.3-2.2 3.2-5 3.2-5-1.2-5-3"/></svg>',
+    fuentes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>',
     bulb: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.45 1 1.15 1 1.9V16h5v-.2c0-.75.4-1.45 1-1.9A6 6 0 0 0 12 3z"/></svg>',
     star: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
     upload: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M20 15v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4"/></svg>',
@@ -279,6 +282,26 @@ onBeforeUnmount(() => {
                 <Link :href="hrefVista('importar')" class="nav-item" :class="{ activo: vistaActiva === 'importar' }" title="Cargar datos">
                     <span class="nav-icono" v-html="ICONOS.upload" />
                     <span class="nav-label">Cargar datos</span>
+                </Link>
+            </div>
+
+            <div v-if="esEpa" class="panel-seccion">
+                <span class="panel-seccion-titulo mono">Data</span>
+                <Link :href="hrefVista('af-data')" class="nav-item" :class="{ activo: vistaActiva === 'af-data' }" title="AF data">
+                    <span class="nav-icono" v-html="ICONOS.tabla" />
+                    <span class="nav-label">AF data</span>
+                </Link>
+                <Link :href="hrefVista('medios-data')" class="nav-item" :class="{ activo: vistaActiva === 'medios-data' }" title="Medios data">
+                    <span class="nav-icono" v-html="ICONOS.medios" />
+                    <span class="nav-label">Medios data</span>
+                </Link>
+            </div>
+
+            <div v-if="esEpa" class="panel-seccion">
+                <span class="panel-seccion-titulo mono">Fuentes</span>
+                <Link :href="hrefVista('fuentes')" class="nav-item" :class="{ activo: vistaActiva === 'fuentes' }" title="Fuentes">
+                    <span class="nav-icono" v-html="ICONOS.fuentes" />
+                    <span class="nav-label">Fuentes</span>
                 </Link>
             </div>
 
