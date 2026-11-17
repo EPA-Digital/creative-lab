@@ -30,11 +30,13 @@ const esEpa = computed(() => usuario.value && usuario.value.rol !== 'cliente');
 // AF data, Medios data y Fuentes solo en los países que ya se trabajan
 // (los que tienen reglas en config/fuentes.php).
 const tieneFuentes = computed(() => (usePage().props.paisesConFuentes ?? []).includes(props.pais));
+// Channel va en todos los países con canales (también México, que aún no tiene AF data).
+const tieneCanales = computed(() => (usePage().props.paisesConCanales ?? []).includes(props.pais));
 const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director', 'superadmin'].includes(usuario.value.rol));
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
 // conserva la vista en la que está.
-const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
+const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
 // Menú en árbol plegable (2026-11-17, pedido explícito): Resumen, Análisis,
 // Datos y Fuentes como ramas; cada vista es una hoja. Un 'cliente' solo ve
@@ -64,7 +66,17 @@ const ARBOL = computed(() => {
                 ...(tieneFuentes.value ? [{ vista: 'af-data', label: 'AF data' }, { vista: 'medios-data', label: 'Medios data' }] : []),
             ],
         },
-        ...(tieneFuentes.value ? [{ id: 'fuentes', label: 'Fuentes', icono: 'fuentes', hijos: [{ vista: 'fuentes', label: 'Fuentes' }, { vista: 'funnel', label: 'Funnel' }] }] : []),
+        ...(tieneFuentes.value || tieneCanales.value
+            ? [{
+                id: 'fuentes',
+                label: 'Fuentes',
+                icono: 'fuentes',
+                hijos: [
+                    ...(tieneFuentes.value ? [{ vista: 'fuentes', label: 'Fuentes' }, { vista: 'funnel', label: 'Funnel' }] : []),
+                    ...(tieneCanales.value ? [{ vista: 'channel', label: 'Channel' }] : []),
+                ],
+            }]
+            : []),
     ];
 });
 
@@ -105,7 +117,11 @@ const VISTAS_FUENTES = ['af-data', 'medios-data', 'fuentes', 'funnel'];
 const vistaParaPais = computed(() => (RUTA_VISTA[props.vistaActiva] ? props.vistaActiva : 'creativos'));
 // Cambiar de país desde AF data / Medios data / Fuentes a uno que no las
 // tiene (México) lleva a Creativos.
-const vistaDestino = (paisId) => (VISTAS_FUENTES.includes(vistaParaPais.value) && !(usePage().props.paisesConFuentes ?? []).includes(paisId) ? 'creativos' : vistaParaPais.value);
+const vistaDestino = (paisId) => {
+    const v = vistaParaPais.value;
+    if (v === 'channel') return (usePage().props.paisesConCanales ?? []).includes(paisId) ? v : 'creativos';
+    return VISTAS_FUENTES.includes(v) && !(usePage().props.paisesConFuentes ?? []).includes(paisId) ? 'creativos' : v;
+};
 
 // --- Selector de cuenta -------------------------------------------------------
 const selectorAbierto = ref(false);

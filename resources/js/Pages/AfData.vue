@@ -199,7 +199,8 @@ const CLASE_FUENTE = { 'TADA PERFORMANCE': 'f-paid', BI: 'f-bi', CRM: 'f-crm', O
                         <InfoTip etiqueta="Qué archivo subir" lado="izquierda">
                             AppsFlyer → Analyze → Pivot → "{{ reporte }}", elige las fechas y descarga el CSV. Se quitan
                             solos los subtotales{{ pais === 'panama' ? ' y las filas de otros países (GEO)' : '' }}; volver a subir un periodo
-                            reemplaza esos días.
+                            reemplaza esos días. Sirve cualquier rango, también años pasados (ej. 2025): Channel los toma
+                            de aquí en lugar de lo capturado a mano. Si el archivo es muy grande, súbelo por mes o trimestre.
                         </InfoTip>
                     </div>
                 </header>
