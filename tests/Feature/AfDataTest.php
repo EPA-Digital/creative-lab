@@ -85,6 +85,54 @@ class AfDataTest extends TestCase
         $this->assertSame(['App Opened' => 1070, 'Activity Sessions' => 1022], $fila['otros']);
     }
 
+    public function test_panama_filtra_por_geo_y_usa_sus_reglas(): void
+    {
+        $and = 'TaDa Drinks Delivery - com.abi.bees.tada';
+        $csv = "Install Day,App Name,GEO,Agency,Media Source,Campaign,Campaign ID,Installs (sum),Activity - Event Counter - First Order (sum),Activity - Event Counter - Order Submitted (sum),Activity Sessions (sum)\n"
+            ."\"Nov 12, 2026\",,,,,,,567,122,\"1,480\",9\n"                                   // subtotal del día
+            ."\"Nov 12, 2026\",{$and},Argentina,,,,,0,0,0,1\n"                                // subtotal de otro país
+            ."\"Nov 12, 2026\",{$and},Bolivia,None,Organic,None,None,50,5,9,100\n"            // otro país: fuera
+            ."\"Nov 12, 2026\",{$and},Panama,None,Facebook Ads,PAN_DTC_TAD_AON_AON_TAD_CNV_EPA_FB-CONVERSION,120,3,1,2,4\n"
+            ."\"Nov 12, 2026\",{$and},Panama,None,Facebook Ads,PAN_BRD_COR_THISISLIVING_ABTEST,121,1,0,0,1\n"
+            ."\"Nov 12, 2026\",{$and},Panama,None,Social_Organic,PAN_DTC_TAD_SOCIALORGANIC_PRECOMPRA,None,0,0,0,1\n"
+            ."\"Nov 12, 2026\",{$and},Panama,None,QR_code,Corona Sunset CH,None,0,0,0,1\n"
+            ."\"Nov 12, 2026\",{$and},Panama,None,Email,OB2_NEW_USER_1ST_PURCHASE_FIRST_NAME_AUTOMATED,None,0,0,1,1\n"
+            ."\"Nov 12, 2026\",{$and},Panama,None,google_organic_seo,None,None,0,0,0,1\n";
+
+        $r = LimpiadorFuentes::paraPais('panama')->limpiar($csv);
+
+        $this->assertSame(2, $r['subtotales']);
+        $this->assertSame(1, $r['otrosPaises']);
+        $this->assertSame(
+            ['TADA PERFORMANCE', 'BRANDS', 'ORGANIC', 'OTRO', 'CRM', 'ORGANIC'],
+            array_column($r['filas'], 'fuente_final'),
+        );
+        $this->assertSame(['Facebook Ads', 'BI', 'Organic', 'Other', 'CRM', 'Organic'], array_column($r['filas'], 'canal'));
+        $this->assertArrayNotHasKey('GEO', $r['filas'][0]['otros']);
+    }
+
+    public function test_peru_agrupa_por_adset_y_usa_sus_reglas(): void
+    {
+        $app = 'TaDa Delivery de Bebidas - pe.com.backusya';
+        $csv = "Install Day,App Name,Agency,Media Source,Campaign,Campaign ID,Adset,Adset ID,Installs (sum),Activity - Event Counter - First Order (sum),Activity - Event Counter - Order Submitted (sum),Activity Sessions (sum)\n"
+            ."\"Nov 12, 2026\",{$app},None,Facebook Ads,PER_DTC_TAD_AON_AON_TAD_CNV_EPA_FB-CONV,123,,,9,1,1,1\n"   // subtotal de campaña (sin adset)
+            ."\"Nov 12, 2026\",{$app},None,Facebook Ads,PER_DTC_TAD_AON_AON_TAD_CNV_EPA_FB-CONV,123,AS-LIMA,987,9,1,1,1\n"
+            ."\"Nov 12, 2026\",{$app},moblin,mintegral_int,PER_BRD_PTF_AON_PERFORMANCE_NON_API_ZNT_ZOOMD,ss,Pilsen_icon,2274,0,0,0,1\n"
+            ."\"Nov 12, 2026\",{$app},None,jampp_int,UA_App-Installs_(CPI)_PE_Android_Corona,55,None,None,1,0,0,1\n"
+            ."\"Nov 12, 2026\",{$app},None,duckduckgo_organic_seo,None,None,None,None,0,0,0,1\n"
+            ."\"Nov 12, 2026\",{$app},None,Social_instagram,None,None,None,None,0,0,0,1\n"
+            ."\"Nov 12, 2026\",{$app},None,Facebook Ads,None,0,None,0,11,0,0,1\n";      // Perú lo quita
+
+        $r = LimpiadorFuentes::paraPais('peru')->limpiar($csv);
+
+        $this->assertSame(1, $r['subtotales']);
+        $this->assertSame(1, $r['descartadas']);
+        $this->assertSame(['TADA PERFORMANCE', 'BRANDS', 'JAMPP', 'ORGANIC', 'ORGANIC'], array_column($r['filas'], 'fuente_final'));
+        $this->assertSame(['Facebook Ads', 'BI', 'Jampp (sin EPA)', 'Organic', 'Organic'], array_column($r['filas'], 'canal'));
+        $this->assertSame(['AS-LIMA', '987'], [$r['filas'][0]['adset'], $r['filas'][0]['adset_id']]);
+        $this->assertNull($r['filas'][2]['adset']);
+    }
+
     public function test_avisa_si_no_es_el_export_esperado(): void
     {
         $this->expectExceptionMessage('Al archivo le faltan columnas');

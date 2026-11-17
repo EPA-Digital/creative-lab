@@ -35,7 +35,7 @@ class LimpiadorFuentes
     }
 
     /**
-     * @return array{filas: list<array<string, mixed>>, subtotales: int, desde: ?string, hasta: ?string}
+     * @return array{filas: list<array<string, mixed>>, subtotales: int, otrosPaises: int, desde: ?string, hasta: ?string}
      */
     public function limpiar(string $csv): array
     {
@@ -47,25 +47,47 @@ class LimpiadorFuentes
 
         $encabezados = array_map(fn ($h) => self::sinSum($h), str_getcsv(array_shift($lineas), escape: ''));
         $indice = array_flip($encabezados);
-        $faltan = array_diff([...self::AGRUPACION, self::INSTALLS, $this->config['columnas']['nc'], $this->config['columnas']['recompras']], $encabezados);
+        // Pivots con GEO (Panamá): solo cuentan las filas del país.
+        $geo = $this->config['geo'] ?? null;
+        // Pivots con nivel de adset (Perú): también son columnas de agrupación.
+        $conAdset = (bool) ($this->config['adset'] ?? false);
+        $agrupacion = [...self::AGRUPACION, ...($conAdset ? ['Adset', 'Adset ID'] : [])];
+        $requeridas = [...$agrupacion, ...($geo ? ['GEO'] : []), self::INSTALLS, $this->config['columnas']['nc'], $this->config['columnas']['recompras']];
+        $faltan = array_diff($requeridas, $encabezados);
         if ($faltan !== []) {
             throw new RuntimeException('Al archivo le faltan columnas: '.implode(', ', $faltan).'. ¿Es el export del pivot de AppsFlyer de este país?');
         }
-        $conocidas = [...self::AGRUPACION, self::INSTALLS, $this->config['columnas']['nc'], $this->config['columnas']['recompras']];
+        $conocidas = [...$requeridas, 'GEO'];
 
         $filas = [];
         $subtotales = 0;
+        $otrosPaises = 0;
+        $descartadas = 0;
         foreach ($lineas as $linea) {
             $c = str_getcsv($linea, escape: '');
             $valor = fn (string $col) => trim(html_entity_decode($c[$indice[$col]] ?? '', ENT_QUOTES | ENT_HTML5));
 
-            $agrupacion = array_map($valor, self::AGRUPACION);
-            if (in_array('', $agrupacion, true)) {
+            $valores = array_map($valor, $agrupacion);
+            if (in_array('', $valores, true) || ($geo && $valor('GEO') === '')) {
                 $subtotales++;
 
                 continue;
             }
-            [$dia, $app, $agency, $media, $campania, $campaniaId] = $agrupacion;
+            if ($geo && mb_strtolower($valor('GEO')) !== mb_strtolower($geo)) {
+                $otrosPaises++;
+
+                continue;
+            }
+            [$dia, $app, $agency, $media, $campania, $campaniaId] = $valores;
+            $adset = $conAdset ? $valores[6] : null;
+            $adsetId = $conAdset ? $valores[7] : null;
+
+            // Filas que el equipo de ese país quita (ej. Perú: Facebook Ads sin campaña).
+            if ($this->cumpleAlguna($this->config['descartar'] ?? [], $media, $campania)) {
+                $descartadas++;
+
+                continue;
+            }
 
             $nc = self::numero($valor($this->config['columnas']['nc']));
             $recompras = self::numero($valor($this->config['columnas']['recompras']));
@@ -84,6 +106,8 @@ class LimpiadorFuentes
                 'media_source' => $media,
                 'campania' => $campania,
                 'campania_id' => $campaniaId === 'None' ? null : $campaniaId,
+                'adset' => $adset === 'None' ? null : $adset,
+                'adset_id' => $adsetId === 'None' ? null : $adsetId,
                 'installs' => self::numero($valor(self::INSTALLS)),
                 'nc' => $nc,
                 'recompras' => $recompras,
@@ -99,6 +123,8 @@ class LimpiadorFuentes
         return [
             'filas' => $filas,
             'subtotales' => $subtotales,
+            'otrosPaises' => $otrosPaises,
+            'descartadas' => $descartadas,
             'desde' => $fechas ? min($fechas) : null,
             'hasta' => $fechas ? max($fechas) : null,
         ];
@@ -107,26 +133,43 @@ class LimpiadorFuentes
     public function fuente(string $media, string $campania): string
     {
         foreach ($this->config['reglas'] as $regla) {
-            $cumple = true;
-            foreach ($regla['si'] as [$campo, $operador, $esperado]) {
-                $texto = mb_strtoupper($campo === 'media' ? $media : $campania);
-                $esperado = mb_strtoupper($esperado);
-                $ok = match ($operador) {
-                    'empieza' => str_starts_with($texto, $esperado),
-                    'contiene' => str_contains($texto, $esperado),
-                    'igual' => $texto === $esperado,
-                };
-                if (! $ok) {
-                    $cumple = false;
-                    break;
-                }
-            }
-            if ($cumple) {
+            if ($this->cumple($regla, $media, $campania)) {
                 return $regla['fuente'];
             }
         }
 
         return $this->config['por_defecto'];
+    }
+
+    /** @param list<array{si: list<array{0: string, 1: string, 2: string}>}> $reglas */
+    private function cumpleAlguna(array $reglas, string $media, string $campania): bool
+    {
+        foreach ($reglas as $regla) {
+            if ($this->cumple($regla, $media, $campania)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Todas las condiciones de la regla (sin distinguir mayúsculas). @param array{si: list<array{0: string, 1: string, 2: string}>} $regla */
+    private function cumple(array $regla, string $media, string $campania): bool
+    {
+        foreach ($regla['si'] as [$campo, $operador, $esperado]) {
+            $texto = mb_strtoupper($campo === 'media' ? $media : $campania);
+            $esperado = mb_strtoupper($esperado);
+            $ok = match ($operador) {
+                'empieza' => str_starts_with($texto, $esperado),
+                'contiene' => str_contains($texto, $esperado),
+                'igual' => $texto === $esperado,
+            };
+            if (! $ok) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public function canal(string $fuente, string $media): string

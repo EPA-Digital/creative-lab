@@ -15,6 +15,7 @@ import { mensajeDeError, notificar } from '@/avisos';
 const props = defineProps({
     pais: String,
     tieneReglas: Boolean,
+    reporte: { type: String, default: null },
     canalesPaid: { type: Array, default: () => [] },
     meses: { type: Array, default: () => [] },
     mes: { type: String, default: null },
@@ -42,7 +43,7 @@ async function importar(e) {
         notificar({
             tipo: 'exito',
             titulo: `${formatNumeroExacto(data.filas)} filas importadas`,
-            texto: `Del ${data.desde} al ${data.hasta}. Se quitaron ${formatNumeroExacto(data.subtotales)} renglones de subtotal.`,
+            texto: `Del ${data.desde} al ${data.hasta}. Se quitaron ${formatNumeroExacto(data.subtotales)} renglones de subtotal${data.otrosPaises ? `, ${formatNumeroExacto(data.otrosPaises)} filas de otros países` : ''}${data.descartadas ? ` y ${formatNumeroExacto(data.descartadas)} filas que este país no cuenta` : ''}.`,
         });
         router.get(location.pathname, { mes: data.mes }, { preserveScroll: true });
     } catch (err) {
@@ -74,7 +75,7 @@ const filtradas = computed(() => {
         if (filtroCanal.value !== 'TODOS' && f.canal !== filtroCanal.value) return false;
         if (filtroApp.value !== 'TODOS' && appCorta(f.app) !== filtroApp.value) return false;
         if (!q) return true;
-        return [f.media_source, f.campania, f.campania_id].some((v) => sinAcentos(v).includes(q));
+        return [f.media_source, f.campania, f.campania_id, f.adset, f.adset_id].some((v) => sinAcentos(v).includes(q));
     });
 });
 
@@ -121,7 +122,14 @@ const COLUMNAS_BASE = [
     { campo: 'recompras', label: 'Recompras', num: true },
     { campo: 'ordenes', label: 'Órdenes', num: true },
 ];
-const columnas = computed(() => [...COLUMNAS_BASE, ...columnasOtros.value.map((k) => ({ campo: `otros.${k}`, label: k, num: true }))]);
+// Adset y Adset ID solo en los países cuyo pivot los trae (Perú).
+const conAdset = computed(() => props.filas.some((f) => f.adset || f.adset_id));
+const columnas = computed(() => {
+    const base = conAdset.value
+        ? [...COLUMNAS_BASE.slice(0, 5), { campo: 'adset', label: 'Adset' }, { campo: 'adset_id', label: 'Adset ID' }, ...COLUMNAS_BASE.slice(5)]
+        : COLUMNAS_BASE;
+    return [...base, ...columnasOtros.value.map((k) => ({ campo: `otros.${k}`, label: k, num: true }))];
+});
 const valor = (f, campo) => (campo.startsWith('otros.') ? (f.otros || {})[campo.slice(6)] ?? 0 : campo === 'app' ? appCorta(f.app) : f[campo]);
 
 const orden = ref({ campo: null, dir: 'desc' });
@@ -189,13 +197,14 @@ const CLASE_FUENTE = { 'TADA PERFORMANCE': 'f-paid', BI: 'f-bi', CRM: 'f-crm', O
                             <input ref="archivo" type="file" accept=".csv,text/csv" :disabled="subiendo" @change="importar" />
                         </label>
                         <InfoTip etiqueta="Qué archivo subir" lado="izquierda">
-                            AppsFlyer → Analyze → Pivot → "Ecuador | DATA WEEKLY", elige las fechas y descarga el CSV. Se
-                            quitan solos los subtotales; volver a subir un periodo reemplaza esos días.
+                            AppsFlyer → Analyze → Pivot → "{{ reporte }}", elige las fechas y descarga el CSV. Se quitan
+                            solos los subtotales{{ pais === 'panama' ? ' y las filas de otros países (GEO)' : '' }}; volver a subir un periodo
+                            reemplaza esos días.
                         </InfoTip>
                     </div>
                 </header>
 
-                <p v-if="!tieneReglas" class="empty-note">Este país todavía no tiene reglas para limpiar AppsFlyer. Por ahora solo Ecuador.</p>
+                <p v-if="!tieneReglas" class="empty-note">Este país todavía no tiene reglas para limpiar AppsFlyer.</p>
                 <p v-else-if="!meses.length" class="empty-note">Todavía no hay datos. Sube el CSV del pivot de AppsFlyer para empezar.</p>
 
                 <template v-else>
@@ -206,7 +215,7 @@ const CLASE_FUENTE = { 'TADA PERFORMANCE': 'f-paid', BI: 'f-bi', CRM: 'f-crm', O
                         <FiltroDropdown v-model="filtroApp" label="App" :options="APP_OPCIONES" />
                         <div class="buscador">
                             <label for="buscadorFuentes" class="filtro-label mono">Buscar</label>
-                            <input id="buscadorFuentes" v-model="busqueda" type="search" placeholder="Media source, campaña, ID…" />
+                            <input id="buscadorFuentes" v-model="busqueda" type="search" placeholder="Media source, campaña, adset, ID…" />
                         </div>
                     </div>
 
@@ -294,6 +303,10 @@ const CLASE_FUENTE = { 'TADA PERFORMANCE': 'f-paid', BI: 'f-bi', CRM: 'f-crm', O
                                         <td>{{ f.media_source }}</td>
                                         <td class="campania" :title="f.campania">{{ f.campania }}</td>
                                         <td class="mono tenue">{{ f.campania_id ?? '—' }}</td>
+                                        <template v-if="conAdset">
+                                            <td class="campania" :title="f.adset">{{ f.adset ?? '—' }}</td>
+                                            <td class="mono tenue">{{ f.adset_id ?? '—' }}</td>
+                                        </template>
                                         <td><span class="pill-fuente" :class="CLASE_FUENTE[f.fuente_final] ?? 'f-otro'">{{ f.fuente_final }}</span></td>
                                         <td>{{ f.canal }}</td>
                                         <td class="num">{{ formatNumeroExacto(f.installs) }}</td>
