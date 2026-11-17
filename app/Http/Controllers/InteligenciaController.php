@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Creativo;
 use App\Models\Pais;
 use App\Models\Resultado;
+use App\Services\ImagenFirmadaService;
 use App\Services\Inteligencia\CompararGrupos;
 use App\Services\RangosActividadService;
 use App\Services\Reportes\ExportadorPdfGrupos;
@@ -28,6 +29,11 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  */
 class InteligenciaController extends Controller
 {
+    // Las imágenes viven en un bucket privado: el navegador solo puede
+    // cargarlas con URL firmada, igual que en Creativos (2026-11-17: aquí
+    // se mandaba la URL tal cual y no se veía ninguna).
+    public function __construct(private readonly ImagenFirmadaService $imagenes) {}
+
     public function index(Request $request, string $pais): Response
     {
         $config = config("paises.{$pais}");
@@ -93,6 +99,7 @@ class InteligenciaController extends Controller
         $rangosPorCreativo = RangosActividadService::porCreativo($paisModelo->id);
         foreach ($creativos as $creativo) {
             $creativo->setAttribute('rangos_actividad', $rangosPorCreativo[$creativo->id] ?? []);
+            $creativo->imagen_url = $this->imagenes->firmar($creativo->imagen_url);
         }
 
         return Inertia::render('Inteligencia', [
@@ -130,6 +137,7 @@ class InteligenciaController extends Controller
                 foreach ($orden as $id) {
                     if ($c = $modelos->get($id)) {
                         $c->setAttribute('benchmark', $benchPorId[$id]);
+                        $c->imagen_url = $this->imagenes->firmar($c->imagen_url);
                         $lista[] = $c;
                     }
                 }
