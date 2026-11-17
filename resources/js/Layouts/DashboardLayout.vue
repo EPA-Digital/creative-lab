@@ -36,14 +36,60 @@ const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director',
 // conserva la vista en la que está.
 const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
-const SECCION_ANALISIS = computed(() => (esEpa.value
-    ? [
-        { vista: 'resumen', label: 'Resumen', icono: 'house' },
-        { vista: 'creativos', label: 'Creativos', icono: 'play' },
-        { vista: 'inteligencia', label: 'Inteligencia', icono: 'bulb' },
-        { vista: 'insights', label: 'Insights', icono: 'star', proximamente: true },
-    ]
-    : [{ vista: 'creativos', label: 'Creativos', icono: 'play' }]));
+// Menú en árbol plegable (2026-11-17, pedido explícito): Resumen, Análisis,
+// Datos y Fuentes como ramas; cada vista es una hoja. Un 'cliente' solo ve
+// Creativos.
+const ARBOL = computed(() => {
+    if (!esEpa.value) {
+        return [{ id: 'analisis', label: 'Análisis', icono: 'grafica', hijos: [{ vista: 'creativos', label: 'Creativos' }] }];
+    }
+    return [
+        { id: 'resumen', label: 'Resumen', icono: 'house', hijos: [{ vista: 'daily', label: 'Daily', proximamente: true }] },
+        {
+            id: 'analisis',
+            label: 'Análisis',
+            icono: 'grafica',
+            hijos: [
+                { vista: 'creativos', label: 'Creativos' },
+                { vista: 'inteligencia', label: 'Inteligencia' },
+                { vista: 'insights', label: 'Insights', proximamente: true },
+            ],
+        },
+        {
+            id: 'datos',
+            label: 'Datos',
+            icono: 'datos',
+            hijos: [
+                { vista: 'importar', label: 'Cargar datos' },
+                ...(tieneFuentes.value ? [{ vista: 'af-data', label: 'AF data' }, { vista: 'medios-data', label: 'Medios data' }] : []),
+            ],
+        },
+        ...(tieneFuentes.value ? [{ id: 'fuentes', label: 'Fuentes', icono: 'fuentes', hijos: [{ vista: 'fuentes', label: 'Fuentes' }] }] : []),
+    ];
+});
+
+// Ramas abiertas: se recuerdan en el navegador; la rama de la vista actual
+// siempre abre. Por omisión, Análisis y Datos abiertas.
+const RAMAS_KEY = 'tada-nav-ramas';
+const ramasAbiertas = ref(['analisis', 'datos']);
+try {
+    const guardadas = JSON.parse(localStorage.getItem(RAMAS_KEY) || 'null');
+    if (Array.isArray(guardadas)) ramasAbiertas.value = guardadas;
+} catch { /* localStorage no disponible */ }
+const tieneActiva = (rama) => rama.hijos.some((h) => h.vista === props.vistaActiva);
+const estaAbierta = (rama) => ramasAbiertas.value.includes(rama.id) || tieneActiva(rama);
+function alternarRama(rama) {
+    // Con el menú contraído, tocar una rama lo expande y la abre.
+    if (contraido.value) {
+        alternarPanel();
+        if (!ramasAbiertas.value.includes(rama.id)) ramasAbiertas.value = [...ramasAbiertas.value, rama.id];
+    } else {
+        ramasAbiertas.value = ramasAbiertas.value.includes(rama.id) ? ramasAbiertas.value.filter((r) => r !== rama.id) : [...ramasAbiertas.value, rama.id];
+    }
+    try {
+        localStorage.setItem(RAMAS_KEY, JSON.stringify(ramasAbiertas.value));
+    } catch { /* localStorage no disponible */ }
+}
 
 const cuentaActual = computed(() => usePage().props.cuentaActual ?? null);
 const misCuentas = computed(() => usePage().props.misCuentas ?? []);
@@ -127,6 +173,9 @@ const ICONOS = {
     tabla: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M3 15h18"/><path d="M9 4v16"/></svg>',
     medios: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.6 5 3.2 5 1.4 5 3.3-2.2 3.2-5 3.2-5-1.2-5-3"/></svg>',
     fuentes: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-6 8v6l-4 2v-8z"/></svg>',
+    grafica: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/><path d="M15 8h5v5"/></svg>',
+    datos: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
+    flecha: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
     bulb: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.45 1 1.15 1 1.9V16h5v-.2c0-.75.4-1.45 1-1.9A6 6 0 0 0 12 3z"/></svg>',
     star: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z"/></svg>',
     upload: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="m7 9 5-5 5 5"/><path d="M20 15v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4"/></svg>',
@@ -269,48 +318,27 @@ onBeforeUnmount(() => {
                 >{{ p.codigo }}</Link>
             </div>
 
-            <div class="panel-seccion">
-                <span class="panel-seccion-titulo mono">Análisis</span>
-                <template v-for="item in SECCION_ANALISIS" :key="item.vista">
-                    <span v-if="item.proximamente" class="nav-item deshabilitado" :title="`${item.label} · Próximamente`" aria-disabled="true">
-                        <span class="nav-icono" v-html="ICONOS[item.icono]" />
-                        <span class="nav-label">{{ item.label }}</span>
-                        <span class="nav-tag mono">Próximamente</span>
-                    </span>
-                    <Link v-else :href="hrefVista(item.vista)" class="nav-item" :class="{ activo: vistaActiva === item.vista }" :title="item.label">
-                        <span class="nav-icono" v-html="ICONOS[item.icono]" />
-                        <span class="nav-label">{{ item.label }}</span>
-                    </Link>
-                </template>
-            </div>
-
-            <div v-if="esEpa" class="panel-seccion">
-                <span class="panel-seccion-titulo mono">Datos</span>
-                <Link :href="hrefVista('importar')" class="nav-item" :class="{ activo: vistaActiva === 'importar' }" title="Cargar datos">
-                    <span class="nav-icono" v-html="ICONOS.upload" />
-                    <span class="nav-label">Cargar datos</span>
-                </Link>
-            </div>
-
-            <div v-if="esEpa && tieneFuentes" class="panel-seccion">
-                <span class="panel-seccion-titulo mono">Data</span>
-                <Link :href="hrefVista('af-data')" class="nav-item" :class="{ activo: vistaActiva === 'af-data' }" title="AF data">
-                    <span class="nav-icono" v-html="ICONOS.tabla" />
-                    <span class="nav-label">AF data</span>
-                </Link>
-                <Link :href="hrefVista('medios-data')" class="nav-item" :class="{ activo: vistaActiva === 'medios-data' }" title="Medios data">
-                    <span class="nav-icono" v-html="ICONOS.medios" />
-                    <span class="nav-label">Medios data</span>
-                </Link>
-            </div>
-
-            <div v-if="esEpa && tieneFuentes" class="panel-seccion">
-                <span class="panel-seccion-titulo mono">Fuentes</span>
-                <Link :href="hrefVista('fuentes')" class="nav-item" :class="{ activo: vistaActiva === 'fuentes' }" title="Fuentes">
-                    <span class="nav-icono" v-html="ICONOS.fuentes" />
-                    <span class="nav-label">Fuentes</span>
-                </Link>
-            </div>
+            <nav class="arbol" aria-label="Secciones">
+                <div v-for="rama in ARBOL" :key="rama.id" class="rama" :class="{ abierta: estaAbierta(rama), 'con-activa': tieneActiva(rama) }">
+                    <button type="button" class="rama-cabeza" :aria-expanded="estaAbierta(rama)" :title="rama.label" @click="alternarRama(rama)">
+                        <span class="nav-icono" v-html="ICONOS[rama.icono]" />
+                        <span class="nav-label">{{ rama.label }}</span>
+                        <span v-if="!estaAbierta(rama)" class="rama-cuenta mono">{{ rama.hijos.length }}</span>
+                        <span class="rama-flecha" v-html="ICONOS.flecha" />
+                    </button>
+                    <div v-if="estaAbierta(rama) && !contraido" class="rama-hijos">
+                        <template v-for="h in rama.hijos" :key="h.vista">
+                            <span v-if="h.proximamente" class="hoja pronto" aria-disabled="true">
+                                <span class="nav-label">{{ h.label }}</span>
+                                <span class="nav-tag">Pronto</span>
+                            </span>
+                            <Link v-else :href="hrefVista(h.vista)" class="hoja" :class="{ activa: vistaActiva === h.vista }" :aria-current="vistaActiva === h.vista ? 'page' : undefined">
+                                <span class="nav-label">{{ h.label }}</span>
+                            </Link>
+                        </template>
+                    </div>
+                </div>
+            </nav>
 
             <div v-if="esEpa" class="panel-seccion panel-admin">
                 <span class="panel-seccion-titulo mono">Administración</span>
@@ -688,6 +716,103 @@ onBeforeUnmount(() => {
     text-transform: uppercase;
     color: var(--text-faint);
 }
+.arbol {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.rama-cabeza {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 10px;
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.rama-cabeza:hover {
+    color: var(--text);
+    background: var(--surface-2);
+}
+.rama-cabeza:focus-visible,
+.hoja:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
+.rama.con-activa .rama-cabeza {
+    color: var(--text);
+}
+.rama-cuenta {
+    font-size: 11px;
+    color: var(--text-faint);
+}
+.rama-flecha {
+    display: flex;
+    color: var(--text-faint);
+    transition: transform 0.15s ease;
+}
+.rama.abierta .rama-flecha {
+    transform: rotate(90deg);
+}
+.rama-hijos {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 6px 19px;
+    padding-left: 10px;
+    border-left: 1px solid var(--border);
+}
+.hoja {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    text-decoration: none;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.hoja::before {
+    content: '';
+    position: absolute;
+    left: -11px;
+    top: 7px;
+    bottom: 7px;
+    width: 2px;
+    border-radius: 2px;
+    background: transparent;
+}
+.hoja:hover:not(.pronto) {
+    color: var(--text);
+    background: var(--surface-2);
+}
+.hoja.activa {
+    color: var(--accent-text);
+    background: color-mix(in srgb, var(--amber) 14%, transparent);
+    font-weight: 600;
+}
+.hoja.activa::before {
+    background: var(--amber);
+}
+.hoja.pronto {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.hoja .nav-tag {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 10px;
+}
 .panel-admin {
     margin-top: auto;
     padding-top: 16px;
@@ -862,6 +987,8 @@ onBeforeUnmount(() => {
 .panel.contraido .nav-label,
 .panel.contraido .nav-tag,
 .panel.contraido .nav-contador,
+.panel.contraido .rama-cuenta,
+.panel.contraido .rama-flecha,
 .panel.contraido .usuario-texto,
 .panel.contraido .usuario-btn .selector-chevrons {
     display: none;
