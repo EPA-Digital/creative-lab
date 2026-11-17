@@ -193,7 +193,29 @@ function barras(clave, nombre) {
 }
 const porMedio = computed(() => barras('medio', (k) => nombreMedio(k)).map((b) => ({ ...b, color: colorMedio(b.k) })));
 const porFunnel = computed(() => barras('funnel', (k) => nombreFunnel(k || null)).sort((a, b) => FUNNELS.indexOf(a.k) - FUNNELS.indexOf(b.k)));
-const porRegion = computed(() => (props.campanias.some((c) => c.region) ? barras('region', (k) => k || 'Sin región') : []));
+
+// --- Resumen en vistas (carrusel con flechas) ---------------------------------
+const VISTAS_RESUMEN = [
+    { id: 'control', titulo: 'Control de presupuesto', sub: 'Costo vs budget por funnel y por medio' },
+    { id: 'medios', titulo: 'Por medio', sub: 'Inversión y resultados de cada medio' },
+    { id: 'region', titulo: 'Proyectado vs invertido por región', sub: 'Budget vs costo de cada región' },
+];
+const vistaResumen = ref(0);
+const moverVista = (n) => { vistaResumen.value = (vistaResumen.value + n + VISTAS_RESUMEN.length) % VISTAS_RESUMEN.length; };
+const regionPor = ref('medio');
+const regiones = computed(() => {
+    const conRegion = props.campanias.filter((c) => c.region);
+    const nombres = [...new Set(conRegion.map((c) => c.region))].sort();
+    return nombres.map((nombre) => {
+        const lista = conRegion.filter((c) => c.region === nombre);
+        const clave = regionPor.value;
+        const ks = [...new Set(lista.map((c) => c[clave] ?? ''))];
+        const filas = ks
+            .map((k) => ({ k, nombre: clave === 'medio' ? nombreMedio(k) : nombreFunnel(k || null), ...total(lista.filter((c) => (c[clave] ?? '') === k)) }))
+            .sort((a, b) => (clave === 'funnel' ? FUNNELS.indexOf(a.k) - FUNNELS.indexOf(b.k) : b.budget - a.budget));
+        return { nombre, filas, total: total(lista) };
+    });
+});
 
 const METAS = [
     { campo: 'meta_installs', label: 'Installs', real: 'installs' },
@@ -348,23 +370,105 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                         </div>
                     </section>
 
-                    <!-- Por medio / funnel / región -->
-                    <div class="grid-barras">
-                        <section v-for="bloque in [{ t: 'Por medio', d: porMedio }, { t: 'Por funnel', d: porFunnel }, ...(porRegion.length ? [{ t: 'Por región', d: porRegion }] : [])]" :key="bloque.t" class="import-panel panel">
-                            <h2>{{ bloque.t }}</h2>
-                            <p class="hint">Costo vs budget; la línea es el % ideal al {{ fechaCorta(fechas.ayer) }} ({{ pct(fechas.ideal) }}).</p>
-                            <div v-for="b in bloque.d" :key="b.k" class="barra">
-                                <div class="barra-cabeza">
-                                    <span><i v-if="b.color" class="punto" :style="{ background: `var(--${b.color})` }" />{{ b.nombre }}</span>
-                                    <span class="mono">{{ dinero(b.costo) }} / {{ dinero(b.budget) }} · <b :class="`ritmo-texto-${ritmo(b.dif)}`">{{ pct(b.consumido) }}</b></span>
+                    <!-- Resumen en vistas con flechas: control, medios, región -->
+                    <section class="import-panel panel carrusel">
+                        <div class="carrusel-cabeza">
+                            <button type="button" class="paso" aria-label="Vista anterior" @click="moverVista(-1)">‹</button>
+                            <div class="carrusel-titulo">
+                                <h2>{{ VISTAS_RESUMEN[vistaResumen].titulo }}</h2>
+                                <span class="hint">{{ VISTAS_RESUMEN[vistaResumen].sub }} · marca vertical = % ideal al {{ fechaCorta(fechas.ayer) }} ({{ pct(fechas.ideal) }})</span>
+                            </div>
+                            <div class="puntos" role="tablist" aria-label="Vistas del resumen">
+                                <button
+                                    v-for="(v, i) in VISTAS_RESUMEN"
+                                    :key="v.id"
+                                    type="button"
+                                    role="tab"
+                                    :aria-selected="vistaResumen === i"
+                                    :aria-label="v.titulo"
+                                    :title="v.titulo"
+                                    :class="{ activo: vistaResumen === i }"
+                                    @click="vistaResumen = i"
+                                />
+                            </div>
+                            <button type="button" class="paso" aria-label="Vista siguiente" @click="moverVista(1)">›</button>
+                        </div>
+
+                        <!-- 1. Control de presupuesto por funnel y por medio -->
+                        <div v-if="VISTAS_RESUMEN[vistaResumen].id === 'control'" class="dos-columnas">
+                            <div v-for="bloque in [{ t: 'Por funnel', d: porFunnel }, { t: 'Por medio', d: porMedio }]" :key="bloque.t">
+                                <h3 class="sub-titulo">{{ bloque.t }}</h3>
+                                <div v-for="b in bloque.d" :key="b.k" class="barra">
+                                    <div class="barra-cabeza">
+                                        <span>
+                                            <i v-if="b.color" class="punto" :style="{ background: `var(--${b.color})` }" />{{ b.nombre }}
+                                            <span class="parte">· {{ pct(div(b.budget, totalGeneral.budget)) }} del budget</span>
+                                        </span>
+                                        <span class="mono">{{ dinero(b.costo) }} / {{ dinero(b.budget) }} · <b :class="`ritmo-texto-${ritmo(b.dif)}`">{{ pct(b.consumido) }}</b></span>
+                                    </div>
+                                    <div class="pista">
+                                        <i :class="`ritmo-fondo-${ritmo(b.dif)}`" :style="{ width: anchoBarra(b.consumido) }" />
+                                        <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. Tarjetas por medio -->
+                        <div v-else-if="VISTAS_RESUMEN[vistaResumen].id === 'medios'" class="tarjetas-medio">
+                            <div v-for="b in porMedio" :key="b.k" class="tarjeta-medio">
+                                <div class="tm-cabeza">
+                                    <span><i v-if="b.color" class="cuadro" :style="{ background: `var(--${b.color})` }" />{{ b.nombre }}</span>
+                                    <b :class="`ritmo-texto-${ritmo(b.dif)}`">{{ pct(b.consumido) }}</b>
                                 </div>
                                 <div class="pista">
                                     <i :class="`ritmo-fondo-${ritmo(b.dif)}`" :style="{ width: anchoBarra(b.consumido) }" />
                                     <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" />
                                 </div>
+                                <div class="tm-montos mono">
+                                    <span>{{ dinero(b.costo) }} de {{ dinero(b.budget) }}</span>
+                                    <span>Rem. {{ dinero(b.remanente) }}</span>
+                                </div>
+                                <div class="tm-resultados">
+                                    <div><span class="kpi-label">Installs</span><b class="num">{{ entero(b.installs) }}</b></div>
+                                    <div><span class="kpi-label">NC</span><b class="num">{{ entero(b.nc) }}</b></div>
+                                    <div><span class="kpi-label">Orders</span><b class="num">{{ entero(b.orders) }}</b></div>
+                                </div>
                             </div>
-                        </section>
-                    </div>
+                        </div>
+
+                        <!-- 3. Proyectado vs invertido por región -->
+                        <div v-else>
+                            <div v-if="regiones.length" class="region-toggle">
+                                <div class="periodo-toggle" role="group" aria-label="Agrupar región">
+                                    <button type="button" :class="{ activo: regionPor === 'medio' }" @click="regionPor = 'medio'">Por medio</button>
+                                    <button type="button" :class="{ activo: regionPor === 'funnel' }" @click="regionPor = 'funnel'">Por fase</button>
+                                </div>
+                            </div>
+                            <p v-if="!regiones.length" class="empty-note">
+                                Ninguna campaña tiene región. En la tabla de campañas activa "Más métricas" y llena la columna Región (ej. Lima, Provincias, Tuxtla-Mérida).
+                            </p>
+                            <div v-else class="regiones">
+                                <div v-for="r in regiones" :key="r.nombre" class="region">
+                                    <h3 class="sub-titulo">{{ r.nombre }}</h3>
+                                    <div v-for="x in r.filas" :key="x.k" class="barra">
+                                        <div class="barra-cabeza">
+                                            <span>{{ x.nombre }}</span>
+                                            <span class="mono">{{ dinero(x.costo) }} / {{ dinero(x.budget) }} · <b :class="`ritmo-texto-${ritmo(x.dif)}`">{{ pct(x.consumido) }}</b></span>
+                                        </div>
+                                        <div class="pista">
+                                            <i :class="`ritmo-fondo-${ritmo(x.dif)}`" :style="{ width: anchoBarra(x.consumido) }" />
+                                            <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" />
+                                        </div>
+                                    </div>
+                                    <div class="region-total">
+                                        <span>Total</span>
+                                        <b class="mono">{{ dinero(r.total.costo) }} / {{ dinero(r.total.budget) }}</b>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
 
                     <!-- Campañas -->
                     <section class="import-panel panel">
@@ -940,6 +1044,128 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
 }
 .ritmo-fondo-neutro {
     background: var(--text-faint) !important;
+}
+
+/* Carrusel del resumen */
+.import-panel.carrusel {
+    display: block;
+}
+.carrusel-cabeza {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.carrusel-titulo {
+    flex: 1;
+    min-width: 0;
+}
+.carrusel-titulo h2 {
+    margin: 0;
+}
+.carrusel-titulo .hint {
+    margin: 2px 0 0;
+}
+.puntos {
+    display: flex;
+    gap: 6px;
+}
+.puntos button {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border-radius: 999px;
+    border: none;
+    background: var(--surface-2);
+    cursor: pointer;
+}
+.puntos button.activo {
+    background: var(--amber);
+    width: 20px;
+}
+.dos-columnas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 28px;
+}
+.sub-titulo {
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    font-weight: 600;
+    margin: 0 0 10px;
+}
+.parte {
+    color: var(--text-faint);
+    font-size: 0.74rem;
+}
+.tarjetas-medio {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+}
+.tarjeta-medio {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+}
+.tm-cabeza {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-weight: 600;
+}
+.cuadro {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 8px;
+}
+.tm-montos {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    margin-top: 8px;
+}
+.tm-resultados {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 10px;
+}
+.tm-resultados div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.tm-resultados b {
+    font-size: 1rem;
+}
+.region-toggle {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 10px;
+}
+.regiones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 28px;
+}
+.region-total {
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 8px;
+    font-weight: 600;
+    font-size: 0.82rem;
 }
 
 /* Barras */
