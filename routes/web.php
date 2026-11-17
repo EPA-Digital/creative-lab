@@ -7,6 +7,7 @@ use App\Http\Controllers\CuentasController;
 use App\Http\Controllers\DatosMensualesController;
 use App\Http\Controllers\EvaluacionCreativoController;
 use App\Http\Controllers\FuentesController;
+use App\Http\Controllers\FunnelController;
 use App\Http\Controllers\GestionNombresController;
 use App\Http\Controllers\ImportarDatosController;
 use App\Http\Controllers\InteligenciaController;
@@ -75,6 +76,8 @@ Route::middleware('auth')->group(function () {
             // Fuentes (2026-11-13): venta real → canales, con inversión y eficiencia.
             Route::get('/fuentes', [FuentesController::class, 'index'])->name('fuentes');
             Route::post('/fuentes/venta-real', [FuentesController::class, 'guardarVentaReal'])->name('fuentes.venta-real');
+            // Funnel (2026-11-17): eventos de la app etapa por etapa, desde AF data.
+            Route::get('/funnel', [FunnelController::class, 'index'])->name('funnel');
 
             Route::get('/ajustes/nombres', [GestionNombresController::class, 'index'])->name('gestion-nombres');
             // Cola "Sin creativo" (Spark Ads y demás): asignar crea una regla

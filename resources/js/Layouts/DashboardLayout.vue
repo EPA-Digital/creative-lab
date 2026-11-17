@@ -34,7 +34,7 @@ const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director',
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
 // conserva la vista en la que está.
-const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
+const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
 // Menú en árbol plegable (2026-11-17, pedido explícito): Resumen, Análisis,
 // Datos y Fuentes como ramas; cada vista es una hoja. Un 'cliente' solo ve
@@ -64,7 +64,7 @@ const ARBOL = computed(() => {
                 ...(tieneFuentes.value ? [{ vista: 'af-data', label: 'AF data' }, { vista: 'medios-data', label: 'Medios data' }] : []),
             ],
         },
-        ...(tieneFuentes.value ? [{ id: 'fuentes', label: 'Fuentes', icono: 'fuentes', hijos: [{ vista: 'fuentes', label: 'Fuentes' }] }] : []),
+        ...(tieneFuentes.value ? [{ id: 'fuentes', label: 'Fuentes', icono: 'fuentes', hijos: [{ vista: 'fuentes', label: 'Fuentes' }, { vista: 'funnel', label: 'Funnel' }] }] : []),
     ];
 });
 
@@ -101,7 +101,7 @@ const hrefVista = (vista, pais = props.pais) => urlPais(pais, RUTA_VISTA[vista] 
 // Otra cuenta: su primer país, en Creativos (sin países: el selector de inicio).
 const hrefCuenta = (c) => (c.paises.length ? urlPais(c.paises[0].id, '/analisis', c.slug) : `/?cuenta=${c.slug}`);
 // En Cuentas/Usuarios (fuera de un país) el cambio de país va a Creativos.
-const VISTAS_FUENTES = ['af-data', 'medios-data', 'fuentes'];
+const VISTAS_FUENTES = ['af-data', 'medios-data', 'fuentes', 'funnel'];
 const vistaParaPais = computed(() => (RUTA_VISTA[props.vistaActiva] ? props.vistaActiva : 'creativos'));
 // Cambiar de país desde AF data / Medios data / Fuentes a uno que no las
 // tiene (México) lleva a Creativos.
