@@ -93,6 +93,31 @@ class ControlGastoTest extends TestCase
         $this->assertSame(0, DB::table('control_revisiones')->count());
     }
 
+    public function test_solo_campanias_con_gasto_propio_y_quitar_con_historial(): void
+    {
+        $user = $this->usuario();
+        $paisId = $this->datos();
+        // Campaña que solo existe en AF data (sin gasto nuestro): no se muestra.
+        FuenteAppsflyer::create([
+            'pais_id' => $paisId, 'fecha' => '2026-11-15', 'app' => 'TaDa', 'media_source' => 'Facebook Ads', 'campania' => 'BI_AGENCIA_X',
+            'installs' => 80, 'nc' => 5, 'recompras' => 5, 'ordenes' => 10, 'fuente_final' => 'BI', 'canal' => 'BI',
+        ]);
+        $r = app(ControlGasto::class)->armar($paisId, 'ecuador', '2026-11-15', CarbonImmutable::parse('2026-11-18'));
+        $this->assertSame([mb_strtolower(self::CAMP)], array_column($r['campanias'], 'k'));
+        $this->assertSame(1, $r['sinGastoPropio']);
+
+        $this->actingAs($user)->post('/tada/pais/ecuador/control-gasto/excluir', ['campania' => self::CAMP, 'medio' => 'tiktok', 'motivo' => 'No es nuestra'])->assertOk();
+        $r = app(ControlGasto::class)->armar($paisId, 'ecuador', '2026-11-15', CarbonImmutable::parse('2026-11-18'));
+        $this->assertSame([], $r['campanias']);
+        $this->assertSame([self::CAMP, 'No es nuestra', $user->name, null], [$r['historialExcluidas'][0]['campania'], $r['historialExcluidas'][0]['motivo'], $r['historialExcluidas'][0]['por'], $r['historialExcluidas'][0]['restaurada_en']]);
+
+        $this->actingAs($user)->post('/tada/pais/ecuador/control-gasto/restaurar/'.$r['historialExcluidas'][0]['id'])->assertOk();
+        $this->actingAs($user)->post('/tada/pais/ecuador/control-gasto/restaurar/'.$r['historialExcluidas'][0]['id'])->assertNotFound();
+        $r = app(ControlGasto::class)->armar($paisId, 'ecuador', '2026-11-15', CarbonImmutable::parse('2026-11-18'));
+        $this->assertCount(1, $r['campanias']);
+        $this->assertSame($user->name, $r['historialExcluidas'][0]['restauro']);
+    }
+
     public function test_mexico_entra_y_cliente_no(): void
     {
         $this->actingAs($this->usuario('junior', 'MX', 'México'))->get('/tada/pais/mexico/control-gasto')->assertOk();

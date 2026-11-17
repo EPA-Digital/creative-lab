@@ -55,10 +55,12 @@ class ControlGasto
         $rango = [$desde->toDateString(), $corte->toDateString()];
 
         // Plan del mes del corte (status, budget, KPIs, responsable, metas).
-        $plan = DB::table('daily_planes')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)->where('mes', $corte->format('Y-m'))->first();
+        // Todos los Dailies del mes (Ecuador: Paid y BI); metas y fechas del Paid.
+        $planes = DB::table('daily_planes')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)->where('mes', $corte->format('Y-m'))->get();
+        $plan = $planes->firstWhere('tipo', 'paid') ?? $planes->first();
         $enPlan = [];
-        if ($plan) {
-            foreach (DB::table('daily_campanias')->where('plan_id', $plan->id)->get() as $c) {
+        if ($planes->isNotEmpty()) {
+            foreach (DB::table('daily_campanias')->whereIn('plan_id', $planes->pluck('id'))->get() as $c) {
                 $enPlan[self::clave($c->campania)] = $c;
                 if ($c->campania_id) {
                     $enPlan['id:'.$c->campania_id] = $c;
@@ -104,12 +106,28 @@ class ControlGasto
             unset($s);
         }
 
+        // Campañas que el equipo quitó (no son suyas) y su historial.
+        $movimientos = DB::table('control_excluidas')
+            ->leftJoin('users as q', 'q.id', '=', 'control_excluidas.excluida_por')
+            ->leftJoin('users as r', 'r.id', '=', 'control_excluidas.restaurada_por')
+            ->where('control_excluidas.cuenta_id', $cuentaId)->where('control_excluidas.pais_id', $paisId)
+            ->orderByDesc('control_excluidas.excluida_en')->orderByDesc('control_excluidas.id')
+            ->get(['control_excluidas.*', 'q.name as por', 'r.name as restauro']);
+        $excluidas = $movimientos->whereNull('restaurada_en')->pluck('clave')->flip()->all();
+
         $salida = [];
+        $sinGastoPropio = 0;
         foreach ($campanias as $k => $c) {
+            if (isset($excluidas[$k])) {
+                continue;
+            }
             $p = $enPlan[$k] ?? ($c['campania_id'] ? ($enPlan['id:'.$c['campania_id']] ?? null) : null);
-            // Sin actividad en el rango y fuera del plan: no aporta nada.
-            $activa = array_sum(array_map(fn ($d) => $d[0] + $d[1] + $d[4], $c['serie'])) > 0;
-            if (! $activa && ! $p) {
+            // Solo lo que gasta desde nuestras cuentas (data.medios) o está en
+            // el Daily: lo que solo aparece en AF data es de otros.
+            $gastaNuestro = array_sum(array_map(fn ($d) => $d[0], $c['serie'])) > 0;
+            if (! $gastaNuestro && ! $p) {
+                $sinGastoPropio++;
+
                 continue;
             }
             $salida[] = [
@@ -151,6 +169,18 @@ class ControlGasto
                 'metas' => [null, $plan->meta_installs, $plan->meta_nc, null, $plan->meta_orders],
             ] : ['inicio' => $inicioPlan, 'fin' => $finPlan, 'metas' => null],
             'revisadas' => (object) $revisadas,
+            'sinGastoPropio' => $sinGastoPropio,
+            'historialExcluidas' => $movimientos->map(fn ($m) => [
+                'id' => $m->id,
+                'clave' => $m->clave,
+                'campania' => $m->campania,
+                'medio' => $m->medio,
+                'motivo' => $m->motivo,
+                'por' => $m->por,
+                'en' => $m->excluida_en ? substr((string) $m->excluida_en, 0, 16) : null,
+                'restauro' => $m->restauro,
+                'restaurada_en' => $m->restaurada_en ? substr((string) $m->restaurada_en, 0, 16) : null,
+            ])->values()->all(),
         ];
     }
 

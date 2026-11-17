@@ -18,12 +18,22 @@ use Illuminate\Support\Facades\DB;
  *   del mes (el gasto se guarda por mes).
  * - El último mes con datos es un corte parcial si AppsFlyer no llega a fin
  *   de mes.
+ * - Desde 2026-11-17: si el periodo ya tiene data.medios importada
+ *   (medios_diario), la inversión sale de ahí -- todos los medios, por
+ *   fecha exacta, sin las campañas _BRD_. Los meses sin data.medios siguen
+ *   con la API + la captura manual.
  */
 class PanelFuentes
 {
     private const MEDIO_POR_PLATAFORMA = ['meta' => 'Facebook Ads', 'tiktok' => 'TikTok'];
 
     private const FUNNELS = ['AWA', 'CONS', 'CNV', 'LOY'];
+
+    /** Canal de data.medios (config/canales.php o el nombre tal cual) → medio de Fuentes. */
+    private const MEDIO_POR_CANAL = [
+        'meta' => 'Facebook Ads', 'tiktok' => 'TikTok', 'asa' => 'Apple Search Ads', 'rtb' => 'RTB House',
+        'google' => 'Google Ads', 'google-ads' => 'Google Ads', 'jampp' => 'Jampp', 'twitter' => 'Twitter',
+    ];
 
     /**
      * @param  list<string>  $medios  orden de los medios paid (config canales_paid)
@@ -71,6 +81,29 @@ class PanelFuentes
 
         $ultimoDia = CarbonImmutable::parse($diario->max('fecha'));
 
+        // data.medios por día (sin BRD), por medio y etapa. Un mes que la tiene
+        // usa solo esto para su inversión (ya trae los medios sin API).
+        $dataMedios = DB::table('medios_diario')
+            ->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)
+            ->whereRaw("UPPER(campania) NOT LIKE ? ESCAPE '!'", ['%!_BRD!_%'])
+            ->groupBy('fecha', 'medio', 'campania')
+            ->selectRaw('fecha, medio, campania, SUM(costo) as costo')
+            ->get()
+            ->map(fn ($f) => (object) ['fecha' => substr((string) $f->fecha, 0, 10), 'medio' => self::MEDIO_POR_CANAL[$f->medio] ?? $f->medio, 'funnel' => PanelDaily::funnelDe($f->campania) ?? 'SIN', 'costo' => (float) $f->costo]);
+        $mesesConDataMedios = $dataMedios->map(fn ($f) => substr($f->fecha, 0, 7))->unique()->flip()->all();
+        $dataMediosEntre = function (string $desde, string $hasta) use ($dataMedios, $medios) {
+            $medio = array_fill_keys($medios ?: array_values(self::MEDIO_POR_PLATAFORMA), 0.0);
+            $funnel = array_fill_keys([...self::FUNNELS, 'SIN'], 0.0);
+            foreach ($dataMedios as $f) {
+                if ($f->fecha >= $desde && $f->fecha <= $hasta) {
+                    $medio[$f->medio] = ($medio[$f->medio] ?? 0) + $f->costo;
+                    $funnel[$f->funnel] += $f->costo;
+                }
+            }
+
+            return ['medio' => array_map(fn ($v) => round($v, 2), $medio), 'funnel' => array_map(fn ($v) => round($v, 2), $funnel), 'total' => round(array_sum($medio), 2)];
+        };
+
         // --- Meses -------------------------------------------------------------
         $meses = [];
         foreach ($diario as $fila) {
@@ -95,7 +128,10 @@ class PanelFuentes
                 'parcial' => $hasta->day < $diasMes,
                 'af' => $m['af'],
                 'ventaReal' => $venta($vr),
-                'inversion' => self::conManual($api, $manualEntre($inicio->toDateString(), $inicio->endOfMonth()->toDateString()), $mediosManuales),
+                'inversion' => isset($mesesConDataMedios[$mes])
+                    ? $dataMediosEntre($inicio->toDateString(), $inicio->endOfMonth()->toDateString())
+                    : self::conManual($api, $manualEntre($inicio->toDateString(), $inicio->endOfMonth()->toDateString()), $mediosManuales),
+                'inversionDe' => isset($mesesConDataMedios[$mes]) ? 'data.medios' : 'api',
                 'inversionApi' => $api,
             ];
         }
@@ -141,11 +177,14 @@ class PanelFuentes
                 'af' => $s['af'],
                 // Gasto por fecha: la semana completa (hasta el domingo, el fin de
                 // mes o el último día con datos), no solo los días con AppsFlyer.
-                'inversion' => self::conManual($apiSemana, $manualEntre($s['desde'], min(
-                    $desde->endOfWeek(CarbonImmutable::SUNDAY)->toDateString(),
-                    $desde->endOfMonth()->toDateString(),
-                    $ultimoDia->toDateString(),
-                )), $mediosManuales),
+                'inversion' => isset($mesesConDataMedios[$s['mes']])
+                    ? $dataMediosEntre($s['desde'], min($desde->endOfWeek(CarbonImmutable::SUNDAY)->toDateString(), $desde->endOfMonth()->toDateString()))
+                    : self::conManual($apiSemana, $manualEntre($s['desde'], min(
+                        $desde->endOfWeek(CarbonImmutable::SUNDAY)->toDateString(),
+                        $desde->endOfMonth()->toDateString(),
+                        $ultimoDia->toDateString(),
+                    )), $mediosManuales),
+                'inversionDe' => isset($mesesConDataMedios[$s['mes']]) ? 'data.medios' : 'api',
             ];
         }
         $salidaMeses = array_map(function ($m) {

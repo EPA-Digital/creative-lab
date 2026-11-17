@@ -23,7 +23,47 @@ const props = defineProps({
     campanias: { type: Array, default: () => [] },
     plan: { type: Object, default: () => ({}) },
     revisadas: { type: Object, default: () => ({}) },
+    // Campañas de AF data sin gasto en nuestras cuentas (no se muestran).
+    sinGastoPropio: { type: Number, default: 0 },
+    // Historial de campañas quitadas / restauradas.
+    historialExcluidas: { type: Array, default: () => [] },
 });
+
+// --- Quitar campañas que no son nuestras (con historial) -------------------------
+const quitando = ref(null); // { campania, medio, nombre }
+const motivo = ref('');
+function pedirQuitar(c) {
+    quitando.value = { campania: c.campania, medio: c.medio, nombre: etiqueta(c) };
+    motivo.value = '';
+}
+async function confirmarQuitar() {
+    const c = quitando.value;
+    try {
+        await axios.post(`${location.pathname}/excluir`, { campania: c.campania, medio: c.medio, motivo: motivo.value.trim() || null });
+        notificar({ tipo: 'exito', titulo: 'Campaña quitada', texto: `${c.nombre}. Queda en el historial y se puede restaurar.` });
+        quitando.value = null;
+        router.reload({ preserveScroll: true });
+    } catch (err) {
+        notificar({ tipo: 'error', titulo: 'No se pudo quitar', texto: mensajeDeError(err) });
+    }
+}
+async function restaurar(m) {
+    try {
+        await axios.post(`${location.pathname}/restaurar/${m.id}`);
+        notificar({ tipo: 'exito', titulo: 'Campaña restaurada', texto: m.campania });
+        router.reload({ preserveScroll: true });
+    } catch (err) {
+        notificar({ tipo: 'error', titulo: 'No se pudo restaurar', texto: mensajeDeError(err) });
+    }
+}
+const hrefHistorial = `${location.pathname.replace(/control-gasto$/, 'historial')}?area=control`;
+const quitadasActivas = computed(() => props.historialExcluidas.filter((m) => !m.restaurada_en).length);
+// El servidor guarda en UTC: se muestra en la hora local de quien lo ve.
+const fechaHora = (s) => {
+    if (!s) return '';
+    const d = new Date(`${s.replace(' ', 'T')}:00Z`);
+    return `${d.getDate()} ${MESES[d.getMonth()]} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 
 // --- Métricas -------------------------------------------------------------------
 // tipo: spend (gasto, ni bueno ni malo), res (más es mejor), cost (menos es mejor)
@@ -220,7 +260,7 @@ const filas = computed(() => {
           })
         : campaniasDe(pestana.value).map((c) => {
               const a = analisis.value.get(c.k);
-              return { id: c.k, nombre: etiqueta(c), sub: [etiquetaFunnel(c.funnel) || 'Sin funnel', c.responsable, c.status && c.status !== 'ACTIVA' ? c.status.toLowerCase() : null].filter(Boolean).join(' · '), a, estado: estadoDe(a, a.banderas.length > 0 && revisada(c.k)) };
+              return { id: c.k, c, nombre: etiqueta(c), sub: [etiquetaFunnel(c.funnel) || 'Sin funnel', c.responsable, c.status && c.status !== 'ACTIVA' ? c.status.toLowerCase() : null].filter(Boolean).join(' · '), a, estado: estadoDe(a, a.banderas.length > 0 && revisada(c.k)) };
           });
     const orden = { alerta: 0, revisar: 1, revisada: 2, estable: 3, pausa: 4 };
     return items
@@ -428,6 +468,11 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                         </button>
                     </nav>
 
+                    <p class="alcance-nota">
+                        Solo campañas que gastan desde nuestras cuentas (data.medios) o están en el Daily<template v-if="sinGastoPropio">; {{ sinGastoPropio }} de AF data sin gasto nuestro no se muestran</template>.
+                        <template v-if="quitadasActivas"> {{ quitadasActivas }} quitada{{ quitadasActivas === 1 ? '' : 's' }} por el equipo (ver historial abajo).</template>
+                    </p>
+
                     <!-- Alertas: carrusel -->
                     <section class="import-panel panel alertas">
                         <div class="cabeza">
@@ -459,7 +504,10 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                                         <span class="caja">{{ al.estado === 'revisada' ? '✓' : '' }}</span>
                                         {{ al.estado === 'revisada' ? `Revisada por ${al.revisadaPor}` : 'Marcar revisada' }}
                                     </button>
-                                    <button type="button" class="link" @click="verHistorico(al)">Ver histórico</button>
+                                    <span class="acciones-der">
+                                        <button type="button" class="link" @click="verHistorico(al)">Ver histórico</button>
+                                        <button type="button" class="link quitar-link" title="No es nuestra" @click="pedirQuitar(al.c)">Quitar</button>
+                                    </span>
                                 </div>
                             </article>
                         </div>
@@ -510,6 +558,7 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                                         <th class="fija izq">{{ esGeneral ? 'Medio' : 'Campaña' }}</th>
                                         <th v-for="k in KPIS_CABEZA" :key="k">{{ metDe(k).l }}</th>
                                         <th class="izq">Estado</th>
+                                        <th v-if="!esGeneral" />
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -523,6 +572,9 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                                             <small :class="`tono-${c.tono}`">{{ c.d }}</small>
                                         </td>
                                         <td class="izq"><span class="estado mono" :class="f.estado">{{ ESTADO[f.estado] }}</span></td>
+                                        <td v-if="!esGeneral">
+                                            <button type="button" class="quitar" title="No es nuestra: quitar de Control de gasto" :aria-label="`Quitar ${f.nombre}`" @click.stop="pedirQuitar(f.c)">×</button>
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -649,8 +701,54 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                             </div>
                         </div>
                     </section>
+                    <details class="import-panel panel historial" :open="false">
+                        <summary>
+                            <h2>Campañas quitadas <span class="mono cuenta">{{ quitadasActivas }} quitadas · {{ historialExcluidas.length }} movimientos</span></h2>
+                            <span class="hint">Las que el equipo marcó como que no son nuestras. Quién, cuándo y por qué; se pueden restaurar. Todos los cambios del país están en <a :href="hrefHistorial" class="link">Historial de cambios</a>.</span>
+                        </summary>
+                        <p v-if="!historialExcluidas.length" class="empty-note">Nadie ha quitado campañas.</p>
+                        <table v-else class="tabla historial-tabla">
+                            <thead>
+                                <tr>
+                                    <th class="izq">Campaña</th>
+                                    <th class="izq">Quitada</th>
+                                    <th class="izq">Motivo</th>
+                                    <th class="izq">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="m in historialExcluidas" :key="m.id">
+                                    <td class="izq"><span class="nombre mono">{{ m.campania }}</span><small>{{ m.medio ? nombreMedio(m.medio) : '' }}</small></td>
+                                    <td class="izq">{{ m.por ?? '—' }}<small>{{ fechaHora(m.en) }}</small></td>
+                                    <td class="izq motivo">{{ m.motivo || '—' }}</td>
+                                    <td class="izq">
+                                        <template v-if="m.restaurada_en">Restaurada por {{ m.restauro ?? '—' }}<small>{{ fechaHora(m.restaurada_en) }}</small></template>
+                                        <button v-else type="button" class="chip" @click="restaurar(m)">Restaurar</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </details>
+
                     <p class="nota">CPI = gasto / instalaciones · CAC = gasto / first orders · CPO = gasto / orders · CPA = gasto / (first orders + recompras). Verde = mejora, rojo = empeora; el gasto solo se marca.</p>
                 </template>
+            </div>
+        </div>
+
+        <div v-if="quitando" class="modal-overlay" @click.self="quitando = null" @keydown.esc="quitando = null">
+            <div class="modal modal-quitar" role="dialog" aria-modal="true" aria-label="Quitar campaña">
+                <button type="button" class="modal-close" aria-label="Cerrar" @click="quitando = null">✕</button>
+                <h2>Quitar campaña de Control de gasto</h2>
+                <p class="mono campania-quitar">{{ quitando.campania }}</p>
+                <p class="hint">Deja de verse aquí para todo el equipo. Queda en el historial con tu nombre y se puede restaurar.</p>
+                <label class="motivo-campo">
+                    <span class="periodo-label mono">Motivo (opcional)</span>
+                    <input v-model="motivo" type="text" maxlength="300" placeholder="Ej. es de la agencia de marca, no la manejamos" @keydown.enter.prevent="confirmarQuitar" />
+                </label>
+                <div class="modal-acciones">
+                    <button type="button" class="modal-copy-btn" @click="quitando = null">Cancelar</button>
+                    <button type="button" class="btn-primary peligro" @click="confirmarQuitar">Quitar</button>
+                </div>
             </div>
         </div>
     </DashboardLayout>
@@ -1418,6 +1516,105 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
 }
 .fondo-solido-neutro {
     background: var(--text-faint);
+}
+
+.alcance-nota {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    margin: -8px 0 14px;
+}
+.acciones-der {
+    display: inline-flex;
+    gap: 12px;
+}
+.quitar-link {
+    color: var(--coral);
+}
+.quitar {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-faint);
+    border-radius: 6px;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+}
+.quitar:hover {
+    color: var(--coral);
+    border-color: var(--coral);
+}
+.historial summary {
+    cursor: pointer;
+    list-style: none;
+}
+.historial summary::-webkit-details-marker {
+    display: none;
+}
+.historial summary h2::before {
+    content: '▸';
+    color: var(--text-faint);
+    margin-right: 4px;
+}
+.historial[open] summary h2::before {
+    content: '▾';
+}
+.historial-tabla {
+    margin-top: 12px;
+}
+.historial-tabla td {
+    white-space: normal;
+    vertical-align: top;
+}
+.historial-tabla .nombre {
+    font-size: 0.7rem;
+    word-break: break-all;
+}
+.historial-tabla .motivo {
+    max-width: 320px;
+    color: var(--text-muted);
+}
+.modal.modal-quitar {
+    display: block;
+    max-width: 560px;
+    padding: 24px;
+    color: var(--text);
+}
+.modal-quitar h2 {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+}
+.campania-quitar {
+    font-size: 0.72rem;
+    word-break: break-all;
+    color: var(--text-muted);
+    margin: 0 0 6px;
+}
+.motivo-campo {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 14px 0 18px;
+}
+.motivo-campo input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 0.85rem;
+}
+.motivo-campo input:focus {
+    outline: none;
+    border-color: var(--amber);
+}
+.modal-acciones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+.btn-primary.peligro {
+    border-color: var(--coral);
+    color: var(--coral);
 }
 
 @media (max-width: 1100px) {
