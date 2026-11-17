@@ -61,16 +61,32 @@ class DailyTest extends TestCase
         $this->assertSame('AWA', $fila->funnel);
         $this->actingAs($user)->patch("/tada/pais/ecuador/daily/campanias/{$fila->id}", ['budget' => 600, 'kpi_installs' => 100])->assertOk();
 
-        // "Hoy" = 4 nov: ayer = 3 nov, 3 de 30 días transcurridos (10% ideal).
+        // "Hoy" = 4 nov, pero AF data llega hasta el 2: el corte es el 2 nov (2 de 30 días).
         $r = app(PanelDaily::class)->armar(Pais::where('codigo', 'EC')->value('id'), 'ecuador', '2026-11', CarbonImmutable::parse('2026-11-04'));
         $c = $r['campanias'][0];
         $this->assertSame(150.0, $c['costo']);          // el 20 nov queda fuera del periodo
         $this->assertSame(30, $c['installs']);
         $this->assertSame(15, $c['orders']);
         $this->assertEqualsWithDelta(0.25, $c['consumido'], 1e-9);
-        $this->assertEqualsWithDelta(0.15, $c['dif'], 1e-9);
-        $this->assertEqualsWithDelta(450 / 27, $c['daily_ideal'], 0.01);
-        $this->assertSame(['ayer' => '2026-11-03', 'restantes' => 27], ['ayer' => $r['fechas']['ayer'], 'restantes' => $r['fechas']['restantes']]);
+        $this->assertEqualsWithDelta(0.25 - 2 / 30, $c['dif'], 1e-9);
+        $this->assertEqualsWithDelta(450 / 28, $c['daily_ideal'], 0.01);
+        $this->assertSame(['ayer' => '2026-11-02', 'restantes' => 28], ['ayer' => $r['fechas']['ayer'], 'restantes' => $r['fechas']['restantes']]);
+    }
+
+    public function test_por_el_delay_se_para_en_el_ultimo_dia_con_datos_completos(): void
+    {
+        $this->usuario();
+        $this->datos(); // costos hasta el 20 nov, AF data hasta el 2 nov
+        $paisId = Pais::where('codigo', 'EC')->value('id');
+        $panel = app(PanelDaily::class);
+
+        $r = $panel->armar($paisId, 'ecuador', '2026-11', CarbonImmutable::parse('2026-11-25'));
+        $this->assertSame(['2026-11-02', '2026-11-02', '2026-11-20', '2026-11-02'], [$r['fechas']['ayer'], $r['fechas']['sugerido'], $r['fechas']['ultimoCosto'], $r['fechas']['ultimoAf']]);
+        $this->assertSame(2, $r['fechas']['transcurridos']);
+
+        // Elegir otro día; fuera del periodo se ajusta al borde.
+        $this->assertSame('2026-11-20', $panel->armar($paisId, 'ecuador', '2026-11', CarbonImmutable::parse('2026-11-25'), '2026-11-20')['fechas']['ayer']);
+        $this->assertSame('2026-11-30', $panel->armar($paisId, 'ecuador', '2026-11', CarbonImmutable::parse('2026-11-25'), '2026-12-15')['fechas']['ayer']);
     }
 
     public function test_ajustes_por_dia_de_la_semana(): void

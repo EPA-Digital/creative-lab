@@ -33,22 +33,42 @@ class PanelDaily
     }
 
     /** @return array<string, mixed> */
-    public function armar(int $paisId, string $pais, string $mes, ?CarbonImmutable $hoy = null): array
+    public function armar(int $paisId, string $pais, string $mes, ?CarbonImmutable $hoy = null, ?string $al = null): array
     {
         $plan = $this->plan($paisId, $mes);
         $inicio = CarbonImmutable::parse($plan->fecha_inicio ?? "{$mes}-01");
         $fin = CarbonImmutable::parse($plan->fecha_fin ?? CarbonImmutable::parse("{$mes}-01")->endOfMonth()->toDateString());
         $hoy ??= CarbonImmutable::today();
-        $ayer = $hoy->subDay();
-        if ($ayer->gt($fin)) {
-            $ayer = $fin;
+
+        // Corte ("al día que vamos"): por omisión el último día con datos
+        // completos -- costo y AF data llegan con delay, así que "ayer" casi
+        // nunca está completo. Sin datos todavía, ayer. Se puede elegir otro.
+        $ultimoCosto = $this->ultimaFecha('medios_diario', $paisId, $inicio, $fin);
+        $ultimoAf = $this->ultimaFecha('fuentes_appsflyer', $paisId, $inicio, $fin);
+        $completos = $ultimoCosto && $ultimoAf ? min($ultimoCosto, $ultimoAf) : ($ultimoCosto ?? $ultimoAf);
+        $sugerido = $hoy->subDay();
+        if ($completos && $completos < $sugerido->toDateString()) {
+            $sugerido = CarbonImmutable::parse($completos);
+        }
+        if ($sugerido->gt($fin)) {
+            $sugerido = $fin;
+        }
+        $ayer = $sugerido;
+        if ($al && preg_match('/^\d{4}-\d{2}-\d{2}$/', $al)) {
+            $ayer = CarbonImmutable::parse($al);
+            if ($ayer->lt($inicio)) {
+                $ayer = $inicio;
+            }
+            if ($ayer->gt($fin)) {
+                $ayer = $fin;
+            }
         }
         $diasPeriodo = (int) $inicio->diffInDays($fin) + 1;
         $transcurridos = $ayer->lt($inicio) ? 0 : (int) $inicio->diffInDays($ayer) + 1;
         $restantes = max(0, $diasPeriodo - $transcurridos);
         $ideal = $diasPeriodo ? $transcurridos / $diasPeriodo : 0;
 
-        [$costos, $resultados, $hasta] = $this->datos($paisId, $inicio, $ayer);
+        [$costos, $resultados] = $this->datos($paisId, $inicio, $ayer);
 
         $filas = $plan
             ? DB::table('daily_campanias')->where('plan_id', $plan->id)->orderBy('orden')->orderBy('id')->get()
@@ -116,12 +136,15 @@ class PanelDaily
                 'inicio' => $inicio->toDateString(),
                 'fin' => $fin->toDateString(),
                 'ayer' => $ayer->toDateString(),
+                'sugerido' => $sugerido->toDateString(),
                 'hoy' => $hoy->toDateString(),
+                'ultimoCosto' => $ultimoCosto,
+                'ultimoAf' => $ultimoAf,
                 'dias' => $diasPeriodo,
                 'transcurridos' => $transcurridos,
                 'restantes' => $restantes,
                 'ideal' => $ideal,
-                'datosHasta' => $hasta,
+                'datosHasta' => $completos,
             ],
             'campanias' => $campanias,
             'disponibles' => $this->disponibles($costos, $resultados, $enPlan),
@@ -244,6 +267,15 @@ class PanelDaily
         usort($salida, fn ($a, $b) => $b['costo'] <=> $a['costo'] ?: strcmp($a['campania'], $b['campania']));
 
         return array_values($salida);
+    }
+
+    /** Último día con datos de una tabla dentro del periodo. */
+    private function ultimaFecha(string $tabla, int $paisId, CarbonImmutable $desde, CarbonImmutable $hasta): ?string
+    {
+        $f = DB::table($tabla)->where('cuenta_id', CuentaActual::id())->where('pais_id', $paisId)
+            ->whereBetween('fecha', [$desde->toDateString(), $hasta->toDateString()])->max('fecha');
+
+        return $f ? substr((string) $f, 0, 10) : null;
     }
 
     /** JSON de 7 valores [lun..dom] (null = sin dato). @return list<float|null> */

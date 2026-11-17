@@ -31,6 +31,14 @@ const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep'
 const etiquetaMes = (m) => `${MESES[+m.slice(5, 7) - 1].replace(/^./, (c) => c.toUpperCase())} ${m.slice(0, 4)}`;
 const MES_OPCIONES = computed(() => props.meses.map((m) => ({ key: m, label: etiquetaMes(m) })));
 const cambiarMes = (mes) => router.get(location.pathname, { mes }, { preserveScroll: true });
+// "Ver al día": recalcula el Daily a ese corte (null = último día con datos completos).
+const verAlDia = (al) => router.get(location.pathname, { mes: props.mes, ...(al ? { al } : {}) }, { preserveScroll: true, preserveState: true });
+const sumarDias = (fecha, n) => {
+    const d = new Date(`${fecha}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+};
+const corteSinDatos = computed(() => !!props.fechas.ayer && (!props.fechas.ultimoCosto || !props.fechas.ultimoAf || props.fechas.ayer > props.fechas.ultimoCosto || props.fechas.ayer > props.fechas.ultimoAf));
 const fechaCorta = (s) => (s ? `${+s.slice(8, 10)} ${MES_CORTO[+s.slice(5, 7) - 1]}` : '—');
 
 const dosDec = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -200,7 +208,7 @@ const metricasKpi = computed(() => [
     ...(masMetricas.value ? [{ k: 'recompras', kpi: 'kpi_recompras', label: 'Recompras', corto: 'Recompras' }] : []),
     { k: 'orders', kpi: 'kpi_orders', label: 'Orders', corto: 'Orders' },
 ]);
-/** Alcance contra el ideal a ayer (para el semáforo); null si no hay KPI. */
+/** Alcance contra el ideal al día de corte (para el semáforo); null si no hay KPI. */
 const alcance = (real, kpi) => (kpi ? real / kpi - props.fechas.ideal : null);
 
 // --- Ajustes por día de la semana -------------------------------------------------
@@ -259,20 +267,39 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                 </section>
 
                 <template v-else>
-                    <!-- Periodo -->
-                    <div class="fechas">
-                        <label class="fecha editable">
-                            <span class="mono">Inicio</span>
-                            <input type="date" :value="fechas.inicio" @change="editarPlan('fecha_inicio', $event.target.value)" />
-                        </label>
-                        <label class="fecha editable">
-                            <span class="mono">Fin</span>
-                            <input type="date" :value="fechas.fin" @change="editarPlan('fecha_fin', $event.target.value)" />
-                        </label>
-                        <div class="fecha"><span class="mono">Ayer</span><b>{{ fechaCorta(fechas.ayer) }}</b></div>
-                        <div class="fecha"><span class="mono">Días restantes</span><b>{{ fechas.restantes }}</b></div>
-                        <div class="fecha"><span class="mono">Datos hasta</span><b>{{ fechaCorta(fechas.datosHasta) }}</b></div>
+                    <!-- Periodo y día de corte -->
+                    <div class="resumen-filtros periodo-fila">
+                        <div class="periodo">
+                            <span class="periodo-label mono">Periodo</span>
+                            <div class="rango-control">
+                                <input type="date" aria-label="Inicio" :value="fechas.inicio" @change="editarPlan('fecha_inicio', $event.target.value)" />
+                                <span class="rango-flecha">→</span>
+                                <input type="date" aria-label="Fin" :value="fechas.fin" @change="editarPlan('fecha_fin', $event.target.value)" />
+                            </div>
+                        </div>
+                        <div class="periodo">
+                            <span class="periodo-label mono">Ver al día</span>
+                            <div class="rango-control">
+                                <button type="button" class="paso" aria-label="Día anterior" :disabled="fechas.ayer <= fechas.inicio" @click="verAlDia(sumarDias(fechas.ayer, -1))">‹</button>
+                                <input type="date" aria-label="Ver al día" :min="fechas.inicio" :max="fechas.fin" :value="fechas.ayer" @change="verAlDia($event.target.value)" />
+                                <button type="button" class="paso" aria-label="Día siguiente" :disabled="fechas.ayer >= fechas.fin" @click="verAlDia(sumarDias(fechas.ayer, 1))">›</button>
+                                <button type="button" class="chip" :class="{ activo: fechas.ayer === fechas.sugerido }" @click="verAlDia(null)">Último con datos</button>
+                            </div>
+                        </div>
+                        <div class="dia-actual">
+                            <b class="num">Día {{ fechas.transcurridos }} de {{ fechas.dias }}</b>
+                            <span>{{ pct(fechas.ideal, 0) }} del mes · quedan {{ fechas.restantes }} días</span>
+                            <div class="pista dias"><i :style="{ width: anchoBarra(fechas.ideal) }" /></div>
+                        </div>
                     </div>
+                    <p class="delay mono" :class="{ alerta: corteSinDatos }">
+                        <template v-if="corteSinDatos">
+                            Al {{ fechaCorta(fechas.ayer) }} todavía no hay datos completos: costos hasta {{ fechaCorta(fechas.ultimoCosto) }}, AF data hasta {{ fechaCorta(fechas.ultimoAf) }}. Lo que falta cuenta como $0.
+                        </template>
+                        <template v-else>
+                            Datos: costos hasta {{ fechaCorta(fechas.ultimoCosto) }} · AF data hasta {{ fechaCorta(fechas.ultimoAf) }}. Por el delay, el Daily se para en el último día que tiene los dos.
+                        </template>
+                    </p>
 
                     <!-- Pacing -->
                     <section class="kpis">
@@ -284,7 +311,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                         <div class="kpi">
                             <span class="kpi-label">Invertido</span>
                             <span class="kpi-value">{{ dinero(totalGeneral.costo) }}</span>
-                            <span class="kpi-sub">{{ pct(totalGeneral.consumido) }} consumido · ayer {{ dinero(totalGeneral.costo_ayer) }}</span>
+                            <span class="kpi-sub">{{ pct(totalGeneral.consumido) }} consumido · el {{ fechaCorta(fechas.ayer) }}: {{ dinero(totalGeneral.costo_ayer) }}</span>
                         </div>
                         <div class="kpi">
                             <span class="kpi-label">Remanente</span>
@@ -294,7 +321,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                         <div class="kpi" :class="`ritmo-${ritmo(totalGeneral.dif)}`">
                             <span class="kpi-label">Pacing</span>
                             <span class="kpi-value">{{ pp(totalGeneral.dif) }}</span>
-                            <span class="kpi-sub">{{ pct(totalGeneral.consumido) }} consumido vs {{ pct(fechas.ideal) }} ideal a ayer</span>
+                            <span class="kpi-sub">{{ pct(totalGeneral.consumido) }} consumido vs {{ pct(fechas.ideal) }} ideal al {{ fechaCorta(fechas.ayer) }}</span>
                         </div>
                     </section>
 
@@ -316,7 +343,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                             </div>
                             <div class="pista">
                                 <i :style="{ width: anchoBarra(div(totalGeneral[m.real], plan[m.campo])) }" />
-                                <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" :title="`Ideal a ayer: ${pct(fechas.ideal)}`" />
+                                <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" :title="`Ideal al ${fechaCorta(fechas.ayer)}: ${pct(fechas.ideal)}`" />
                             </div>
                         </div>
                     </section>
@@ -325,7 +352,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                     <div class="grid-barras">
                         <section v-for="bloque in [{ t: 'Por medio', d: porMedio }, { t: 'Por funnel', d: porFunnel }, ...(porRegion.length ? [{ t: 'Por región', d: porRegion }] : [])]" :key="bloque.t" class="import-panel panel">
                             <h2>{{ bloque.t }}</h2>
-                            <p class="hint">Costo vs budget; la línea es el % ideal a ayer ({{ pct(fechas.ideal) }}).</p>
+                            <p class="hint">Costo vs budget; la línea es el % ideal al {{ fechaCorta(fechas.ayer) }} ({{ pct(fechas.ideal) }}).</p>
                             <div v-for="b in bloque.d" :key="b.k" class="barra">
                                 <div class="barra-cabeza">
                                     <span><i v-if="b.color" class="punto" :style="{ background: `var(--${b.color})` }" />{{ b.nombre }}</span>
@@ -382,8 +409,8 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                         <th>Costo</th>
                                         <th>%</th>
                                         <th class="izq">Gráfico</th>
-                                        <th class="grupo" title="% consumido - % ideal a ayer">Dif.</th>
-                                        <th>Ayer</th>
+                                        <th class="grupo" title="% consumido - % ideal al día de corte">Dif.</th>
+                                        <th :title="`Costo del ${fechaCorta(fechas.ayer)}`">Del día</th>
                                         <th>Daily plataforma</th>
                                         <th title="Remanente / días restantes">Daily ideal</th>
                                         <template v-for="m in metricasKpi" :key="`h${m.k}`">
@@ -715,44 +742,93 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
     flex-wrap: wrap;
 }
 
-/* Fechas */
-.fechas {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 16px;
+
+/* Periodo y día de corte (mismo control que el rango de días de Creativos) */
+.periodo-fila {
+    align-items: flex-end;
+    margin-bottom: 6px;
 }
-.fecha {
+.periodo {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    background: var(--surface);
+    gap: 8px;
+}
+.rango-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.rango-flecha {
+    color: var(--text-faint);
+}
+.rango-control input[type='date'] {
+    background: var(--surface-2);
+    color: var(--text);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 6px 10px;
-    font-size: 0.82rem;
+    font-size: 12px;
+    color-scheme: dark light;
 }
-.fecha span {
-    font-size: 0.6rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+.rango-control input[type='date']:focus {
+    outline: none;
+    border-color: var(--amber);
+}
+.paso {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    cursor: pointer;
+}
+.paso:hover:not(:disabled) {
+    border-color: var(--amber);
+}
+.paso:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.chip:hover,
+.chip.activo {
+    border-color: var(--amber);
+    color: var(--text);
+}
+.dia-actual {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 200px;
+    margin-left: auto;
+}
+.dia-actual b {
+    font-size: 1.05rem;
+}
+.dia-actual span {
+    font-size: 0.72rem;
     color: var(--text-faint);
 }
-.fecha.editable {
-    cursor: pointer;
-    transition: border-color 0.15s ease;
+.pista.dias {
+    margin-top: 4px;
 }
-.fecha.editable:hover,
-.fecha.editable:focus-within {
-    border-color: var(--serie-6);
+.delay {
+    font-size: 0.68rem;
+    color: var(--text-faint);
+    margin: 0 0 14px;
 }
-.fecha input {
-    background: transparent;
-    border: none;
-    color: var(--text);
-    font: inherit;
-    padding: 0;
-    color-scheme: dark light;
+.delay.alerta {
+    color: var(--yellow);
 }
 
 /* KPIs y metas */

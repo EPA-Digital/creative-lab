@@ -40,7 +40,7 @@ class DailyController extends Controller
             'medios' => array_map(fn ($c) => ['id' => $c['id'], 'nombre' => $c['nombre'], 'color' => $c['color']], $canales),
             'status' => PanelDaily::STATUS,
             'hayAnterior' => (bool) $panel->plan($paisModelo->id, CarbonImmutable::parse("{$mes}-01")->subMonth()->format('Y-m')),
-            ...$panel->armar($paisModelo->id, $pais, $mes),
+            ...$panel->armar($paisModelo->id, $pais, $mes, al: is_string($request->query('al')) ? $request->query('al') : null),
         ]);
     }
 
