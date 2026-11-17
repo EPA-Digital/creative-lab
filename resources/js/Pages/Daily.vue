@@ -96,7 +96,7 @@ function editarCampania(c, campo, valor) {
     let v = valor;
     if (['budget', 'daily_plataforma'].includes(campo)) v = numero(valor) ?? (campo === 'budget' ? 0 : null);
     if (campo.startsWith('kpi_')) v = numero(valor) === null ? null : Math.round(numero(valor));
-    if (['nombre_comun', 'region'].includes(campo)) v = String(valor ?? '').trim() || null;
+    if (['nombre_comun', 'region', 'responsable'].includes(campo)) v = String(valor ?? '').trim() || null;
     if (v === (c[campo] ?? null)) return;
     guardar(`${location.pathname}/campanias/${c.id}`, { [campo]: v });
 }
@@ -505,7 +505,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                         <th colspan="4" class="grupo">Pacing</th>
                                         <th v-for="m in metricasKpi" :key="`g${m.k}`" colspan="4" class="grupo">{{ m.label }}</th>
                                         <th :colspan="masMetricas ? 4 : 3" class="grupo">Costos</th>
-                                        <th v-if="masMetricas" colspan="9" class="grupo">Métricas secundarias</th>
+                                        <th v-if="masMetricas" colspan="10" class="grupo">Métricas secundarias</th>
                                         <th rowspan="2" />
                                     </tr>
                                     <tr>
@@ -537,6 +537,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <th title="Orders / Clicks">CR</th>
                                             <th title="Installs / Clicks">IR</th>
                                             <th class="izq">Región</th>
+                                            <th class="izq">Responsable</th>
                                         </template>
                                     </tr>
                                 </thead>
@@ -566,7 +567,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <td>{{ dinero2(div(t.costo, t.nc)) }}</td>
                                             <td>{{ dinero2(div(t.costo, t.orders)) }}</td>
                                             <td v-if="masMetricas">{{ dinero2(div(t.costo, t.recompras)) }}</td>
-                                            <td v-if="masMetricas" colspan="9" class="grupo" />
+                                            <td v-if="masMetricas" colspan="10" class="grupo" />
                                         </template>
                                         <td />
                                     </tr>
@@ -617,6 +618,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <td>{{ pct(div(c.orders, c.clicks), 2) }}</td>
                                             <td>{{ pct(div(c.installs, c.clicks), 2) }}</td>
                                             <td class="izq"><CeldaEditable :valor="c.region" alinear="izquierda" etiqueta="Región" @guardar="editarCampania(c, 'region', $event)" /></td>
+                                            <td class="izq"><CeldaEditable :valor="c.responsable" alinear="izquierda" etiqueta="Responsable" @guardar="editarCampania(c, 'responsable', $event)" /></td>
                                         </template>
                                         <td><button type="button" class="quitar" :aria-label="`Quitar ${c.campania}`" title="Quitar del Daily" @click="quitar(c)">×</button></td>
                                     </tr>
@@ -644,7 +646,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <td>{{ dinero2(div(t.costo, t.nc)) }}</td>
                                             <td>{{ dinero2(div(t.costo, t.orders)) }}</td>
                                             <td v-if="masMetricas">{{ dinero2(div(t.costo, t.recompras)) }}</td>
-                                            <td v-if="masMetricas" colspan="9" class="grupo" />
+                                            <td v-if="masMetricas" colspan="10" class="grupo" />
                                         </template>
                                         <td />
                                     </tr>

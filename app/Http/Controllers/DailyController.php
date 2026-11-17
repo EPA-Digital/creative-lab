@@ -124,6 +124,7 @@ class DailyController extends Controller
             'funnel' => ['sometimes', 'nullable', Rule::in(PanelDaily::FUNNELS)],
             'nombre_comun' => ['sometimes', 'nullable', 'string', 'max:120'],
             'region' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'responsable' => ['sometimes', 'nullable', 'string', 'max:80'],
             'budget' => ['sometimes', 'numeric', 'min:0', 'max:100000000'],
             'daily_plataforma' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:100000000'],
             'kpi_installs' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000000'],

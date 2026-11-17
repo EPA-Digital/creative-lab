@@ -4,6 +4,7 @@ use App\Http\Controllers\AfDataController;
 use App\Http\Controllers\AjustesController;
 use App\Http\Controllers\AnalisisCreativoController;
 use App\Http\Controllers\ChannelController;
+use App\Http\Controllers\ControlGastoController;
 use App\Http\Controllers\CuentasController;
 use App\Http\Controllers\DailyController;
 use App\Http\Controllers\DatosMensualesController;
@@ -83,6 +84,9 @@ Route::middleware('auth')->group(function () {
             Route::get('/diario-campania', [DiarioController::class, 'campania'])->name('diario-campania');
             // Daily (2026-11-18): presupuesto y pacing del mes por campaña; lo morado se edita aquí.
             Route::get('/daily', [DailyController::class, 'index'])->name('daily');
+            // Control de gasto (2026-11-18): alertas y variaciones del día por campaña.
+            Route::get('/control-gasto', [ControlGastoController::class, 'index'])->name('control-gasto');
+            Route::post('/control-gasto/revisar', [ControlGastoController::class, 'revisar'])->name('control-gasto.revisar');
             Route::post('/daily/{mes}/iniciar', [DailyController::class, 'iniciar'])->name('daily.iniciar');
             Route::patch('/daily/{mes}/plan', [DailyController::class, 'plan'])->name('daily.plan');
             Route::post('/daily/{mes}/campanias', [DailyController::class, 'agregar'])->name('daily.agregar');
