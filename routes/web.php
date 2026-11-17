@@ -54,6 +54,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/analisis/{plataforma?}', [AnalisisCreativoController::class, 'index'])
             ->name('analisis-creativo');
         Route::get('/inteligencia', [InteligenciaController::class, 'index'])->name('inteligencia');
+        Route::get('/inteligencia/grupos', [InteligenciaController::class, 'grupos'])->name('inteligencia.grupos');
         // Video del creativo para el modal (2026-10-06) -- ver VideoCreativoController.
         Route::get('/creativos/{creativo}/video', [VideoCreativoController::class, 'show'])->name('creativos.video');
 
@@ -95,6 +96,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/importar/mensual', [DatosMensualesController::class, 'index'])->name('importar-datos.mensual');
             // Reporte del mes en Excel/PDF con imágenes (2026-10-07).
             Route::get('/importar/mensual/{mes}/exportar', [DatosMensualesController::class, 'exportar'])->name('importar-datos.mensual.exportar');
+            // PDF de la comparación por grupos de Inteligencia (2026-11-17).
+            Route::get('/inteligencia/grupos/pdf', [InteligenciaController::class, 'gruposPdf'])->name('inteligencia.grupos.pdf');
             // Imágenes/videos en background (2026-10-07) -- avance de una
             // tarea y "Recuperar imágenes" de un mes.
             Route::get('/medios/tareas/{tarea}', [TareaMediosController::class, 'show'])->name('medios.tareas.show');

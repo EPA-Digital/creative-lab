@@ -1,6 +1,6 @@
 <script setup>
-import { alerta } from '@/avisos';
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { alerta, mostrarAlerta } from '@/avisos';
+import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import { useFiltroTipoCampania } from '@/tiposCampania';
@@ -14,6 +14,8 @@ import CreativeModal from '@/Components/Creativo/CreativeModal.vue';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
 import InfoTip from '@/Components/InfoTip.vue';
 import { fechaHora } from '@/fechas';
+import { descargarPdfBenchmark } from '@/reportePdf';
+import { crearBenchmark, ETIQUETA_KPI, DESCRIPCION_COSTO } from '@/benchmark';
 import { formatNumeroExacto, formatMoneyExacto, FUNNEL_ORDER, opcionesTipoCuenta, etiquetaFiltroTipoCuenta, promediosDeGrupo, etiquetaFunnel } from '@/motor';
 
 const props = defineProps({
@@ -154,7 +156,7 @@ const ETIQUETA_CORTA_POR_CAMPO = {
 function formatearValorMetrica(campo, valor) {
     if (valor === null || valor === undefined) return '—';
     if (campo === 'ctr') return valor.toFixed(2) + '%';
-    if (campo === 'cac' || campo === 'cpo' || campo === 'cpi') return formatMoneyExacto(valor);
+    if (campo === 'cac' || campo === 'cpo' || campo === 'cpi' || campo === 'cpm') return formatMoneyExacto(valor);
     return formatNumeroExacto(valor);
 }
 
@@ -334,6 +336,62 @@ const pisoRatioAplica = computed(() => {
     return !piso || piso.campo === metricaActual.value.campoVolumen;
 });
 
+// Ordenar por costo (2026-11-17, pedido explícito): el mejor es el más
+// barato de su etapa (CPM, CPI, CAC o CPO). Con una etapa elegida gana el
+// valor más bajo; con "Todos" (etapas mezcladas) se ordena por qué tan
+// abajo de la media de su grupo está (mismo grupo y pisos que el
+// benchmark: plataforma + tipo de cuenta + etapa), para comparar parejo.
+const ordenarPor = ref('volumen');
+const ORDEN_OPCIONES = [
+    { key: 'volumen', label: 'Volumen' },
+    { key: 'costo', label: 'Costo' },
+];
+const porCosto = computed(() => ordenarPor.value === 'costo');
+// Benchmark contra todo el periodo, sin los filtros de la vista (como el PDF).
+const benchmark = computed(() => crearBenchmark(props.creativos));
+provide('benchmarkCreativo', (c) => benchmark.value.comparar(c));
+
+function rankingCosto(cards, enUnaEtapa) {
+    const conActividad = cards.filter((c) => !sinActividadReal(c));
+    const elegibles = [];
+    const resto = [];
+    for (const c of conActividad) {
+        const k = benchmark.value.costo(c);
+        const orden = enUnaEtapa ? k.valor : k.relativo;
+        if (k.suficiente && orden !== null) elegibles.push({ c, orden });
+        else resto.push(c);
+    }
+    elegibles.sort((a, b) => a.orden - b.orden);
+    return { elegibles: elegibles.map((e) => e.c), excluidosPorVolumen: resto.length, resto };
+}
+
+// PDF con benchmark del mes (2026-11-17): con los filtros de plataforma,
+// etapa y búsqueda de la vista; el benchmark siempre es contra el mes
+// completo. Solo EPA y solo por mes (el reporte es mensual).
+const esEpa = computed(() => (usePage().props.auth?.user?.rol ?? 'cliente') !== 'cliente');
+const generandoPdf = ref(false);
+async function bajarPdfBenchmark() {
+    if (generandoPdf.value) return;
+    generandoPdf.value = true;
+    try {
+        await descargarPdfBenchmark(props.pais, props.mes, {
+            plataforma: plataformaSeleccionada.value === 'TODOS' ? undefined : plataformaSeleccionada.value,
+            funnel: funnelSeleccionado.value === 'TODOS' ? undefined : funnelSeleccionado.value,
+            q: busqueda.value.trim() || undefined,
+        });
+    } catch (e) {
+        mostrarAlerta({ tipo: 'error', titulo: 'No se pudo generar el PDF', texto: e.message });
+    } finally {
+        generandoPdf.value = false;
+    }
+}
+
+function estrellaCosto(creativo) {
+    const k = benchmark.value.costo(creativo);
+    const vsMedia = k.relativo === null ? '' : ` · ${k.relativo <= 0 ? '−' : '+'}${Math.round(Math.abs(k.relativo) * 100)}% vs media`;
+    return { label: ETIQUETA_KPI[k.campo] + vsMedia, value: formatearValorMetrica(k.campo, k.valor) };
+}
+
 function calcularRanking(cards, key) {
     const metrica = METRICAS_RANKING[key];
     if (!metrica) return { elegibles: [], excluidosPorVolumen: 0 };
@@ -382,6 +440,7 @@ function calcularRanking(cards, key) {
 }
 
 function estrellaActual(creativo) {
+    if (porCosto.value) return estrellaCosto(creativo);
     const m = metricaActual.value;
     return {
         label: ETIQUETA_CORTA_POR_CAMPO[m.campo] || m.campo,
@@ -403,7 +462,9 @@ const funnelsPresentes = computed(() => {
     ];
 });
 
-const ranking = computed(() => calcularRanking(creativosFiltrados.value, metricaKey.value));
+const ranking = computed(() => (porCosto.value
+    ? rankingCosto(creativosFiltrados.value, funnelSeleccionado.value !== 'TODOS')
+    : calcularRanking(creativosFiltrados.value, metricaKey.value)));
 
 // N (3/5) -- selector compartido por el podio único (TODOS) y los bloques
 // por etapa.
@@ -441,8 +502,9 @@ const podiosPorEtapa = computed(() => {
             const cardsEtapa = creativosPorFormato.value.filter((c) => c.funnel === etapa);
             const metricaKeyEtapa = METRICA_POR_FUNNEL_DEFAULT[etapa] || 'nc';
             const metricaEtapa = METRICAS_RANKING[metricaKeyEtapa];
-            const { elegibles, excluidosPorVolumen } = calcularRanking(cardsEtapa, metricaKeyEtapa);
+            const { elegibles, excluidosPorVolumen } = porCosto.value ? rankingCosto(cardsEtapa, true) : calcularRanking(cardsEtapa, metricaKeyEtapa);
             function estrellaEtapa(creativo) {
+                if (porCosto.value) return estrellaCosto(creativo);
                 return {
                     label: ETIQUETA_CORTA_POR_CAMPO[metricaEtapa.campo] || metricaEtapa.campo,
                     value: formatearValorMetrica(metricaEtapa.campo, valorCampo(creativo, metricaEtapa.campo)),
@@ -467,6 +529,10 @@ const podiosPorEtapa = computed(() => {
 // installs los 4 en 0 no es "inventario sin métrica todavía", es basura de
 // una importación vieja (ver limpieza 2026-09-22), nunca un caso real.
 const todasOrdenadas = computed(() => {
+    if (porCosto.value) {
+        const r = ranking.value;
+        return [...r.elegibles, ...r.resto];
+    }
     const conActividad = creativosFiltrados.value.filter((c) => !sinActividadReal(c));
     const generalSinPiso = conActividad.filter(
         (c) => valorCampo(c, metricaActual.value.campo) !== null,
@@ -545,6 +611,16 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                         </template>
                     </p>
                 </div>
+                <button
+                    v-if="esEpa && !usandoRango && mes"
+                    type="button"
+                    class="modal-copy-btn"
+                    :disabled="generandoPdf"
+                    title="Reporte PDF del mes con imágenes: cada creativo contra los demás de su plataforma, tipo de cuenta y etapa. Usa los filtros de plataforma, etapa y búsqueda."
+                    @click="bajarPdfBenchmark"
+                >
+                    {{ generandoPdf ? 'Generando PDF…' : 'PDF con benchmark' }}
+                </button>
             </header>
 
             <div class="resumen-filtros">
@@ -593,7 +669,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
             </div>
 
             <div class="ranking-controls">
-                <FiltroDropdown label="Rankear por" v-model="metricaKey" :options="METRICAS_RANKING_OPCIONES" />
+                <div class="periodo">
+                    <span class="periodo-label mono">Ordenar por</span>
+                    <div class="periodo-toggle" role="group" aria-label="Ordenar por">
+                        <button v-for="o in ORDEN_OPCIONES" :key="o.key" type="button" :class="{ activo: ordenarPor === o.key }" @click="ordenarPor = o.key">{{ o.label }}</button>
+                    </div>
+                </div>
+                <FiltroDropdown v-if="!porCosto" label="Rankear por" v-model="metricaKey" :options="METRICAS_RANKING_OPCIONES" />
+                <div class="periodo">
+                <span class="periodo-label mono">Etapas de funnel</span>
                 <div class="chip-group">
                     <button
                         type="button"
@@ -614,6 +698,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                         {{ etiquetaFunnel(f) || f }}
                     </button>
                 </div>
+                </div>
                 <div class="buscador-creativos">
                     <label for="buscadorCreativos" class="periodo-label mono">Buscar</label>
                     <div class="buscador-campo">
@@ -623,7 +708,13 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                     </div>
                 </div>
                 <span v-if="ranking.excluidosPorVolumen > 0 && !buscando" class="umbral-nota">
-                    <InfoTip etiqueta="Mínimo de volumen aplicado" lado="izquierda">
+                    <InfoTip v-if="porCosto" etiqueta="Cómo se ordena por costo" lado="izquierda">
+                        Gana {{ DESCRIPCION_COSTO }}.
+                        <template v-if="funnelSeleccionado === 'TODOS'">Con todas las etapas, cada uno se ordena por qué tan abajo de la media de su grupo (plataforma, tipo de cuenta y etapa) está.</template>
+                        Mínimo de volumen: 1,000 impresiones (CPM), 30 instalaciones (CPI), 10 nuevos clientes (CAC) o 10 órdenes (CPO).
+                        {{ ranking.excluidosPorVolumen }} anuncio(s) sin volumen suficiente van al final.
+                    </InfoTip>
+                    <InfoTip v-else etiqueta="Mínimo de volumen aplicado" lado="izquierda">
                         Mínimo aplicado: {{ pisoFunnelTexto }}
                         <template v-if="metricaActual.tipo === 'ratio' && pisoRatioAplica">
                             · {{ metricaActual.umbralDefault }} {{ metricaActual.labelVolumen }} (para {{ metricaActual.label.toLowerCase() }})
@@ -743,7 +834,7 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydownGlobal));
                     v-else
                     :creativos="creativosVista"
                     :estrella-override="estrellaActual"
-                    :valor-numerico="(c) => valorCampo(c, metricaActual.campo)"
+                    :valor-numerico="(c) => (porCosto ? benchmark.costo(c).valor : valorCampo(c, metricaActual.campo))"
                     @abrir="abrirDetalle"
                 />
             </section>

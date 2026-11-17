@@ -2,12 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Creativo;
 use App\Models\Pais;
 use App\Models\Resultado;
+use App\Services\Inteligencia\CompararGrupos;
 use App\Services\RangosActividadService;
+use App\Services\Reportes\ExportadorPdfGrupos;
+use App\Services\Reportes\ReporteCreativosService;
+use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * Inteligencia -- comparación head-to-head de 2-4 creativos (2026-08-27,
@@ -94,5 +102,92 @@ class InteligenciaController extends Controller
             'mes' => $mes,
             'mesesDisponibles' => $mesesDisponibles,
         ]);
+    }
+
+    /**
+     * Comparar grupos (2026-11-17, pedido explícito): 2 a 4 grupos de
+     * búsqueda + mes, cada uno contra el benchmark de su mes. Ver
+     * CompararGrupos. Trae los creativos de cada grupo (con su resultado
+     * de ese mes y su benchmark) para verlos como en Creativos.
+     */
+    public function grupos(Request $request, string $pais, CompararGrupos $comparador): JsonResponse
+    {
+        [$paisModelo, $datos] = $this->validarGrupos($request, $pais);
+        $resultado = $comparador->comparar($paisModelo->id, array_values($datos['grupos']), $datos);
+
+        return response()->json([
+            'grupos' => array_map(function (array $g) {
+                $orden = array_column($g['filas'], 'creativoId');
+                $benchPorId = [];
+                foreach ($g['filas'] as $f) {
+                    $benchPorId[$f['creativoId']] = CompararGrupos::benchmarkDe($f, $g['benchmark']);
+                }
+                $modelos = Creativo::whereIn('id', $orden)
+                    ->with(['resultados' => fn ($q) => $q->where('mes', $g['mes']), 'correccionNombre'])
+                    ->get()
+                    ->keyBy('id');
+                $lista = [];
+                foreach ($orden as $id) {
+                    if ($c = $modelos->get($id)) {
+                        $c->setAttribute('benchmark', $benchPorId[$id]);
+                        $lista[] = $c;
+                    }
+                }
+                unset($g['filas'], $g['benchmark']);
+
+                return [...$g, 'lista' => $lista];
+            }, $resultado),
+        ]);
+    }
+
+    /**
+     * PDF de la comparación (2026-11-17, pedido explícito): los grupos
+     * lado a lado por etapa y, de cada grupo, sus creativos con imagen y
+     * su benchmark contra su mes. Solo EPA.
+     */
+    public function gruposPdf(Request $request, string $pais, CompararGrupos $comparador, ReporteCreativosService $reporte): BinaryFileResponse
+    {
+        [$paisModelo, $datos] = $this->validarGrupos($request, $pais);
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+        $resultado = $comparador->comparar($paisModelo->id, array_values($datos['grupos']), $datos);
+        $miniaturas = array_map(fn (array $g) => $reporte->miniaturas($paisModelo->id, $g['filas']), $resultado);
+
+        $mesTexto = fn (string $m) => Carbon::createFromFormat('Y-m', $m)->locale('es')->translatedFormat('F Y');
+        $nombres = array_map(fn ($g) => "\"{$g['q']}\" ({$mesTexto($g['mes'])})", $resultado);
+        $titulo = "Comparación de creativos — {$paisModelo->nombre}";
+        $filtros = array_filter([
+            ($datos['plataforma'] ?? null) ? ($datos['plataforma'] === 'meta' ? 'Meta' : 'TikTok') : null,
+            $datos['tipo_cuenta'] ?? null,
+        ]);
+        $subtitulo = implode(' vs ', $nombres).($filtros ? ' · '.implode(' · ', $filtros) : '').' · generado el '.now()->locale('es')->translatedFormat('j \d\e F Y, H:i');
+
+        $ruta = tempnam(sys_get_temp_dir(), 'comparacion-');
+        (new ExportadorPdfGrupos)->generar($resultado, $miniaturas, $titulo, $subtitulo, $ruta);
+        $archivo = 'comparacion-creativos-'.$pais.'-'.Str::slug(implode('-vs-', array_map(fn ($g) => "{$g['q']}-{$g['mes']}", $resultado))).'.pdf';
+
+        return response()->download($ruta, $archivo)->deleteFileAfterSend();
+    }
+
+    /** @return array{0: Pais, 1: array<string, mixed>} */
+    private function validarGrupos(Request $request, string $pais): array
+    {
+        $config = config("paises.{$pais}");
+        abort_unless($config, 404, "País \"{$pais}\" no existe en config/paises.php.");
+        $paisModelo = Pais::where('codigo', $config['codigo'])->firstOrFail();
+
+        $datos = $request->validate([
+            'grupos' => ['required', 'array', 'min:2', 'max:4'],
+            'grupos.*.q' => ['required', 'string', 'min:2', 'max:100'],
+            'grupos.*.mes' => ['required', 'date_format:Y-m'],
+            'plataforma' => ['nullable', 'in:meta,tiktok'],
+            'tipo_cuenta' => ['nullable', 'string', 'max:20'],
+        ], [
+            'grupos.min' => 'Agrega al menos dos grupos para comparar.',
+            'grupos.*.q.required' => 'Cada grupo necesita un texto de búsqueda.',
+            'grupos.*.q.min' => 'La búsqueda de cada grupo debe tener al menos 2 letras.',
+        ]);
+
+        return [$paisModelo, $datos];
     }
 }

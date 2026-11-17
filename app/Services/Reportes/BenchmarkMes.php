@@ -19,6 +19,7 @@ class BenchmarkMes
     /** KPIs por etapa (pedido explícito 2026-11-13; Conversion: CAC, CTR y CPM). */
     public const KPIS_POR_FUNNEL = [
         'AWA' => ['cpm', 'ctr'],
+        'CON' => ['cpi', 'ctr', 'cpm'],
         'CONS' => ['cpi', 'ctr', 'cpm'],
         'CNV' => ['cac', 'ctr', 'cpm'],
         'LOY' => ['cpo', 'ctr', 'cpm'],

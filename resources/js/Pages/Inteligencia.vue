@@ -1,11 +1,12 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import { useFiltroTipoCampania } from '@/tiposCampania';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
 import SeleccionCard from '@/Components/Inteligencia/SeleccionCard.vue';
 import ComparacionCreativos from '@/Components/Inteligencia/ComparacionCreativos.vue';
+import ComparacionGrupos from '@/Components/Inteligencia/ComparacionGrupos.vue';
 import CreativeModal from '@/Components/Creativo/CreativeModal.vue';
 import { cardDesdeCreativo, placeholderPorTipo, promediosDeGrupo, FUNNEL_ORDER, opcionesTipoCuenta, etiquetaFiltroTipoCuenta, resultadoDeMes, etiquetaFunnel } from '@/motor';
 import InfoTip from '@/Components/InfoTip.vue';
@@ -26,6 +27,11 @@ const props = defineProps({
 // el servidor porque cambia qué mes cuenta como "actual" para el
 // score/las barras del head-to-head (la tendencia mensual siempre usa el
 // historial completo, sin importar qué mes esté seleccionado acá).
+// Creativos (cara a cara) o Grupos (búsqueda + mes contra búsqueda + mes,
+// 2026-11-17).
+const modo = ref('creativos');
+const esEpa = computed(() => (usePage().props.auth?.user?.rol ?? 'cliente') !== 'cliente');
+
 const MESES_LABEL = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 function formatMesLabel(mesIso) {
     const [anio, mes] = mesIso.split('-').map(Number);
@@ -171,18 +177,26 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
     <DashboardLayout :pais="pais" vista-activa="inteligencia">
     <div class="page">
         <div class="page-inner">
-            <template v-if="!comparando">
-                <header class="header">
-                    <div>
-                        <p class="eyebrow mono">{{ pais }}</p>
-                        <h1 class="title title-con-info">
-                            Pon a competir tus creativos
-                            <InfoTip etiqueta="Cómo comparar creativos">
-                                Elige 2 para un cara a cara directo, o hasta 4 para verlos comparados a la vez.
-                            </InfoTip>
-                        </h1>
-                    </div>
-                </header>
+            <header v-if="!comparando" class="header">
+                <div>
+                    <p class="eyebrow mono">{{ pais }}</p>
+                    <h1 class="title title-con-info">
+                        Pon a competir tus creativos
+                        <InfoTip etiqueta="Cómo comparar creativos">
+                            Por creativos: elige 2 para un cara a cara, o hasta 4. Por grupos: compara búsquedas de distintos
+                            meses (ej. "corona" de agosto contra "corona" de octubre), cada una contra el benchmark de su mes.
+                        </InfoTip>
+                    </h1>
+                </div>
+                <div class="modo-toggle" role="group" aria-label="Comparar por">
+                    <button type="button" :class="{ activo: modo === 'creativos' }" @click="modo = 'creativos'">Por creativos</button>
+                    <button type="button" :class="{ activo: modo === 'grupos' }" @click="modo = 'grupos'">Por grupos</button>
+                </div>
+            </header>
+
+            <ComparacionGrupos v-if="modo === 'grupos' && !comparando" :pais="pais" :meses-disponibles="mesesDisponibles" :es-epa="esEpa" />
+
+            <template v-else-if="!comparando">
 
                 <div class="resumen-filtros">
                     <FiltroDropdown label="Mes" :modelValue="mes" :options="mesOptions" @update:modelValue="cambiarMes" />
@@ -257,7 +271,7 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
             </template>
 
             <ComparacionCreativos
-                v-else
+                v-else-if="comparando"
                 :creativos="creativosElegidos"
                 :todos="creativos"
                 :mes="mes"
@@ -279,6 +293,37 @@ const promediosDelAbierto = computed(() => promediosDeGrupo(creativoAbierto.valu
 </template>
 
 <style scoped>
+.modo-toggle {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+}
+.modo-toggle button {
+    padding: 7px 14px;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.modo-toggle button:hover {
+    color: var(--text);
+}
+.modo-toggle button.activo {
+    background: color-mix(in srgb, var(--amber) 16%, transparent);
+    color: var(--accent-text);
+    font-weight: 600;
+}
+.modo-toggle button:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
 .title-con-info {
     display: flex;
     align-items: center;
