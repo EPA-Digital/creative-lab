@@ -5,7 +5,9 @@ use App\Http\Controllers\AjustesController;
 use App\Http\Controllers\AnalisisCreativoController;
 use App\Http\Controllers\ChannelController;
 use App\Http\Controllers\CuentasController;
+use App\Http\Controllers\DailyController;
 use App\Http\Controllers\DatosMensualesController;
+use App\Http\Controllers\DiarioController;
 use App\Http\Controllers\EvaluacionCreativoController;
 use App\Http\Controllers\FuentesController;
 use App\Http\Controllers\FunnelController;
@@ -74,6 +76,18 @@ Route::middleware('auth')->group(function () {
             Route::get('/medios-data', [MediosDataController::class, 'index'])->name('medios-data');
             Route::post('/medios-data/gasto', [MediosDataController::class, 'store'])->name('medios-data.store');
             Route::delete('/medios-data/gasto/{gasto}', [MediosDataController::class, 'destroy'])->whereNumber('gasto')->name('medios-data.destroy');
+            // data.medios (2026-11-18): el export de Supermetrics por medio, día y campaña.
+            Route::post('/medios-data/importar', [MediosDataController::class, 'importar'])->name('medios-data.importar');
+            // Diario medio / Diario campaña (2026-11-18): data.medios + AF data por día.
+            Route::get('/diario-medio', [DiarioController::class, 'medio'])->name('diario-medio');
+            Route::get('/diario-campania', [DiarioController::class, 'campania'])->name('diario-campania');
+            // Daily (2026-11-18): presupuesto y pacing del mes por campaña; lo morado se edita aquí.
+            Route::get('/daily', [DailyController::class, 'index'])->name('daily');
+            Route::post('/daily/{mes}/iniciar', [DailyController::class, 'iniciar'])->name('daily.iniciar');
+            Route::patch('/daily/{mes}/plan', [DailyController::class, 'plan'])->name('daily.plan');
+            Route::post('/daily/{mes}/campanias', [DailyController::class, 'agregar'])->name('daily.agregar');
+            Route::patch('/daily/campanias/{campania}', [DailyController::class, 'editar'])->whereNumber('campania')->name('daily.editar');
+            Route::delete('/daily/campanias/{campania}', [DailyController::class, 'quitar'])->whereNumber('campania')->name('daily.quitar');
             // Fuentes (2026-11-13): venta real → canales, con inversión y eficiencia.
             Route::get('/fuentes', [FuentesController::class, 'index'])->name('fuentes');
             Route::post('/fuentes/venta-real', [FuentesController::class, 'guardarVentaReal'])->name('fuentes.venta-real');

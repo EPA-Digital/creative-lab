@@ -5,6 +5,7 @@ import axios from 'axios';
 import { confirmar, mensajeDeError, notificar } from '@/avisos';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import FiltroDropdown from '@/Components/FiltroDropdown.vue';
+import InfoTip from '@/Components/InfoTip.vue';
 import { formatNumeroExacto } from '@/motor';
 
 // Medios data (2026-11-13, pedido explícito): el gasto del mes por medio y
@@ -17,7 +18,33 @@ const props = defineProps({
     mes: { type: String, default: null },
     filas: { type: Array, default: () => [] },
     mediosManuales: { type: Array, default: () => [] },
+    // El mes viene de data.medios importada (todos los medios con clics e impresiones).
+    desdeDataMedios: { type: Boolean, default: false },
 });
+
+// --- Importar data.medios (2026-11-18) ----------------------------------------
+// El CSV de la pestaña data.medios del Daily Cuentas (Supermetrics): costo,
+// clics e impresiones por medio, día y campaña. Base de Diario medio / campaña.
+const archivo = ref(null);
+const subiendo = ref(false);
+async function importar(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    subiendo.value = true;
+    try {
+        const datos = new FormData();
+        datos.append('archivo', f);
+        const { data } = await axios.post(`${location.pathname}/importar`, datos);
+        const medios = Object.entries(data.medios).map(([m, n]) => `${m} ${formatNumeroExacto(n)}`).join(', ');
+        notificar({ tipo: 'exito', titulo: `${formatNumeroExacto(data.filas)} filas importadas`, texto: `Del ${data.desde} al ${data.hasta} (${medios}).` });
+        router.get(location.pathname, { mes: data.mes }, { preserveScroll: true });
+    } catch (err) {
+        notificar({ tipo: 'error', titulo: 'No se pudo importar', texto: mensajeDeError(err) });
+    } finally {
+        subiendo.value = false;
+        if (archivo.value) archivo.value.value = '';
+    }
+}
 
 // --- Gasto de medios sin API (Apple Search, RTB House, Google, Jampp) ---------
 // Se captura aquí por fecha y de aquí lo toma Fuentes, igual que Facebook y TikTok.
@@ -148,7 +175,19 @@ function descargarCsv() {
                         <p class="subtitle">
                             Gasto por medio y campaña. Facebook y TikTok llegan por API; Apple Search Ads, RTB House, Google Ads y Jampp se
                             capturan aquí por fecha. Fuentes toma la inversión de esta vista.
+                            <template v-if="desdeDataMedios"> Este mes sale de data.medios importada (todos los medios, con clics e impresiones).</template>
                         </p>
+                    </div>
+                    <div class="header-acciones">
+                        <label class="btn-primary subir" :class="{ deshabilitado: subiendo }">
+                            {{ subiendo ? 'Importando…' : 'Importar data.medios' }}
+                            <input ref="archivo" type="file" accept=".csv,text/csv" :disabled="subiendo" @change="importar" />
+                        </label>
+                        <InfoTip etiqueta="Qué archivo subir" lado="izquierda">
+                            En el Daily Cuentas del país, pestaña data.medios → Archivo → Descargar → CSV. Se toma el bloque de la izquierda
+                            (medio, date, campaign, campaignid, cost, clicks, impressions...). Volver a subir reemplaza esos días.
+                            Alimenta Diario medio y Diario campaña.
+                        </InfoTip>
                     </div>
                 </header>
 
@@ -212,7 +251,7 @@ function descargarCsv() {
                                 <tbody>
                                     <tr v-for="r in resumen.filas" :key="r.medio">
                                         <td>{{ r.medio }}</td>
-                                        <td><span class="origen mono" :class="r.origen">{{ r.origen === 'api' ? 'API' : 'Manual' }}</span></td>
+                                        <td><span class="origen mono" :class="r.origen">{{ r.origen === 'api' ? 'API' : r.origen === 'data.medios' ? 'data.medios' : 'Manual' }}</span></td>
                                         <td class="num">{{ usd(r.DTC) }}</td>
                                         <td class="num">{{ usd(r.BRD) }}</td>
                                         <td class="num tenue">{{ usd(r.otro) }}</td>
@@ -293,6 +332,25 @@ function descargarCsv() {
     max-width: 1400px;
     margin: 0 auto;
     padding: 32px 32px 64px;
+}
+.header-acciones {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.subir {
+    position: relative;
+    cursor: pointer;
+}
+.subir input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+.subir.deshabilitado {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 .header {
     margin-bottom: 24px;
