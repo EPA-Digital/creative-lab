@@ -78,6 +78,7 @@ class PanelDaily
                 'kpi_nc' => $c->kpi_nc,
                 'kpi_recompras' => $c->kpi_recompras,
                 'kpi_orders' => $c->kpi_orders,
+                'ajustes' => self::semana($c->ajustes),
                 'costo' => $costo,
                 'costo_ayer' => round((float) ($co['ayer'] ?? 0), 2),
                 'clicks' => (int) ($co['clicks'] ?? 0),
@@ -109,6 +110,7 @@ class PanelDaily
                 'meta_nc' => $plan->meta_nc,
                 'meta_orders' => $plan->meta_orders,
                 'notas' => $plan->notas,
+                'total_dia' => self::semana($plan->total_dia),
             ] : null,
             'fechas' => [
                 'inicio' => $inicio->toDateString(),
@@ -146,6 +148,7 @@ class PanelDaily
             if ($desde === 'anterior') {
                 $anterior = $this->plan($paisId, $primero->subMonth()->format('Y-m'));
                 if ($anterior) {
+                    DB::table('daily_planes')->where('id', $planId)->update(['total_dia' => $anterior->total_dia]);
                     $nuevas = DB::table('daily_campanias')->where('plan_id', $anterior->id)
                         ->where('status', '!=', 'FINALIZADA')->orderBy('orden')->orderBy('id')->get()
                         ->map(fn ($c) => collect($c)->except(['id', 'plan_id', 'actualizado_por', 'actualizado_en'])->all())->all();
@@ -241,6 +244,15 @@ class PanelDaily
         usort($salida, fn ($a, $b) => $b['costo'] <=> $a['costo'] ?: strcmp($a['campania'], $b['campania']));
 
         return array_values($salida);
+    }
+
+    /** JSON de 7 valores [lun..dom] (null = sin dato). @return list<float|null> */
+    public static function semana(?string $json): array
+    {
+        $v = json_decode((string) $json, true);
+        $v = is_array($v) ? $v : [];
+
+        return array_map(fn ($i) => isset($v[$i]) && $v[$i] !== null ? (float) $v[$i] : null, range(0, 6));
     }
 
     /** Etapa por el token del nombre (ECU_..._AWA_EPA_...). */

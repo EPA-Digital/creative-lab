@@ -73,6 +73,24 @@ class DailyTest extends TestCase
         $this->assertSame(['ayer' => '2026-11-03', 'restantes' => 27], ['ayer' => $r['fechas']['ayer'], 'restantes' => $r['fechas']['restantes']]);
     }
 
+    public function test_ajustes_por_dia_de_la_semana(): void
+    {
+        $user = $this->usuario();
+        $this->datos();
+        $this->actingAs($user)->post('/tada/pais/ecuador/daily/2026-11/iniciar', ['desde' => 'datos'])->assertOk();
+        $id = DB::table('daily_campanias')->value('id');
+
+        $this->actingAs($user)->patch("/tada/pais/ecuador/daily/campanias/{$id}", ['ajuste' => ['dia' => 0, 'valor' => 80]])->assertOk();
+        $this->actingAs($user)->patch("/tada/pais/ecuador/daily/campanias/{$id}", ['ajuste' => ['dia' => 4, 'valor' => '120.5']])->assertOk();
+        $this->actingAs($user)->patch("/tada/pais/ecuador/daily/campanias/{$id}", ['ajuste' => ['dia' => 0, 'valor' => null]])->assertOk();
+        $this->actingAs($user)->patch("/tada/pais/ecuador/daily/campanias/{$id}", ['ajuste' => ['dia' => 7, 'valor' => 1]])->assertSessionHasErrors('ajuste.dia');
+        $this->actingAs($user)->patch('/tada/pais/ecuador/daily/2026-11/plan', ['total_dia' => ['dia' => 6, 'valor' => 950]])->assertOk();
+
+        $r = app(PanelDaily::class)->armar(Pais::where('codigo', 'EC')->value('id'), 'ecuador', '2026-11', CarbonImmutable::parse('2026-11-04'));
+        $this->assertSame([null, null, null, null, 120.5, null, null], $r['campanias'][0]['ajustes']);
+        $this->assertSame([null, null, null, null, null, null, 950.0], $r['plan']['total_dia']);
+    }
+
     public function test_copia_el_mes_anterior_sin_las_finalizadas(): void
     {
         $user = $this->usuario();

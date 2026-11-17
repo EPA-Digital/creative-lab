@@ -69,7 +69,14 @@ class DailyController extends Controller
             'notas' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'fecha_inicio' => ['sometimes', 'date_format:Y-m-d'],
             'fecha_fin' => ['sometimes', 'date_format:Y-m-d'],
+            // Ajustes por día: "Total a gastar" de un día de la semana (0 = lunes).
+            'total_dia' => ['sometimes', 'array:dia,valor'],
+            'total_dia.dia' => ['required_with:total_dia', 'integer', 'between:0,6'],
+            'total_dia.valor' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
         ]);
+        if (isset($datos['total_dia'])) {
+            $datos['total_dia'] = self::conDia($plan->total_dia, $datos['total_dia']);
+        }
         $inicio = $datos['fecha_inicio'] ?? substr((string) $plan->fecha_inicio, 0, 10);
         $fin = $datos['fecha_fin'] ?? substr((string) $plan->fecha_fin, 0, 10);
         abort_if($fin < $inicio, 422, 'La fecha final no puede ser antes del inicio.');
@@ -123,7 +130,15 @@ class DailyController extends Controller
             'kpi_nc' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000000'],
             'kpi_recompras' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000000'],
             'kpi_orders' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000000'],
+            // Ajuste del daily de un día de la semana (0 = lunes).
+            'ajuste' => ['sometimes', 'array:dia,valor'],
+            'ajuste.dia' => ['required_with:ajuste', 'integer', 'between:0,6'],
+            'ajuste.valor' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
         ]);
+        if (isset($datos['ajuste'])) {
+            $datos['ajustes'] = self::conDia($fila->ajustes, $datos['ajuste']);
+            unset($datos['ajuste']);
+        }
         DB::table('daily_campanias')->where('id', $fila->id)->update([...$datos, 'actualizado_por' => $request->user()->id, 'actualizado_en' => now()]);
         Auditoria::registrar('daily.campania_editada', $request->user(), detalle: ['pais' => $pais, 'id' => $fila->id, 'campania' => $fila->campania, ...$datos]);
 
@@ -137,6 +152,15 @@ class DailyController extends Controller
         Auditoria::registrar('daily.campania_quitada', $request->user(), detalle: ['pais' => $pais, 'id' => $fila->id, 'campania' => $fila->campania]);
 
         return response()->json(['ok' => true]);
+    }
+
+    /** El JSON [lun..dom] con un día cambiado. @param array{dia: int, valor: mixed} $cambio */
+    private static function conDia(?string $json, array $cambio): string
+    {
+        $semana = PanelDaily::semana($json);
+        $semana[(int) $cambio['dia']] = isset($cambio['valor']) ? round((float) $cambio['valor'], 2) : null;
+
+        return json_encode($semana);
     }
 
     /** La campaña tiene que ser de un plan de esta cuenta y país. */

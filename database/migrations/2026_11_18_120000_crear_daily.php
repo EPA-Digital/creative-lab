@@ -26,6 +26,8 @@ return new class extends Migration
             $table->unsignedInteger('meta_nc')->nullable();
             $table->unsignedInteger('meta_orders')->nullable();
             $table->text('notas')->nullable();
+            // Ajustes por día (2026-11-18): "Total a gastar" de cada día de la semana, [lun..dom].
+            $table->json('total_dia')->nullable();
             $table->timestamp('actualizado_en')->nullable();
 
             $table->foreign('cuenta_id')->references('id')->on('cuentas')->cascadeOnDelete();
@@ -50,6 +52,8 @@ return new class extends Migration
             $table->unsignedInteger('kpi_nc')->nullable();
             $table->unsignedInteger('kpi_recompras')->nullable();
             $table->unsignedInteger('kpi_orders')->nullable();
+            // Ajuste de daily por día de la semana, [lun..dom] (null = sin ajuste).
+            $table->json('ajustes')->nullable();
             $table->unsignedInteger('actualizado_por')->nullable();
             $table->timestamp('actualizado_en')->nullable();
 

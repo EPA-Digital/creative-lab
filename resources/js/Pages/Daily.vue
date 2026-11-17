@@ -193,6 +193,33 @@ const METAS = [
     { campo: 'meta_orders', label: 'Orders', real: 'orders' },
 ];
 
+// --- KPIs por campaña: KPI · llevamos · alcanzado · gráfico (como la hoja) -------
+const metricasKpi = computed(() => [
+    { k: 'installs', kpi: 'kpi_installs', label: 'Instalaciones', corto: 'Installs' },
+    { k: 'nc', kpi: 'kpi_nc', label: 'First orders (NC)', corto: 'NC' },
+    ...(masMetricas.value ? [{ k: 'recompras', kpi: 'kpi_recompras', label: 'Recompras', corto: 'Recompras' }] : []),
+    { k: 'orders', kpi: 'kpi_orders', label: 'Orders', corto: 'Orders' },
+]);
+/** Alcance contra el ideal a ayer (para el semáforo); null si no hay KPI. */
+const alcance = (real, kpi) => (kpi ? real / kpi - props.fechas.ideal : null);
+
+// --- Ajustes por día de la semana -------------------------------------------------
+const vistaTabla = ref('pacing');
+const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const diaHoy = (new Date().getDay() + 6) % 7; // lunes = 0
+/** Lo que gasta la campaña ese día: su ajuste o, si no tiene, su daily de plataforma. Solo activas. */
+const gastoDia = (c, i) => (c.status === 'ACTIVA' ? c.ajustes[i] ?? c.daily_plataforma ?? 0 : 0);
+const sumaDia = (lista, i) => lista.reduce((t, c) => t + gastoDia(c, i), 0);
+const repartido = computed(() => DIAS_SEMANA.map((_, i) => sumaDia(props.campanias, i)));
+const cambioAjuste = (c, i) => (c.ajustes[i] === null || !c.daily_plataforma ? null : c.ajustes[i] / c.daily_plataforma - 1);
+const claseCambio = (x) => (x === null ? '' : x > 0.005 ? 'sube' : x < -0.005 ? 'baja' : '');
+function editarAjuste(c, dia, valor) {
+    guardar(`${location.pathname}/campanias/${c.id}`, { ajuste: { dia, valor: numero(valor) } });
+}
+function editarTotalDia(dia, valor) {
+    guardar(`${location.pathname}/${props.mes}/plan`, { total_dia: { dia, valor: numero(valor) } });
+}
+
 // Cambiar de mes reinicia filtros.
 watch(() => props.mes, () => { busqueda.value = ''; filtroStatus.value = 'TODOS'; filtroFunnel.value = 'TODOS'; });
 const claseStatus = (s) => ({ ACTIVA: 'activa', 'EN PAUSA': 'pausa', FINALIZADA: 'finalizada', PENDIENTE: 'pendiente' })[s] ?? '';
@@ -317,7 +344,11 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                         <div class="tabla-cabeza">
                             <h2>Campañas <span class="mono cuenta">{{ visibles.length }} de {{ campanias.length }}</span></h2>
                             <div class="tabla-acciones">
-                                <label class="ver-mas"><input v-model="masMetricas" type="checkbox" /> Más métricas</label>
+                                <div class="periodo-toggle" role="group" aria-label="Vista de la tabla">
+                                    <button type="button" :class="{ activo: vistaTabla === 'pacing' }" @click="vistaTabla = 'pacing'">Pacing</button>
+                                    <button type="button" :class="{ activo: vistaTabla === 'ajustes' }" @click="vistaTabla = 'ajustes'">Ajustes por día</button>
+                                </div>
+                                <label v-if="vistaTabla === 'pacing'" class="ver-mas"><input v-model="masMetricas" type="checkbox" /> Más métricas</label>
                                 <button type="button" class="btn-primary" @click="abrirAgregar()">Agregar campaña</button>
                             </div>
                         </div>
@@ -332,30 +363,41 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
 
                         <p v-if="!campanias.length" class="empty-note">No hay campañas en la planeación. Agrega la primera.</p>
 
-                        <div v-else class="tabla-scroll">
-                            <table class="tabla">
+                        <div v-else-if="vistaTabla === 'pacing'" class="tabla-scroll">
+                            <table class="tabla pacing">
                                 <thead>
+                                    <tr class="grupos-cabeza">
+                                        <th class="fija izq" rowspan="2">Campaña</th>
+                                        <th class="izq" rowspan="2">Status</th>
+                                        <th class="izq" rowspan="2">Funnel</th>
+                                        <th colspan="4" class="grupo">Presupuesto</th>
+                                        <th colspan="4" class="grupo">Pacing</th>
+                                        <th v-for="m in metricasKpi" :key="`g${m.k}`" colspan="4" class="grupo">{{ m.label }}</th>
+                                        <th :colspan="masMetricas ? 4 : 3" class="grupo">Costos</th>
+                                        <th v-if="masMetricas" colspan="9" class="grupo">Métricas secundarias</th>
+                                        <th rowspan="2" />
+                                    </tr>
                                     <tr>
-                                        <th class="fija izq">Campaña</th>
-                                        <th class="izq">Status</th>
-                                        <th class="izq">Funnel</th>
-                                        <th>Budget</th>
+                                        <th class="grupo">Budget</th>
                                         <th>Costo</th>
-                                        <th class="izq">Consumido</th>
-                                        <th title="% consumido - % ideal a ayer">Dif.</th>
+                                        <th>%</th>
+                                        <th class="izq">Gráfico</th>
+                                        <th class="grupo" title="% consumido - % ideal a ayer">Dif.</th>
                                         <th>Ayer</th>
                                         <th>Daily plataforma</th>
                                         <th title="Remanente / días restantes">Daily ideal</th>
-                                        <th class="grupo">Installs</th>
-                                        <th>NC</th>
-                                        <th>Orders</th>
+                                        <template v-for="m in metricasKpi" :key="`h${m.k}`">
+                                            <th class="grupo">KPI</th>
+                                            <th>{{ m.corto }}</th>
+                                            <th>Alcanzado</th>
+                                            <th class="izq">Gráfico</th>
+                                        </template>
                                         <th class="grupo">CPI</th>
                                         <th>CAC</th>
                                         <th>CPO</th>
+                                        <th v-if="masMetricas">CPA</th>
                                         <template v-if="masMetricas">
-                                            <th class="grupo">Recompras</th>
-                                            <th>CPA</th>
-                                            <th>Clicks</th>
+                                            <th class="grupo">Clicks</th>
                                             <th>Impresiones</th>
                                             <th>CTR</th>
                                             <th>CPC</th>
@@ -365,30 +407,36 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <th title="Installs / Clicks">IR</th>
                                             <th class="izq">Región</th>
                                         </template>
-                                        <th />
                                     </tr>
                                 </thead>
                                 <tbody v-for="g in grupos" :key="g.id">
                                     <tr class="medio-fila">
-                                        <th class="fija izq" :colspan="1">
+                                        <th class="fija izq">
                                             <i v-if="g.color" class="punto" :style="{ background: `var(--${g.color})` }" />{{ g.nombre }}
                                             <button type="button" class="mini" :title="`Agregar campaña de ${g.nombre}`" @click="abrirAgregar(g.id)">+ Agregar</button>
                                         </th>
                                         <td colspan="2" />
-                                        <td>{{ dinero(total(g.todas).budget) }}</td>
-                                        <td>{{ dinero(total(g.todas).costo) }}</td>
-                                        <td class="izq">{{ pct(total(g.todas).consumido) }}</td>
-                                        <td :class="`ritmo-texto-${ritmo(total(g.todas).dif)}`">{{ pp(total(g.todas).dif) }}</td>
-                                        <td>{{ dinero(total(g.todas).costo_ayer) }}</td>
-                                        <td>{{ dinero(total(g.todas).daily_plataforma) }}</td>
-                                        <td>{{ dinero(total(g.todas).daily_ideal) }}</td>
-                                        <td class="grupo">{{ entero(total(g.todas).installs) }}</td>
-                                        <td>{{ entero(total(g.todas).nc) }}</td>
-                                        <td>{{ entero(total(g.todas).orders) }}</td>
-                                        <td class="grupo">{{ dinero2(div(total(g.todas).costo, total(g.todas).installs)) }}</td>
-                                        <td>{{ dinero2(div(total(g.todas).costo, total(g.todas).nc)) }}</td>
-                                        <td>{{ dinero2(div(total(g.todas).costo, total(g.todas).orders)) }}</td>
-                                        <td v-if="masMetricas" colspan="11" class="grupo" />
+                                        <template v-for="t in [total(g.todas)]" :key="'t'">
+                                            <td class="grupo">{{ dinero(t.budget) }}</td>
+                                            <td>{{ dinero(t.costo) }}</td>
+                                            <td :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pct(t.consumido, 0) }}</td>
+                                            <td class="izq"><div class="pista chica"><i :class="`ritmo-fondo-${ritmo(t.dif)}`" :style="{ width: anchoBarra(t.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                            <td class="grupo" :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pp(t.dif) }}</td>
+                                            <td>{{ dinero(t.costo_ayer) }}</td>
+                                            <td>{{ dinero(t.daily_plataforma) }}</td>
+                                            <td>{{ dinero(t.daily_ideal) }}</td>
+                                            <template v-for="m in metricasKpi" :key="`s${m.k}`">
+                                                <td class="grupo">{{ t[m.kpi] ? entero(t[m.kpi]) : '—' }}</td>
+                                                <td>{{ entero(t[m.k]) }}</td>
+                                                <td :class="`ritmo-texto-${ritmo(alcance(t[m.k], t[m.kpi]))}`">{{ t[m.kpi] ? pct(div(t[m.k], t[m.kpi]), 0) : '—' }}</td>
+                                                <td class="izq"><div v-if="t[m.kpi]" class="pista chica"><i :class="`ritmo-fondo-${ritmo(alcance(t[m.k], t[m.kpi]))}`" :style="{ width: anchoBarra(div(t[m.k], t[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                            </template>
+                                            <td class="grupo">{{ dinero2(div(t.costo, t.installs)) }}</td>
+                                            <td>{{ dinero2(div(t.costo, t.nc)) }}</td>
+                                            <td>{{ dinero2(div(t.costo, t.orders)) }}</td>
+                                            <td v-if="masMetricas">{{ dinero2(div(t.costo, t.recompras)) }}</td>
+                                            <td v-if="masMetricas" colspan="9" class="grupo" />
+                                        </template>
                                         <td />
                                     </tr>
                                     <tr v-for="c in g.filas" :key="c.id" :class="{ apagada: c.status === 'FINALIZADA' }">
@@ -405,60 +453,31 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <small v-if="!c.con_datos" class="sin-datos mono">Sin datos en el periodo</small>
                                         </th>
                                         <td class="izq">
-                                            <CeldaEditable
-                                                :valor="c.status"
-                                                tipo="select"
-                                                :opciones="STATUS_EDITAR"
-                                                alinear="izquierda"
-                                                :clase-valor="`estado ${claseStatus(c.status)}`"
-                                                etiqueta="Status"
-                                                @guardar="editarCampania(c, 'status', $event)"
-                                            />
+                                            <CeldaEditable :valor="c.status" tipo="select" :opciones="STATUS_EDITAR" alinear="izquierda" :clase-valor="`estado ${claseStatus(c.status)}`" etiqueta="Status" @guardar="editarCampania(c, 'status', $event)" />
                                         </td>
                                         <td class="izq">
-                                            <CeldaEditable
-                                                :valor="c.funnel"
-                                                tipo="select"
-                                                :opciones="FUNNEL_EDITAR"
-                                                alinear="izquierda"
-                                                etiqueta="Funnel"
-                                                @guardar="editarCampania(c, 'funnel', $event || null)"
-                                            />
+                                            <CeldaEditable :valor="c.funnel" tipo="select" :opciones="FUNNEL_EDITAR" alinear="izquierda" etiqueta="Funnel" @guardar="editarCampania(c, 'funnel', $event || null)" />
                                         </td>
-                                        <td><CeldaEditable :valor="c.budget || null" tipo="numero" :formato="dinero" vacio="—" etiqueta="Budget" @guardar="editarCampania(c, 'budget', $event)" /></td>
+                                        <td class="grupo"><CeldaEditable :valor="c.budget || null" tipo="numero" :formato="dinero" vacio="—" etiqueta="Budget" @guardar="editarCampania(c, 'budget', $event)" /></td>
                                         <td>{{ dinero2(c.costo) }}</td>
-                                        <td class="izq">
-                                            <div class="consumo">
-                                                <div class="pista chica">
-                                                    <i :class="`ritmo-fondo-${ritmo(c.dif)}`" :style="{ width: anchoBarra(c.consumido) }" />
-                                                    <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" />
-                                                </div>
-                                                <span class="mono">{{ pct(c.consumido, 0) }}</span>
-                                            </div>
-                                        </td>
-                                        <td :class="`ritmo-texto-${ritmo(c.dif)}`">{{ pp(c.dif) }}</td>
+                                        <td :class="`ritmo-texto-${ritmo(c.dif)}`">{{ pct(c.consumido, 0) }}</td>
+                                        <td class="izq"><div class="pista chica"><i :class="`ritmo-fondo-${ritmo(c.dif)}`" :style="{ width: anchoBarra(c.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                        <td class="grupo" :class="`ritmo-texto-${ritmo(c.dif)}`">{{ pp(c.dif) }}</td>
                                         <td>{{ dinero2(c.costo_ayer) }}</td>
                                         <td><CeldaEditable :valor="c.daily_plataforma" tipo="numero" :formato="dinero" etiqueta="Daily de plataforma" @guardar="editarCampania(c, 'daily_plataforma', $event)" /></td>
                                         <td>{{ dinero2(c.daily_ideal) }}</td>
-                                        <td v-for="(k, i) in [['installs', 'kpi_installs'], ['nc', 'kpi_nc'], ['orders', 'kpi_orders']]" :key="k[0]" :class="{ grupo: i === 0 }">
-                                            <div class="con-kpi">
-                                                <b>{{ entero(c[k[0]]) }}</b>
-                                                <CeldaEditable class="kpi" :valor="c[k[1]]" tipo="numero" :formato="(v) => `KPI ${entero(v)}`" vacio="" :etiqueta="`Agregar KPI de ${k[0]}`" @guardar="editarCampania(c, k[1], $event)" />
-                                                <small v-if="c[k[1]]" class="mono" :class="`ritmo-texto-${ritmo(div(c[k[0]], c[k[1]]) - fechas.ideal)}`">{{ pct(div(c[k[0]], c[k[1]]), 0) }}</small>
-                                            </div>
-                                        </td>
+                                        <template v-for="m in metricasKpi" :key="`c${m.k}`">
+                                            <td class="grupo"><CeldaEditable :valor="c[m.kpi]" tipo="numero" :formato="entero" vacio="—" :etiqueta="`KPI de ${m.label}`" @guardar="editarCampania(c, m.kpi, $event)" /></td>
+                                            <td>{{ entero(c[m.k]) }}</td>
+                                            <td :class="`ritmo-texto-${ritmo(alcance(c[m.k], c[m.kpi]))}`">{{ c[m.kpi] ? pct(div(c[m.k], c[m.kpi]), 0) : '—' }}</td>
+                                            <td class="izq"><div v-if="c[m.kpi]" class="pista chica"><i :class="`ritmo-fondo-${ritmo(alcance(c[m.k], c[m.kpi]))}`" :style="{ width: anchoBarra(div(c[m.k], c[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                        </template>
                                         <td class="grupo">{{ dinero2(div(c.costo, c.installs)) }}</td>
                                         <td>{{ dinero2(div(c.costo, c.nc)) }}</td>
                                         <td>{{ dinero2(div(c.costo, c.orders)) }}</td>
+                                        <td v-if="masMetricas">{{ dinero2(div(c.costo, c.recompras)) }}</td>
                                         <template v-if="masMetricas">
-                                            <td class="grupo">
-                                                <div class="con-kpi">
-                                                    <b>{{ entero(c.recompras) }}</b>
-                                                    <CeldaEditable class="kpi" :valor="c.kpi_recompras" tipo="numero" :formato="(v) => `KPI ${entero(v)}`" vacio="" etiqueta="Agregar KPI de recompras" @guardar="editarCampania(c, 'kpi_recompras', $event)" />
-                                                </div>
-                                            </td>
-                                            <td>{{ dinero2(div(c.costo, c.recompras)) }}</td>
-                                            <td>{{ entero(c.clicks) }}</td>
+                                            <td class="grupo">{{ entero(c.clicks) }}</td>
                                             <td>{{ entero(c.impresiones) }}</td>
                                             <td>{{ pct(div(c.clicks, c.impresiones), 2) }}</td>
                                             <td>{{ dinero2(div(c.costo, c.clicks)) }}</td>
@@ -475,25 +494,101 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                     <tr>
                                         <th class="fija izq">Total</th>
                                         <td colspan="2" />
-                                        <td>{{ dinero(totalGeneral.budget) }}</td>
-                                        <td>{{ dinero(totalGeneral.costo) }}</td>
-                                        <td class="izq">{{ pct(totalGeneral.consumido) }}</td>
-                                        <td :class="`ritmo-texto-${ritmo(totalGeneral.dif)}`">{{ pp(totalGeneral.dif) }}</td>
-                                        <td>{{ dinero(totalGeneral.costo_ayer) }}</td>
-                                        <td>{{ dinero(totalGeneral.daily_plataforma) }}</td>
-                                        <td>{{ dinero(totalGeneral.daily_ideal) }}</td>
-                                        <td class="grupo">{{ entero(totalGeneral.installs) }}</td>
-                                        <td>{{ entero(totalGeneral.nc) }}</td>
-                                        <td>{{ entero(totalGeneral.orders) }}</td>
-                                        <td class="grupo">{{ dinero2(div(totalGeneral.costo, totalGeneral.installs)) }}</td>
-                                        <td>{{ dinero2(div(totalGeneral.costo, totalGeneral.nc)) }}</td>
-                                        <td>{{ dinero2(div(totalGeneral.costo, totalGeneral.orders)) }}</td>
-                                        <td v-if="masMetricas" colspan="11" class="grupo" />
+                                        <template v-for="t in [totalGeneral]" :key="'tg'">
+                                            <td class="grupo">{{ dinero(t.budget) }}</td>
+                                            <td>{{ dinero(t.costo) }}</td>
+                                            <td :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pct(t.consumido, 0) }}</td>
+                                            <td class="izq"><div class="pista chica"><i :class="`ritmo-fondo-${ritmo(t.dif)}`" :style="{ width: anchoBarra(t.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                            <td class="grupo" :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pp(t.dif) }}</td>
+                                            <td>{{ dinero(t.costo_ayer) }}</td>
+                                            <td>{{ dinero(t.daily_plataforma) }}</td>
+                                            <td>{{ dinero(t.daily_ideal) }}</td>
+                                            <template v-for="m in metricasKpi" :key="`f${m.k}`">
+                                                <td class="grupo">{{ t[m.kpi] ? entero(t[m.kpi]) : '—' }}</td>
+                                                <td>{{ entero(t[m.k]) }}</td>
+                                                <td :class="`ritmo-texto-${ritmo(alcance(t[m.k], t[m.kpi]))}`">{{ t[m.kpi] ? pct(div(t[m.k], t[m.kpi]), 0) : '—' }}</td>
+                                                <td class="izq"><div v-if="t[m.kpi]" class="pista chica"><i :class="`ritmo-fondo-${ritmo(alcance(t[m.k], t[m.kpi]))}`" :style="{ width: anchoBarra(div(t[m.k], t[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                            </template>
+                                            <td class="grupo">{{ dinero2(div(t.costo, t.installs)) }}</td>
+                                            <td>{{ dinero2(div(t.costo, t.nc)) }}</td>
+                                            <td>{{ dinero2(div(t.costo, t.orders)) }}</td>
+                                            <td v-if="masMetricas">{{ dinero2(div(t.costo, t.recompras)) }}</td>
+                                            <td v-if="masMetricas" colspan="9" class="grupo" />
+                                        </template>
                                         <td />
                                     </tr>
                                 </tfoot>
                             </table>
                         </div>
+
+                        <!-- Ajustes por día de la semana (como Ajuste Lunes...Domingo de la hoja) -->
+                        <template v-else>
+                            <p class="hint">
+                                El daily de cada campaña por día de la semana. Vacío = usa su daily de plataforma. % = cambio contra el daily de plataforma.
+                                "Total a gastar" es lo que quieren invertir ese día en el país; el restante es lo que falta repartir.
+                            </p>
+                            <div class="tabla-scroll">
+                                <table class="tabla ajustes">
+                                    <thead>
+                                        <tr class="totales-dia">
+                                            <th class="fija izq">Total a gastar</th>
+                                            <td />
+                                            <td v-for="(d, i) in DIAS_SEMANA" :key="`t${i}`" colspan="2" class="grupo" :class="{ hoy: i === diaHoy }">
+                                                <CeldaEditable :valor="plan.total_dia[i]" tipo="numero" :formato="dinero" vacio="—" :etiqueta="`Total a gastar el ${d}`" @guardar="editarTotalDia(i, $event)" />
+                                            </td>
+                                        </tr>
+                                        <tr class="totales-dia">
+                                            <th class="fija izq">Repartido · restante</th>
+                                            <td />
+                                            <td v-for="(d, i) in DIAS_SEMANA" :key="`r${i}`" colspan="2" class="grupo" :class="{ hoy: i === diaHoy }">
+                                                <span>{{ dinero(repartido[i]) }}</span>
+                                                <small v-if="plan.total_dia[i] !== null" class="mono" :class="Math.abs(plan.total_dia[i] - repartido[i]) < 1 ? 'ritmo-texto-bien' : 'ritmo-texto-ojo'">
+                                                    {{ dinero(plan.total_dia[i] - repartido[i]) }} · {{ pct(div(repartido[i], plan.total_dia[i]), 0) }}
+                                                </small>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th class="fija izq">Campaña</th>
+                                            <th>Daily plataforma</th>
+                                            <template v-for="(d, i) in DIAS_SEMANA" :key="`h${i}`">
+                                                <th class="grupo" :class="{ hoy: i === diaHoy }">{{ d }}</th>
+                                                <th :class="{ hoy: i === diaHoy }">%</th>
+                                            </template>
+                                        </tr>
+                                    </thead>
+                                    <tbody v-for="g in grupos" :key="`a${g.id}`">
+                                        <tr class="medio-fila">
+                                            <th class="fija izq"><i v-if="g.color" class="punto" :style="{ background: `var(--${g.color})` }" />{{ g.nombre }}</th>
+                                            <td>{{ dinero(total(g.todas).daily_plataforma) }}</td>
+                                            <template v-for="(d, i) in DIAS_SEMANA" :key="`s${i}`">
+                                                <td class="grupo" :class="{ hoy: i === diaHoy }">{{ dinero(sumaDia(g.todas, i)) }}</td>
+                                                <td :class="{ hoy: i === diaHoy }" />
+                                            </template>
+                                        </tr>
+                                        <tr v-for="c in g.filas" :key="`a${c.id}`" :class="{ apagada: c.status !== 'ACTIVA' }">
+                                            <th class="fija izq campania">
+                                                <span class="nombre-ajuste">{{ c.nombre_comun || c.campania }}</span>
+                                                <small class="mono">{{ c.status.charAt(0) + c.status.slice(1).toLowerCase() }} · {{ nombreFunnel(c.funnel) }}</small>
+                                            </th>
+                                            <td><CeldaEditable :valor="c.daily_plataforma" tipo="numero" :formato="dinero" etiqueta="Daily de plataforma" @guardar="editarCampania(c, 'daily_plataforma', $event)" /></td>
+                                            <template v-for="(d, i) in DIAS_SEMANA" :key="`c${i}`">
+                                                <td class="grupo" :class="{ hoy: i === diaHoy }">
+                                                    <CeldaEditable
+                                                        :valor="c.ajustes[i]"
+                                                        tipo="numero"
+                                                        :formato="dinero"
+                                                        :vacio="c.daily_plataforma !== null ? dinero(c.daily_plataforma) : '—'"
+                                                        :etiqueta="`Ajuste del ${d}`"
+                                                        @guardar="editarAjuste(c, i, $event)"
+                                                    />
+                                                </td>
+                                                <td class="mono pct-ajuste" :class="[{ hoy: i === diaHoy }, claseCambio(cambioAjuste(c, i))]">{{ cambioAjuste(c, i) === null ? '' : pct(cambioAjuste(c, i), 0) }}</td>
+                                            </template>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
                     </section>
 
                     <!-- Notas -->
@@ -1064,6 +1159,94 @@ tr.apagada .fija small {
     padding: 10px 12px;
     font-size: 0.85rem;
     resize: vertical;
+}
+
+/* Encabezado en dos filas: grupos (Presupuesto, Instalaciones...) y columnas */
+.pacing .grupos-cabeza th {
+    text-align: center;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+.pacing .grupos-cabeza th.fija,
+.pacing .grupos-cabeza th.izq {
+    text-align: left;
+    vertical-align: bottom;
+}
+.pacing thead tr:nth-child(2) th {
+    top: 27px;
+}
+
+/* Ajustes por día */
+.periodo-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+}
+.periodo-toggle button {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.periodo-toggle button.activo {
+    background: var(--amber);
+    color: var(--amber-ink);
+    font-weight: 600;
+}
+.periodo-toggle button:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
+.ajustes .totales-dia th,
+.ajustes .totales-dia td {
+    position: static;
+    background: var(--surface-2);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.78rem;
+    color: var(--text);
+    text-align: center;
+}
+.ajustes .totales-dia .fija {
+    position: sticky;
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.ajustes .totales-dia small {
+    display: block;
+    font-size: 0.64rem;
+}
+.ajustes .hoy {
+    background: color-mix(in srgb, var(--amber) 8%, transparent);
+}
+.ajustes thead th.hoy {
+    color: var(--amber);
+}
+.nombre-ajuste {
+    display: block;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+.pct-ajuste {
+    font-size: 0.66rem;
+    color: var(--text-faint);
+    min-width: 44px;
+}
+.pct-ajuste.sube {
+    color: var(--mint);
+}
+.pct-ajuste.baja {
+    color: var(--coral);
 }
 
 /* Modal agregar */
