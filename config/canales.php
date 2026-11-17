@@ -13,14 +13,16 @@
  *
  * - media: media sources de AppsFlyer que suman al canal (sin distinguir
  *   mayúsculas).
+ * - datos: cómo viene el medio en data.medios (Supermetrics), también sin
+ *   distinguir mayúsculas -- para Diario medio / Diario campaña.
  * - color: token de serie de app.css para el encabezado del canal.
  */
-$meta = ['id' => 'meta', 'nombre' => 'Meta', 'media' => ['Facebook Ads'], 'color' => 'serie-1'];
-$tiktok = ['id' => 'tiktok', 'nombre' => 'TikTok', 'media' => ['tiktokglobal_int'], 'color' => 'serie-6'];
-$asa = ['id' => 'asa', 'nombre' => 'ASA', 'media' => ['Apple Search Ads'], 'color' => 'serie-5'];
-$rtb = ['id' => 'rtb', 'nombre' => 'RTB', 'media' => ['rtbhouse_int'], 'color' => 'serie-2'];
-$twitter = ['id' => 'twitter', 'nombre' => 'Twitter', 'media' => ['Twitter', 'twitterads_int'], 'color' => 'serie-4'];
-$google = ['id' => 'google', 'nombre' => 'Google', 'media' => ['googleadwords_int'], 'color' => 'serie-3'];
+$meta = ['id' => 'meta', 'nombre' => 'Meta', 'media' => ['Facebook Ads'], 'datos' => ['facebook', 'meta', 'facebook ads'], 'color' => 'serie-1'];
+$tiktok = ['id' => 'tiktok', 'nombre' => 'TikTok', 'media' => ['tiktokglobal_int'], 'datos' => ['tiktok', 'tiktok ads'], 'color' => 'serie-6'];
+$asa = ['id' => 'asa', 'nombre' => 'ASA', 'media' => ['Apple Search Ads'], 'datos' => ['asa', 'apple', 'apple ads', 'apple search ads'], 'color' => 'serie-5'];
+$rtb = ['id' => 'rtb', 'nombre' => 'RTB', 'media' => ['rtbhouse_int'], 'datos' => ['rtb house', 'rtb', 'rtbhouse'], 'color' => 'serie-2'];
+$twitter = ['id' => 'twitter', 'nombre' => 'Twitter', 'media' => ['Twitter', 'twitterads_int'], 'datos' => ['twitter', 'x', 'twitter ads'], 'color' => 'serie-4'];
+$google = ['id' => 'google', 'nombre' => 'Google', 'media' => ['googleadwords_int'], 'datos' => ['google ads', 'google', 'adwords'], 'color' => 'serie-3'];
 
 return [
     'ecuador' => [$meta, $tiktok, $asa, $rtb],

@@ -36,7 +36,7 @@ const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director',
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
 // conserva la vista en la que está.
-const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
+const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', daily: '/daily', 'diario-medio': '/diario-medio', 'diario-campania': '/diario-campania', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
 // Menú en árbol plegable (2026-11-17, pedido explícito): Resumen, Análisis,
 // Datos y Fuentes como ramas; cada vista es una hoja. Un 'cliente' solo ve
@@ -46,7 +46,7 @@ const ARBOL = computed(() => {
         return [{ id: 'analisis', label: 'Análisis', icono: 'grafica', hijos: [{ vista: 'creativos', label: 'Creativos' }] }];
     }
     return [
-        { id: 'resumen', label: 'Resumen', icono: 'house', hijos: [{ vista: 'daily', label: 'Daily', proximamente: true }] },
+        { id: 'resumen', label: 'Resumen', icono: 'house', hijos: [{ vista: 'daily', label: 'Daily', proximamente: !tieneCanales.value }] },
         {
             id: 'analisis',
             label: 'Análisis',
@@ -63,7 +63,9 @@ const ARBOL = computed(() => {
             icono: 'datos',
             hijos: [
                 { vista: 'importar', label: 'Cargar datos' },
-                ...(tieneFuentes.value ? [{ vista: 'af-data', label: 'AF data' }, { vista: 'medios-data', label: 'Medios data' }] : []),
+                ...(tieneFuentes.value ? [{ vista: 'af-data', label: 'AF data' }] : []),
+                ...(tieneFuentes.value || tieneCanales.value ? [{ vista: 'medios-data', label: 'Medios data' }] : []),
+                ...(tieneCanales.value ? [{ vista: 'diario-medio', label: 'Diario medio' }, { vista: 'diario-campania', label: 'Diario campaña' }] : []),
             ],
         },
         ...(tieneFuentes.value || tieneCanales.value
@@ -119,7 +121,7 @@ const vistaParaPais = computed(() => (RUTA_VISTA[props.vistaActiva] ? props.vist
 // tiene (México) lleva a Creativos.
 const vistaDestino = (paisId) => {
     const v = vistaParaPais.value;
-    if (v === 'channel') return (usePage().props.paisesConCanales ?? []).includes(paisId) ? v : 'creativos';
+    if (['channel', 'medios-data', 'diario-medio', 'diario-campania', 'daily'].includes(v)) return (usePage().props.paisesConCanales ?? []).includes(paisId) ? v : 'creativos';
     return VISTAS_FUENTES.includes(v) && !(usePage().props.paisesConFuentes ?? []).includes(paisId) ? 'creativos' : v;
 };
 

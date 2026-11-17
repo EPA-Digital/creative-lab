@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Pais;
 use App\Services\Auditoria;
+use App\Services\Fuentes\LectorDataMedios;
 use App\Support\CuentaActual;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use RuntimeException;
 
 /**
  * Medios data (2026-11-13, pedido explícito): el gasto del mes por medio y
@@ -36,8 +38,12 @@ class MediosDataController extends Controller
         $manuales = DB::table('medios_gasto_manual')
             ->where('cuenta_id', $cuentaId)->where('pais_id', $paisModelo->id);
 
+        $importados = DB::table('medios_diario')
+            ->where('cuenta_id', $cuentaId)->where('pais_id', $paisModelo->id);
+
         $meses = (clone $base)->distinct()->pluck('resultados.mes')
             ->merge((clone $manuales)->pluck('fecha')->map(fn ($f) => substr((string) $f, 0, 7)))
+            ->merge((clone $importados)->distinct()->pluck('fecha')->map(fn ($f) => substr((string) $f, 0, 7)))
             ->unique()->sortDesc()->values();
 
         $mes = $request->query('mes');
@@ -46,7 +52,34 @@ class MediosDataController extends Controller
         }
 
         $filas = collect();
+        $desdeDataMedios = false;
         if ($mes) {
+            $inicio = "{$mes}-01";
+            $fin = date('Y-m-t', strtotime($inicio));
+            $nombreMedio = collect(config("canales.{$pais}", []))->pluck('nombre', 'id');
+            // Si el mes ya tiene data.medios importada, esa manda (trae todos
+            // los medios, con clics e impresiones); si no, lo de la API.
+            $deDataMedios = (clone $importados)->whereBetween('fecha', [$inicio, $fin])
+                ->groupBy('medio', 'campania')
+                ->selectRaw('medio, campania, SUM(costo) as costo, SUM(impresiones) as impresiones, SUM(clicks) as clicks, COUNT(DISTINCT fecha) as dias')
+                ->get();
+            $desdeDataMedios = $deDataMedios->isNotEmpty();
+        }
+        if ($mes && $desdeDataMedios) {
+            $filas = $deDataMedios->map(fn ($f) => [
+                'medio' => $nombreMedio[$f->medio] ?? $f->medio,
+                'origen' => 'data.medios',
+                'fecha' => null,
+                'marca' => str_contains(mb_strtoupper($f->campania), '_BRD_') ? 'BRD' : 'DTC',
+                'campania' => $f->campania,
+                'funnel' => null,
+                'costo' => round((float) $f->costo, 2),
+                'impresiones' => (int) $f->impresiones,
+                'clicks' => (int) $f->clicks,
+                'installs' => null,
+                'anuncios' => null,
+            ]);
+        } elseif ($mes) {
             $filas = (clone $base)
                 ->where('resultados.mes', $mes)
                 ->groupBy('creativos.plataforma', 'creativos.tipo_cuenta', 'creativos.nombre_campania', 'creativos.funnel')
@@ -93,6 +126,49 @@ class MediosDataController extends Controller
             'mes' => $mes,
             'filas' => $filas->sortByDesc('costo')->values(),
             'mediosManuales' => array_keys(config("fuentes.{$pais}.medios_manuales", [])),
+            'desdeDataMedios' => $desdeDataMedios,
+        ]);
+    }
+
+    /**
+     * Importa el CSV de la pestaña data.medios (export de Supermetrics por
+     * medio, día y campaña). Reimportar reemplaza los días que trae.
+     */
+    public function importar(Request $request, string $pais): JsonResponse
+    {
+        $paisModelo = $this->paisDesdeSlug($pais);
+        $request->validate(['archivo' => ['required', 'file', 'max:20480']]);
+
+        try {
+            $resultado = (new LectorDataMedios($pais))->leer((string) file_get_contents($request->file('archivo')->getRealPath()));
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $cuentaId = CuentaActual::id();
+        $ahora = now();
+        DB::transaction(function () use ($resultado, $paisModelo, $cuentaId, $ahora) {
+            DB::table('medios_diario')
+                ->where('cuenta_id', $cuentaId)->where('pais_id', $paisModelo->id)
+                ->whereBetween('fecha', [$resultado['desde'], $resultado['hasta']])
+                ->delete();
+            foreach (array_chunk($resultado['filas'], 500) as $tanda) {
+                DB::table('medios_diario')->insert(array_map(fn ($f) => [
+                    ...$f, 'cuenta_id' => $cuentaId, 'pais_id' => $paisModelo->id, 'creado_en' => $ahora,
+                ], $tanda));
+            }
+        });
+
+        Auditoria::registrar('medios.data_medios_importada', $request->user(), detalle: [
+            'pais' => $pais, 'desde' => $resultado['desde'], 'hasta' => $resultado['hasta'], 'filas' => count($resultado['filas']),
+        ]);
+
+        return response()->json([
+            'filas' => count($resultado['filas']),
+            'desde' => $resultado['desde'],
+            'hasta' => $resultado['hasta'],
+            'medios' => $resultado['medios'],
+            'mes' => substr($resultado['hasta'], 0, 7),
         ]);
     }
 
