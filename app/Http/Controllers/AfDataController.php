@@ -44,12 +44,13 @@ class AfDataController extends Controller
             ->where('pais_id', $paisModelo->id)
             ->whereBetween('fecha', ["{$mes}-01", date('Y-m-t', strtotime("{$mes}-01"))])
             ->orderBy('fecha')->orderBy('media_source')->orderBy('campania')
-            ->get(['id', 'fecha', 'app', 'media_source', 'campania', 'campania_id', 'installs', 'nc', 'recompras', 'ordenes', 'otros', 'fuente_final', 'canal'])
+            ->get(['id', 'fecha', 'app', 'media_source', 'campania', 'campania_id', 'adset', 'adset_id', 'installs', 'nc', 'recompras', 'ordenes', 'otros', 'fuente_final', 'canal'])
             : collect();
 
         return Inertia::render('AfData', [
             'pais' => $pais,
             'tieneReglas' => $limpiador !== null,
+            'reporte' => config("fuentes.{$pais}.reporte"),
             'canalesPaid' => $limpiador?->canalesPaid() ?? [],
             'meses' => $meses->values(),
             'mes' => $mes,
@@ -104,6 +105,8 @@ class AfDataController extends Controller
         return response()->json([
             'filas' => count($resultado['filas']),
             'subtotales' => $resultado['subtotales'],
+            'otrosPaises' => $resultado['otrosPaises'],
+            'descartadas' => $resultado['descartadas'],
             'desde' => $resultado['desde'],
             'hasta' => $resultado['hasta'],
             'mes' => substr($resultado['desde'], 0, 7),

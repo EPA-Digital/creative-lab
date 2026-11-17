@@ -55,6 +55,8 @@ class HandleInertiaRequests extends Middleware
             // /{cuenta}/pais/{pais}/... y mostrarla en el nav) y las que
             // puede ver, con sus países, para cambiar de cuenta y de país.
             'cuentaActual' => fn () => $this->contextoCuentas($request)['actual'],
+            // Países con AF data / Medios data / Fuentes (reglas en config/fuentes.php).
+            'paisesConFuentes' => array_keys(config('fuentes', [])),
             'misCuentas' => fn () => $this->contextoCuentas($request)['todas'],
         ];
     }

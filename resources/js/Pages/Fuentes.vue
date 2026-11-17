@@ -397,7 +397,7 @@ function mover(paso) {
                     </div>
                 </header>
 
-                <p v-if="!tieneReglas" class="empty-note">Este país todavía no tiene reglas para AppsFlyer. Por ahora solo Ecuador.</p>
+                <p v-if="!tieneReglas" class="empty-note">Este país todavía no tiene reglas para AppsFlyer.</p>
                 <p v-else-if="!periodos.length" class="empty-note">Todavía no hay datos. Sube el CSV de AppsFlyer en <strong>AF data</strong> para empezar.</p>
 
                 <template v-else>

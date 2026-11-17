@@ -27,6 +27,9 @@ const props = defineProps({
 // servidor (->middleware('can:epa'), Gates de /usuarios).
 const usuario = computed(() => usePage().props.auth?.user ?? null);
 const esEpa = computed(() => usuario.value && usuario.value.rol !== 'cliente');
+// AF data, Medios data y Fuentes solo en los países que ya se trabajan
+// (los que tienen reglas en config/fuentes.php).
+const tieneFuentes = computed(() => (usePage().props.paisesConFuentes ?? []).includes(props.pais));
 const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director', 'superadmin'].includes(usuario.value.rol));
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
@@ -52,7 +55,11 @@ const hrefVista = (vista, pais = props.pais) => urlPais(pais, RUTA_VISTA[vista] 
 // Otra cuenta: su primer país, en Creativos (sin países: el selector de inicio).
 const hrefCuenta = (c) => (c.paises.length ? urlPais(c.paises[0].id, '/analisis', c.slug) : `/?cuenta=${c.slug}`);
 // En Cuentas/Usuarios (fuera de un país) el cambio de país va a Creativos.
+const VISTAS_FUENTES = ['af-data', 'medios-data', 'fuentes'];
 const vistaParaPais = computed(() => (RUTA_VISTA[props.vistaActiva] ? props.vistaActiva : 'creativos'));
+// Cambiar de país desde AF data / Medios data / Fuentes a uno que no las
+// tiene (México) lleva a Creativos.
+const vistaDestino = (paisId) => (VISTAS_FUENTES.includes(vistaParaPais.value) && !(usePage().props.paisesConFuentes ?? []).includes(paisId) ? 'creativos' : vistaParaPais.value);
 
 // --- Selector de cuenta -------------------------------------------------------
 const selectorAbierto = ref(false);
@@ -255,7 +262,7 @@ onBeforeUnmount(() => {
                 <Link
                     v-for="p in paisesCuenta"
                     :key="p.id"
-                    :href="hrefVista(vistaParaPais, p.id)"
+                    :href="hrefVista(vistaDestino(p.id), p.id)"
                     class="pais-chip mono"
                     :class="{ activo: p.id === pais }"
                     :title="p.nombre"
@@ -285,7 +292,7 @@ onBeforeUnmount(() => {
                 </Link>
             </div>
 
-            <div v-if="esEpa" class="panel-seccion">
+            <div v-if="esEpa && tieneFuentes" class="panel-seccion">
                 <span class="panel-seccion-titulo mono">Data</span>
                 <Link :href="hrefVista('af-data')" class="nav-item" :class="{ activo: vistaActiva === 'af-data' }" title="AF data">
                     <span class="nav-icono" v-html="ICONOS.tabla" />
@@ -297,7 +304,7 @@ onBeforeUnmount(() => {
                 </Link>
             </div>
 
-            <div v-if="esEpa" class="panel-seccion">
+            <div v-if="esEpa && tieneFuentes" class="panel-seccion">
                 <span class="panel-seccion-titulo mono">Fuentes</span>
                 <Link :href="hrefVista('fuentes')" class="nav-item" :class="{ activo: vistaActiva === 'fuentes' }" title="Fuentes">
                     <span class="nav-icono" v-html="ICONOS.fuentes" />
