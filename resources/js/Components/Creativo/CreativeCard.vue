@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, inject } from 'vue';
 import { cardDesdeCreativo, statsParaCard, placeholderPorTipo, nombrePrincipalYTecnico, FUNNEL_COLOR_VAR, rangoActividadEnMes, formatearRangoFecha, etiquetaFunnel } from '@/motor';
 
 // Puerto literal de renderCardPulida + renderAreaImagen + placeholderPorTipo
@@ -17,6 +17,14 @@ const props = defineProps({
 
 const emit = defineEmits(['abrir']);
 
+// Benchmark del periodo (2026-11-17): solo donde la página lo provee
+// (Creativos). Sobre / en / bajo la media de su grupo, como el PDF.
+const benchmarkCreativo = inject('benchmarkCreativo', null);
+const veredicto = computed(() => {
+    const v = benchmarkCreativo?.(props.creativo)?.veredicto;
+    return v?.calificacion ? v : null;
+});
+
 const card = computed(() => cardDesdeCreativo(props.creativo));
 // rango de actividad -- 2026-08-28, pedido explícito ("el tiempo que
 // estuvieron activos" en la card). APROXIMADO a partir de entrega real,
@@ -28,7 +36,7 @@ const rangoActividad = computed(() => rangoActividadEnMes(card.value, props.mes)
 const stats = computed(() => statsParaCard(card.value));
 const estrella = computed(() => props.estrellaOverride || stats.value[0] || { label: '—', value: '—' });
 const secundarias = computed(() =>
-    stats.value.filter((s) => s.label.toUpperCase() !== estrella.value.label.toUpperCase()).slice(0, 2),
+    stats.value.filter((s) => s.label.toUpperCase() !== estrella.value.label.split(" ·")[0].toUpperCase()).slice(0, 2),
 );
 const esTikTok = computed(() => card.value.plataforma === 'tiktok');
 const activo = computed(() => card.value.status && /ACTIVE/i.test(card.value.status));
@@ -117,6 +125,14 @@ function onKeydown(e) {
                 <span v-if="card.etapaFunnel" class="resumen-card-funnel" :style="{ '--stage-color': stageColor }">
                     {{ etiquetaFunnel(card.etapaFunnel, card.funnelPropio) || card.etapaFunnel }}
                 </span>
+                <span
+                    v-if="veredicto"
+                    class="resumen-card-bench"
+                    :class="veredicto.calificacion"
+                    :title="`Benchmark contra los demás de su plataforma, tipo de cuenta y etapa en el periodo${veredicto.cautela ? ' · poco volumen, tomarlo con cautela' : ''}`"
+                >
+                    {{ veredicto.etiqueta }}{{ veredicto.cautela ? '*' : '' }}
+                </span>
             </p>
             <p v-if="rangoActividad" class="resumen-card-vigencia" title="Aproximado: primer día con impresiones o costo real hasta el último -- no es el registro exacto de Meta">
                 Activo {{ formatearRangoFecha(rangoActividad) }}
@@ -134,3 +150,23 @@ function onKeydown(e) {
         </div>
     </article>
 </template>
+
+<style scoped>
+.resumen-card-bench {
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.64rem;
+    font-weight: 600;
+    background: var(--surface-2);
+    color: var(--text-muted);
+}
+.resumen-card-bench.bueno {
+    background: color-mix(in srgb, var(--mint) 18%, transparent);
+    color: var(--mint);
+}
+.resumen-card-bench.malo {
+    background: color-mix(in srgb, var(--coral) 18%, transparent);
+    color: var(--coral);
+}
+</style>

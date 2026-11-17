@@ -1,6 +1,7 @@
 <script setup>
 import { urlPais } from '@/rutas';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, inject } from 'vue';
+import { ETIQUETA_KPI } from '@/benchmark';
 import { usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import InfoTip from '@/Components/InfoTip.vue';
@@ -168,6 +169,14 @@ async function guardarNombre() {
 
 const kpis = computed(() => kpisPrincipales(card.value));
 const etapas = computed(() => etapasFunnel(card.value, props.promedios));
+
+// Benchmark del periodo (2026-11-17): los KPIs de su etapa contra la media
+// y el mejor de los demás de su plataforma, tipo de cuenta y etapa -- el
+// mismo cálculo del PDF. Solo donde la página lo provee (Creativos).
+const benchmarkCreativo = inject('benchmarkCreativo', null);
+const bench = computed(() => benchmarkCreativo?.(props.creativo) ?? null);
+const fmtBench = (campo, v) => (v === null || v === undefined ? '—' : campo === 'ctr' ? `${Number(v).toFixed(2)}%` : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const ESTADO_BENCH = { mejor: 'Mejor', media: 'En la media', peor: 'Peor' };
 const lectura = computed(() => generarLectura(card.value, props.promedios));
 const campaniaHumanizada = computed(() => humanizarCampania(card.value.campaignName));
 
@@ -521,6 +530,31 @@ watch(() => props.creativo?.id, () => {
                         </div>
                     </div>
 
+                    <section v-if="bench && bench.comparables" class="modal-bench">
+                        <div class="modal-bench-head">
+                            <span class="modal-kpi-label">Benchmark del periodo</span>
+                            <span v-if="bench.veredicto.calificacion" class="modal-bench-veredicto" :class="bench.veredicto.calificacion">{{ bench.veredicto.etiqueta }}</span>
+                            <span class="modal-bench-sub">vs {{ bench.comparables }} creativo{{ bench.comparables === 1 ? '' : 's' }} de su plataforma, tipo de cuenta y etapa</span>
+                        </div>
+                        <table class="modal-bench-tabla">
+                            <thead>
+                                <tr><th>KPI</th><th>Este</th><th>Media</th><th>Mejor del grupo</th><th /></tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="k in bench.kpis" :key="k.campo">
+                                    <td class="mono">{{ ETIQUETA_KPI[k.campo] }}</td>
+                                    <td class="mono">{{ fmtBench(k.campo, k.valor) }}</td>
+                                    <td class="mono">{{ fmtBench(k.campo, k.media) }}</td>
+                                    <td class="mono" :title="k.mejorNombre || ''">{{ k.esElMejor ? 'Este es el mejor' : fmtBench(k.campo, k.mejor) }}</td>
+                                    <td>
+                                        <span v-if="k.estado" class="modal-bench-estado" :class="k.estado">{{ ESTADO_BENCH[k.estado] }}{{ k.estado !== 'media' ? ` ${k.pct}%` : '' }}</span>
+                                        <span v-if="k.pocoVolumen" class="modal-bench-cautela" title="Poco volumen para este KPI: no entra a la media ni al mejor">poco volumen</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </section>
+
                     <div class="modal-view-dots">
                         <button
                             v-for="v in VISTAS"
@@ -693,3 +727,70 @@ watch(() => props.creativo?.id, () => {
         </div>
     </div>
 </template>
+
+<style scoped>
+.modal-bench {
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+.modal-bench-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-bottom: 10px;
+}
+.modal-bench-sub {
+    font-size: 0.72rem;
+    color: var(--text-faint);
+}
+.modal-bench-veredicto,
+.modal-bench-estado {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.66rem;
+    font-weight: 600;
+    background: var(--surface-2);
+    color: var(--text-muted);
+}
+.modal-bench-veredicto.bueno,
+.modal-bench-estado.mejor {
+    background: color-mix(in srgb, var(--mint) 18%, transparent);
+    color: var(--mint);
+}
+.modal-bench-veredicto.malo,
+.modal-bench-estado.peor {
+    background: color-mix(in srgb, var(--coral) 18%, transparent);
+    color: var(--coral);
+}
+.modal-bench-cautela {
+    margin-left: 6px;
+    font-size: 0.66rem;
+    color: var(--text-faint);
+}
+.modal-bench-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.modal-bench-tabla th {
+    padding: 0 8px 6px 0;
+    text-align: left;
+    font-size: 0.64rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--border);
+}
+.modal-bench-tabla td {
+    padding: 7px 8px 7px 0;
+    border-bottom: 1px solid var(--border);
+}
+.modal-bench-tabla tr:last-child td {
+    border-bottom: none;
+}
+</style>
