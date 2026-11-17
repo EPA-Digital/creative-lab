@@ -25,17 +25,37 @@ class PanelDaily
 
     public const FUNNELS = ['AWA', 'CONS', 'CNV', 'LOY'];
 
-    public function plan(int $paisId, string $mes): ?object
+    public function plan(int $paisId, string $mes, string $tipo = 'paid'): ?object
     {
         return DB::table('daily_planes')
-            ->where('cuenta_id', CuentaActual::id())->where('pais_id', $paisId)->where('mes', $mes)
+            ->where('cuenta_id', CuentaActual::id())->where('pais_id', $paisId)->where('mes', $mes)->where('tipo', $tipo)
             ->first();
     }
 
-    /** @return array<string, mixed> */
-    public function armar(int $paisId, string $pais, string $mes, ?CarbonImmutable $hoy = null, ?string $al = null): array
+    /**
+     * Dailies del país (config/daily.php) y, si tiene más de uno, qué
+     * campañas van en cada tipo: BI = _BRD_, Paid = las demás.
+     *
+     * @return array{tipos: list<string>, marca: ?bool}
+     */
+    public static function tiposDe(string $pais, string $tipo): array
     {
-        $plan = $this->plan($paisId, $mes);
+        $tipos = config("daily.paises.{$pais}", ['paid']);
+
+        return ['tipos' => $tipos, 'marca' => count($tipos) > 1 ? (bool) config("daily.tipos.{$tipo}.marca") : null];
+    }
+
+    /** Campaña de marca (BI / BRD). */
+    public static function esMarca(string $campania): bool
+    {
+        return str_contains(mb_strtoupper($campania), '_BRD_');
+    }
+
+    /** @return array<string, mixed> */
+    public function armar(int $paisId, string $pais, string $mes, ?CarbonImmutable $hoy = null, ?string $al = null, string $tipo = 'paid'): array
+    {
+        $plan = $this->plan($paisId, $mes, $tipo);
+        $marca = self::tiposDe($pais, $tipo)['marca'];
         $inicio = CarbonImmutable::parse($plan->fecha_inicio ?? "{$mes}-01");
         $fin = CarbonImmutable::parse($plan->fecha_fin ?? CarbonImmutable::parse("{$mes}-01")->endOfMonth()->toDateString());
         $hoy ??= CarbonImmutable::today();
@@ -148,7 +168,7 @@ class PanelDaily
                 'datosHasta' => $completos,
             ],
             'campanias' => $campanias,
-            'disponibles' => $this->disponibles($costos, $resultados, $enPlan),
+            'disponibles' => $this->disponibles($costos, $resultados, $enPlan, $marca),
         ];
     }
 
@@ -156,21 +176,21 @@ class PanelDaily
      * Crea el plan del mes: copiando las campañas del mes anterior (sin las
      * finalizadas) o con las campañas que ya tienen gasto en el mes.
      */
-    public function iniciar(int $paisId, string $mes, string $desde, ?int $usuarioId): int
+    public function iniciar(int $paisId, string $mes, string $desde, ?int $usuarioId, string $tipo = 'paid', ?bool $marca = null): int
     {
         $cuentaId = CuentaActual::id();
         $primero = CarbonImmutable::parse("{$mes}-01");
 
-        return DB::transaction(function () use ($paisId, $mes, $desde, $usuarioId, $cuentaId, $primero) {
+        return DB::transaction(function () use ($paisId, $mes, $desde, $usuarioId, $cuentaId, $primero, $tipo, $marca) {
             $planId = DB::table('daily_planes')->insertGetId([
-                'cuenta_id' => $cuentaId, 'pais_id' => $paisId, 'mes' => $mes,
+                'cuenta_id' => $cuentaId, 'pais_id' => $paisId, 'mes' => $mes, 'tipo' => $tipo,
                 'fecha_inicio' => $primero->toDateString(), 'fecha_fin' => $primero->endOfMonth()->toDateString(),
                 'actualizado_en' => now(),
             ]);
 
             $nuevas = [];
             if ($desde === 'anterior') {
-                $anterior = $this->plan($paisId, $primero->subMonth()->format('Y-m'));
+                $anterior = $this->plan($paisId, $primero->subMonth()->format('Y-m'), $tipo);
                 if ($anterior) {
                     DB::table('daily_planes')->where('id', $planId)->update(['total_dia' => $anterior->total_dia]);
                     $nuevas = DB::table('daily_campanias')->where('plan_id', $anterior->id)
@@ -179,7 +199,7 @@ class PanelDaily
                 }
             } else {
                 [$costos, $resultados] = $this->datos($paisId, $primero, $primero->endOfMonth());
-                foreach ($this->disponibles($costos, $resultados, []) as $d) {
+                foreach ($this->disponibles($costos, $resultados, [], $marca) as $d) {
                     if ($d['costo'] > 0) {
                         $nuevas[] = ['medio' => $d['medio'], 'status' => 'ACTIVA', 'funnel' => $d['funnel'], 'campania' => $d['campania'], 'campania_id' => $d['campania_id'], 'budget' => 0];
                     }
@@ -252,11 +272,15 @@ class PanelDaily
     }
 
     /** Campañas con gasto o resultados que todavía no están en el plan. @return list<array<string, mixed>> */
-    private function disponibles(array $costos, array $resultados, array $enPlan): array
+    private function disponibles(array $costos, array $resultados, array $enPlan, ?bool $marca = null): array
     {
         $salida = [];
         foreach ($costos['nombre'] as $k => $c) {
             if (isset($enPlan['n:'.$k]) || ($c['_id'] && isset($enPlan['i:'.$c['_id']]))) {
+                continue;
+            }
+            // Daily Paid / Daily BI: cada uno sugiere solo sus campañas.
+            if ($marca !== null && self::esMarca($c['_campania']) !== $marca) {
                 continue;
             }
             $re = $resultados['nombre'][$k] ?? [];

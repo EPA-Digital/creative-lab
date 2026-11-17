@@ -71,6 +71,27 @@ class FuentesTest extends TestCase
         $this->assertSame(1, $r['semanas'][1]['dias']);
     }
 
+    public function test_con_data_medios_la_inversion_sale_de_ahi_sin_brd(): void
+    {
+        $this->af('2026-10-01', 'Facebook Ads', 10, 2, 20);
+        $this->gasto('1', 'meta', 'DTC', 'CNV', 300); // API: no se usa si hay data.medios
+        foreach ([
+            ['2026-10-01', 'meta', 'ECU_DTC_TAD_AON_AON_TAD_CNV_EPA_FB-X', 120.5],
+            ['2026-10-02', 'asa', 'ECU_DTC_TAD_AON_AON_TAD_CON_EPA_ASA-X', 40],
+            ['2026-10-02', 'google-ads', 'ECU_DTC_TAD_AON_AON_TAD_BPC_EPA_AW-X', 10],
+            ['2026-10-02', 'meta', 'ECU_BRD_MLM_AON_AON_NON_CNV_EPA_FB-X', 999], // BRD: no entra
+        ] as [$fecha, $medio, $campania, $costo]) {
+            DB::table('medios_diario')->insert(['cuenta_id' => CuentaActual::id(), 'pais_id' => $this->ec->id, 'fecha' => $fecha, 'medio' => $medio, 'medio_original' => $medio, 'campania' => $campania, 'costo' => $costo]);
+        }
+
+        $oct = app(PanelFuentes::class)->armar($this->ec->id, ['Facebook Ads', 'TikTok', 'Apple Search Ads', 'Google Ads'])['meses'][0];
+
+        $this->assertSame('data.medios', $oct['inversionDe']);
+        $this->assertEquals(['Facebook Ads' => 120.5, 'TikTok' => 0, 'Apple Search Ads' => 40, 'Google Ads' => 10], $oct['inversion']['medio']);
+        $this->assertEquals(['AWA' => 0, 'CONS' => 40, 'CNV' => 120.5, 'LOY' => 0, 'SIN' => 10], $oct['inversion']['funnel']);
+        $this->assertEquals(170.5, $oct['inversion']['total']);
+    }
+
     public function test_guarda_la_venta_real_del_mes(): void
     {
         $user = User::factory()->create(['rol' => 'junior']);

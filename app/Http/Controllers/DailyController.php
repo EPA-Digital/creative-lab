@@ -33,14 +33,18 @@ class DailyController extends Controller
             ->pluck('mes')->push(now()->format('Y-m'))->push($mes)->unique()->sortDesc()->values();
 
         $canales = config("canales.{$pais}", []);
+        $tipo = $this->tipo($request, $pais);
 
         return Inertia::render('Daily', [
             'pais' => $pais,
             'meses' => $meses,
+            'tipo' => $tipo,
+            // Dailies del país (Ecuador: Paid y BI).
+            'tipos' => array_map(fn ($t) => ['key' => $t, 'label' => config("daily.tipos.{$t}.nombre", $t)], PanelDaily::tiposDe($pais, $tipo)['tipos']),
             'medios' => array_map(fn ($c) => ['id' => $c['id'], 'nombre' => $c['nombre'], 'color' => $c['color']], $canales),
             'status' => PanelDaily::STATUS,
-            'hayAnterior' => (bool) $panel->plan($paisModelo->id, CarbonImmutable::parse("{$mes}-01")->subMonth()->format('Y-m')),
-            ...$panel->armar($paisModelo->id, $pais, $mes, al: is_string($request->query('al')) ? $request->query('al') : null),
+            'hayAnterior' => (bool) $panel->plan($paisModelo->id, CarbonImmutable::parse("{$mes}-01")->subMonth()->format('Y-m'), $tipo),
+            ...$panel->armar($paisModelo->id, $pais, $mes, al: is_string($request->query('al')) ? $request->query('al') : null, tipo: $tipo),
         ]);
     }
 
@@ -49,9 +53,10 @@ class DailyController extends Controller
         $paisModelo = $this->paisDesdeSlug($pais);
         $this->validarMes($mes);
         $datos = $request->validate(['desde' => ['required', 'in:anterior,datos,vacio']]);
-        abort_if($panel->plan($paisModelo->id, $mes), 422, 'Este mes ya tiene planeación.');
-        $panel->iniciar($paisModelo->id, $mes, $datos['desde'], $request->user()->id);
-        Auditoria::registrar('daily.iniciado', $request->user(), detalle: ['pais' => $pais, 'mes' => $mes, 'desde' => $datos['desde']]);
+        $tipo = $this->tipo($request, $pais);
+        abort_if($panel->plan($paisModelo->id, $mes, $tipo), 422, 'Este mes ya tiene planeación.');
+        $panel->iniciar($paisModelo->id, $mes, $datos['desde'], $request->user()->id, $tipo, PanelDaily::tiposDe($pais, $tipo)['marca']);
+        Auditoria::registrar('daily.iniciado', $request->user(), detalle: ['pais' => $pais, 'mes' => $mes, 'tipo' => $tipo, 'desde' => $datos['desde']]);
 
         return response()->json(['ok' => true]);
     }
@@ -60,7 +65,7 @@ class DailyController extends Controller
     public function plan(Request $request, string $pais, string $mes, PanelDaily $panel): JsonResponse
     {
         $paisModelo = $this->paisDesdeSlug($pais);
-        $plan = $panel->plan($paisModelo->id, $mes);
+        $plan = $panel->plan($paisModelo->id, $mes, $this->tipo($request, $pais));
         abort_unless($plan, 404);
         $datos = $request->validate([
             'meta_installs' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:100000000'],
@@ -90,7 +95,7 @@ class DailyController extends Controller
     public function agregar(Request $request, string $pais, string $mes, PanelDaily $panel): JsonResponse
     {
         $paisModelo = $this->paisDesdeSlug($pais);
-        $plan = $panel->plan($paisModelo->id, $mes);
+        $plan = $panel->plan($paisModelo->id, $mes, $this->tipo($request, $pais));
         abort_unless($plan, 404);
         $datos = $request->validate([
             'medio' => ['required', 'string', 'max:60'],
@@ -153,6 +158,15 @@ class DailyController extends Controller
         Auditoria::registrar('daily.campania_quitada', $request->user(), detalle: ['pais' => $pais, 'id' => $fila->id, 'campania' => $fila->campania]);
 
         return response()->json(['ok' => true]);
+    }
+
+    /** Daily pedido (?tipo= o en el cuerpo); el primero del país si no viene o no aplica. */
+    private function tipo(Request $request, string $pais): string
+    {
+        $tipos = config("daily.paises.{$pais}", ['paid']);
+        $tipo = $request->input('tipo', $request->query('tipo'));
+
+        return in_array($tipo, $tipos, true) ? $tipo : $tipos[0];
     }
 
     /** El JSON [lun..dom] con un día cambiado. @param array{dia: int, valor: mixed} $cambio */

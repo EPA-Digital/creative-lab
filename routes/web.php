@@ -13,6 +13,7 @@ use App\Http\Controllers\EvaluacionCreativoController;
 use App\Http\Controllers\FuentesController;
 use App\Http\Controllers\FunnelController;
 use App\Http\Controllers\GestionNombresController;
+use App\Http\Controllers\HistorialController;
 use App\Http\Controllers\ImportarDatosController;
 use App\Http\Controllers\InteligenciaController;
 use App\Http\Controllers\LandingController;
@@ -87,6 +88,10 @@ Route::middleware('auth')->group(function () {
             // Control de gasto (2026-11-18): alertas y variaciones del día por campaña.
             Route::get('/control-gasto', [ControlGastoController::class, 'index'])->name('control-gasto');
             Route::post('/control-gasto/revisar', [ControlGastoController::class, 'revisar'])->name('control-gasto.revisar');
+            // Historial de cambios (2026-11-17): la auditoría del país en frases.
+            Route::get('/historial', [HistorialController::class, 'index'])->name('historial');
+            Route::post('/control-gasto/excluir', [ControlGastoController::class, 'excluir'])->name('control-gasto.excluir');
+            Route::post('/control-gasto/restaurar/{movimiento}', [ControlGastoController::class, 'restaurar'])->whereNumber('movimiento')->name('control-gasto.restaurar');
             Route::post('/daily/{mes}/iniciar', [DailyController::class, 'iniciar'])->name('daily.iniciar');
             Route::patch('/daily/{mes}/plan', [DailyController::class, 'plan'])->name('daily.plan');
             Route::post('/daily/{mes}/campanias', [DailyController::class, 'agregar'])->name('daily.agregar');

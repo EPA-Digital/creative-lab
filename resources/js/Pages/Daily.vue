@@ -24,15 +24,27 @@ const props = defineProps({
     campanias: { type: Array, default: () => [] },
     disponibles: { type: Array, default: () => [] },
     hayAnterior: { type: Boolean, default: false },
+    // Daily Paid / Daily BI (Ecuador): el que se ve y los que tiene el país.
+    tipo: { type: String, default: 'paid' },
+    tipos: { type: Array, default: () => [] },
 });
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const MES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const etiquetaMes = (m) => `${MESES[+m.slice(5, 7) - 1].replace(/^./, (c) => c.toUpperCase())} ${m.slice(0, 4)}`;
 const MES_OPCIONES = computed(() => props.meses.map((m) => ({ key: m, label: etiquetaMes(m) })));
-const cambiarMes = (mes) => router.get(location.pathname, { mes }, { preserveScroll: true });
+const cambiarMes = (mes) => router.get(location.pathname, { mes, tipo: props.tipo }, { preserveScroll: true });
+const variosTipos = computed(() => props.tipos.length > 1);
+const nombreTipo = computed(() => props.tipos.find((t) => t.key === props.tipo)?.label ?? 'Paid');
+function cambiarTipo(tipo) {
+    if (tipo !== props.tipo) router.get(location.pathname, { mes: props.mes, tipo }, { preserveScroll: false });
+}
+function moverTipo(n) {
+    const i = props.tipos.findIndex((t) => t.key === props.tipo);
+    cambiarTipo(props.tipos[(i + n + props.tipos.length) % props.tipos.length].key);
+}
 // "Ver al día": recalcula el Daily a ese corte (null = último día con datos completos).
-const verAlDia = (al) => router.get(location.pathname, { mes: props.mes, ...(al ? { al } : {}) }, { preserveScroll: true, preserveState: true });
+const verAlDia = (al) => router.get(location.pathname, { mes: props.mes, tipo: props.tipo, ...(al ? { al } : {}) }, { preserveScroll: true, preserveState: true });
 const sumarDias = (fecha, n) => {
     const d = new Date(`${fecha}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + n);
@@ -65,7 +77,7 @@ const iniciando = ref(false);
 async function iniciar(desde) {
     iniciando.value = true;
     try {
-        await axios.post(`${location.pathname}/${props.mes}/iniciar`, { desde });
+        await axios.post(`${location.pathname}/${props.mes}/iniciar`, { desde, tipo: props.tipo });
         router.reload({ preserveScroll: true });
     } catch (err) {
         notificar({ tipo: 'error', titulo: 'No se pudo empezar el mes', texto: mensajeDeError(err) });
@@ -105,7 +117,7 @@ function editarPlan(campo, valor) {
     if (campo.startsWith('meta_')) v = numero(valor) === null ? null : Math.round(numero(valor));
     if (campo === 'notas') v = String(valor ?? '').trim() || null;
     if (v === (props.plan?.[campo] ?? null) || (campo.startsWith('fecha_') && !v)) return;
-    guardar(`${location.pathname}/${props.mes}/plan`, { [campo]: v });
+    guardar(`${location.pathname}/${props.mes}/plan`, { [campo]: v, tipo: props.tipo });
 }
 function quitar(c) {
     confirmar({
@@ -140,7 +152,7 @@ async function agregar(d = null) {
         : { medio: nueva.medio, campania: nueva.campania.trim(), campania_id: nueva.campania_id.trim() || null, budget: numero(nueva.budget) };
     if (!datos.campania || !datos.medio) return;
     try {
-        await axios.post(`${location.pathname}/${props.mes}/campanias`, datos);
+        await axios.post(`${location.pathname}/${props.mes}/campanias`, { ...datos, tipo: props.tipo });
         notificar({ tipo: 'exito', titulo: 'Campaña agregada', texto: datos.campania });
         if (!d) modalAgregar.value = false;
         router.reload({ preserveScroll: true });
@@ -247,7 +259,7 @@ function editarAjuste(c, dia, valor) {
     guardar(`${location.pathname}/campanias/${c.id}`, { ajuste: { dia, valor: numero(valor) } });
 }
 function editarTotalDia(dia, valor) {
-    guardar(`${location.pathname}/${props.mes}/plan`, { total_dia: { dia, valor: numero(valor) } });
+    guardar(`${location.pathname}/${props.mes}/plan`, { total_dia: { dia, valor: numero(valor) }, tipo: props.tipo });
 }
 
 // Cambiar de mes reinicia filtros.
@@ -257,15 +269,25 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
 </script>
 
 <template>
-    <Head :title="`Daily — ${pais}`" />
+    <Head :title="`Daily ${variosTipos ? nombreTipo + ' ' : ''}— ${pais}`" />
 
     <DashboardLayout :pais="pais" vista-activa="daily">
-        <div class="page">
+        <div class="page" :class="{ 'con-flechas': variosTipos }">
+            <button v-if="variosTipos" type="button" class="flecha-daily izq" :aria-label="`Ir al Daily ${tipos.find((t) => t.key !== tipo)?.label}`" @click="moverTipo(-1)">‹</button>
             <div class="page-inner">
                 <header class="header">
                     <div>
                         <p class="eyebrow mono">{{ pais }}</p>
-                        <h1 class="title">Daily</h1>
+                        <div class="titulo-fila">
+                            <h1 class="title">Daily</h1>
+                            <span v-if="variosTipos" class="tipo-marca mono" :class="tipo">{{ nombreTipo }}</span>
+                            <div v-if="variosTipos" class="periodo-toggle tipos" role="group" aria-label="Daily">
+                                <button v-for="t in tipos" :key="t.key" type="button" :class="{ activo: tipo === t.key }" @click="cambiarTipo(t.key)">{{ t.label }}</button>
+                            </div>
+                        </div>
+                        <p v-if="variosTipos" class="subtitle">
+                            {{ tipo === 'bi' ? 'Campañas de marca (BI / BRD).' : 'Campañas de performance (todo lo que no es BRD).' }}
+                        </p>
                         <p class="subtitle">
                             Presupuesto y pacing del mes por campaña. Lo que en la hoja era morado se edita aquí: pasa el mouse y toca el
                             <span class="manual-muestra">lápiz</span>. Costo y resultados salen de data.medios y AF data.
@@ -731,6 +753,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                     </section>
                 </template>
             </div>
+            <button v-if="variosTipos" type="button" class="flecha-daily der" :aria-label="`Ir al Daily ${tipos.find((t) => t.key !== tipo)?.label}`" @click="moverTipo(1)">›</button>
         </div>
 
         <div v-if="modalAgregar" class="modal-overlay" @click.self="modalAgregar = false" @keydown.esc="modalAgregar = false">
@@ -831,6 +854,59 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-faint);
+}
+
+/* Daily Paid / Daily BI: flechas a los lados y marca junto al título */
+.page.con-flechas {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+.flecha-daily {
+    position: sticky;
+    top: 45vh;
+    align-self: start;
+    margin-top: 45vh;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 1.2rem;
+    cursor: pointer;
+    justify-self: center;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+.flecha-daily:hover {
+    border-color: var(--amber);
+    color: var(--amber);
+}
+.flecha-daily:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
+.titulo-fila {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.tipo-marca {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 2px 10px;
+    background: color-mix(in srgb, var(--sky) 18%, transparent);
+    color: var(--sky);
+}
+.tipo-marca.bi {
+    background: color-mix(in srgb, var(--serie-5) 20%, transparent);
+    color: var(--serie-5);
+}
+.periodo-toggle.tipos {
+    margin-left: 6px;
 }
 
 /* Lo morado = manual (como en la hoja). */

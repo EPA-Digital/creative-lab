@@ -107,6 +107,28 @@ class DailyTest extends TestCase
         $this->assertSame([null, null, null, null, null, null, 950.0], $r['plan']['total_dia']);
     }
 
+    public function test_ecuador_tiene_daily_paid_y_bi(): void
+    {
+        $user = $this->usuario();
+        $this->datos();
+        DB::table('medios_diario')->insert([
+            'cuenta_id' => CuentaActual::id(), 'pais_id' => Pais::where('codigo', 'EC')->value('id'), 'fecha' => '2026-11-01', 'medio' => 'meta', 'medio_original' => 'facebook',
+            'campania' => 'ECU_BRD_MLM_AON_AON_NON_CNV_EPA_FB-ADVANTAGE-AND-SHOPPING-BROAD', 'costo' => 50, 'clicks' => 1, 'impresiones' => 10,
+        ]);
+
+        $this->actingAs($user)->post('/tada/pais/ecuador/daily/2026-11/iniciar', ['desde' => 'datos', 'tipo' => 'bi'])->assertOk();
+        $this->actingAs($user)->post('/tada/pais/ecuador/daily/2026-11/iniciar', ['desde' => 'datos'])->assertOk();
+
+        $planes = DB::table('daily_planes')->pluck('id', 'tipo');
+        $this->assertSame(['ECU_BRD_MLM_AON_AON_NON_CNV_EPA_FB-ADVANTAGE-AND-SHOPPING-BROAD'], DB::table('daily_campanias')->where('plan_id', $planes['bi'])->pluck('campania')->all());
+        $this->assertSame([self::CAMP], DB::table('daily_campanias')->where('plan_id', $planes['paid'])->pluck('campania')->all());
+
+        $this->actingAs($user)->get('/tada/pais/ecuador/daily?mes=2026-11&tipo=bi')->assertOk()
+            ->assertInertia(fn ($p) => $p->where('tipo', 'bi')->has('tipos', 2)->has('campanias', 1));
+        // Otros países solo tienen Paid (un tipo de más se ignora).
+        $this->assertSame(['tipos' => ['paid'], 'marca' => null], PanelDaily::tiposDe('mexico', 'bi'));
+    }
+
     public function test_copia_el_mes_anterior_sin_las_finalizadas(): void
     {
         $user = $this->usuario();

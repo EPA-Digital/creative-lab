@@ -36,7 +36,7 @@ const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director',
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
 // conserva la vista en la que está.
-const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', daily: '/daily', 'control-gasto': '/control-gasto', 'diario-medio': '/diario-medio', 'diario-campania': '/diario-campania', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
+const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', daily: '/daily', 'control-gasto': '/control-gasto', historial: '/historial', 'diario-medio': '/diario-medio', 'diario-campania': '/diario-campania', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
 // Menú en árbol plegable (2026-11-17, pedido explícito): Resumen, Análisis,
 // Datos y Fuentes como ramas; cada vista es una hoja. Un 'cliente' solo ve
@@ -46,7 +46,7 @@ const ARBOL = computed(() => {
         return [{ id: 'analisis', label: 'Análisis', icono: 'grafica', hijos: [{ vista: 'creativos', label: 'Creativos' }] }];
     }
     return [
-        { id: 'resumen', label: 'Resumen', icono: 'house', hijos: [{ vista: 'daily', label: 'Daily', proximamente: !tieneCanales.value }, ...(tieneCanales.value ? [{ vista: 'control-gasto', label: 'Control de gasto' }] : [])] },
+        { id: 'resumen', label: 'Resumen', icono: 'house', hijos: [{ vista: 'daily', label: 'Daily', proximamente: !tieneCanales.value }, ...(tieneCanales.value ? [{ vista: 'control-gasto', label: 'Control de gasto' }] : []), { vista: 'historial', label: 'Historial de cambios' }] },
         {
             id: 'analisis',
             label: 'Análisis',

@@ -48,6 +48,43 @@ class ControlGastoController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /** Quita una campaña que no es del equipo (queda en el historial). */
+    public function excluir(Request $request, string $pais): JsonResponse
+    {
+        $paisModelo = $this->paisDesdeSlug($pais);
+        $datos = $request->validate([
+            'campania' => ['required', 'string', 'max:300'],
+            'medio' => ['nullable', 'string', 'max:60'],
+            'motivo' => ['nullable', 'string', 'max:300'],
+        ]);
+        $clave = ControlGasto::clave($datos['campania']);
+        $ya = DB::table('control_excluidas')->where('cuenta_id', CuentaActual::id())->where('pais_id', $paisModelo->id)
+            ->where('clave', $clave)->whereNull('restaurada_en')->exists();
+        if (! $ya) {
+            DB::table('control_excluidas')->insert([
+                'cuenta_id' => CuentaActual::id(), 'pais_id' => $paisModelo->id, 'clave' => $clave,
+                'campania' => $datos['campania'], 'medio' => $datos['medio'] ?? null, 'motivo' => $datos['motivo'] ?? null,
+                'excluida_por' => $request->user()->id, 'excluida_en' => now(),
+            ]);
+        }
+        Auditoria::registrar('control.campania_quitada', $request->user(), detalle: ['pais' => $pais, ...$datos]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Vuelve a mostrar una campaña quitada. */
+    public function restaurar(Request $request, string $pais, int $movimiento): JsonResponse
+    {
+        $paisModelo = $this->paisDesdeSlug($pais);
+        $fila = DB::table('control_excluidas')->where('id', $movimiento)
+            ->where('cuenta_id', CuentaActual::id())->where('pais_id', $paisModelo->id)->whereNull('restaurada_en')->first();
+        abort_unless($fila, 404);
+        DB::table('control_excluidas')->where('id', $fila->id)->update(['restaurada_por' => $request->user()->id, 'restaurada_en' => now()]);
+        Auditoria::registrar('control.campania_restaurada', $request->user(), detalle: ['pais' => $pais, 'campania' => $fila->campania]);
+
+        return response()->json(['ok' => true]);
+    }
+
     private function paisDesdeSlug(string $pais): Pais
     {
         $config = config("paises.{$pais}");

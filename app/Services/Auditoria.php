@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AuditoriaAcceso;
 use App\Models\User;
+use App\Support\CuentaActual;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -16,6 +17,11 @@ class Auditoria
 {
     public static function registrar(string $evento, ?User $usuario = null, ?string $emailIntentado = null, array $detalle = []): void
     {
+        // La cuenta en la que pasó (2026-11-17): el Historial de cambios de
+        // cada país se separa por cuenta.
+        if (! array_key_exists('cuenta_id', $detalle) && CuentaActual::hay()) {
+            $detalle['cuenta_id'] = CuentaActual::id();
+        }
         $ip = request()?->ip();
         $userAgent = request()?->userAgent();
 
