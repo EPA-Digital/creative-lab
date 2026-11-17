@@ -92,6 +92,7 @@ class PanelDaily
                 'campania' => $c->campania,
                 'campania_id' => $c->campania_id,
                 'region' => $c->region,
+                'responsable' => $c->responsable,
                 'budget' => $budget,
                 'daily_plataforma' => $c->daily_plataforma !== null ? (float) $c->daily_plataforma : null,
                 'kpi_installs' => $c->kpi_installs,
