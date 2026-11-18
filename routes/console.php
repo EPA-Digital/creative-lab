@@ -35,3 +35,11 @@ Schedule::command('meta:sincronizar-estado-ads')
     ->timezone('America/Mexico_City')
     ->dailyAt('05:15') // = 11:15 UTC
     ->withoutOverlapping();
+
+// optimizaciones:sincronizar -- 2026-11-18, pedido explícito: lo que hacía el
+// trigger diario de Optis_Optimizaciones.gs (7am). Meta solo guarda ~1 semana
+// de Activity Log, así que diario con margen; TikTok compara contra la foto.
+Schedule::command('optimizaciones:sincronizar')
+    ->timezone('America/Mexico_City')
+    ->dailyAt('06:00')
+    ->withoutOverlapping();

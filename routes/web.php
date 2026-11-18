@@ -19,6 +19,7 @@ use App\Http\Controllers\InteligenciaController;
 use App\Http\Controllers\LandingController;
 use App\Http\Controllers\LogoCuentaController;
 use App\Http\Controllers\MediosDataController;
+use App\Http\Controllers\OptimizacionesController;
 use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SinCreativoController;
@@ -90,6 +91,13 @@ Route::middleware('auth')->group(function () {
             Route::post('/control-gasto/revisar', [ControlGastoController::class, 'revisar'])->name('control-gasto.revisar');
             // Historial de cambios (2026-11-17): la auditoría del país en frases.
             Route::get('/historial', [HistorialController::class, 'index'])->name('historial');
+            // Optimizaciones (2026-11-18): la bitácora de lo que se hace en las plataformas.
+            Route::get('/optimizaciones', [OptimizacionesController::class, 'index'])->name('optimizaciones');
+            Route::post('/optimizaciones', [OptimizacionesController::class, 'store'])->name('optimizaciones.store');
+            Route::post('/optimizaciones/importar', [OptimizacionesController::class, 'importar'])->name('optimizaciones.importar');
+            Route::post('/optimizaciones/sincronizar', [OptimizacionesController::class, 'sincronizar'])->middleware('throttle:6,1')->name('optimizaciones.sincronizar');
+            Route::patch('/optimizaciones/{optimizacion}', [OptimizacionesController::class, 'update'])->whereNumber('optimizacion')->name('optimizaciones.update');
+            Route::delete('/optimizaciones/{optimizacion}', [OptimizacionesController::class, 'destroy'])->whereNumber('optimizacion')->name('optimizaciones.destroy');
             Route::post('/control-gasto/excluir', [ControlGastoController::class, 'excluir'])->name('control-gasto.excluir');
             Route::post('/control-gasto/restaurar/{movimiento}', [ControlGastoController::class, 'restaurar'])->whereNumber('movimiento')->name('control-gasto.restaurar');
             Route::post('/daily/{mes}/iniciar', [DailyController::class, 'iniciar'])->name('daily.iniciar');
