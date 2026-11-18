@@ -23,6 +23,7 @@ use App\Http\Controllers\OptimizacionesController;
 use App\Http\Controllers\PerfilController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SinCreativoController;
+use App\Http\Controllers\SistemaOperativoController;
 use App\Http\Controllers\TareaMediosController;
 use App\Http\Controllers\UsuariosController;
 use App\Http\Controllers\VideoCreativoController;
@@ -112,6 +113,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/funnel', [FunnelController::class, 'index'])->name('funnel');
             // Channel (2026-11-17): canales año contra año, todos los países.
             Route::get('/channel', [ChannelController::class, 'index'])->name('channel');
+            // SO (2026-11-18): métricas por sistema operativo (so.2026 / ✅SO).
+            Route::get('/so', [SistemaOperativoController::class, 'index'])->name('so');
 
             Route::get('/ajustes/nombres', [GestionNombresController::class, 'index'])->name('gestion-nombres');
             // Cola "Sin creativo" (Spark Ads y demás): asignar crea una regla

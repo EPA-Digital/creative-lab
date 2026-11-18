@@ -36,7 +36,7 @@ const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director',
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
 // conserva la vista en la que está.
-const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', daily: '/daily', 'control-gasto': '/control-gasto', historial: '/historial', optimizaciones: '/optimizaciones', 'diario-medio': '/diario-medio', 'diario-campania': '/diario-campania', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
+const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', so: '/so', daily: '/daily', 'control-gasto': '/control-gasto', historial: '/historial', optimizaciones: '/optimizaciones', 'diario-medio': '/diario-medio', 'diario-campania': '/diario-campania', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
 // Menú en árbol plegable (2026-11-17, pedido explícito): Resumen, Análisis,
 // Datos y Fuentes como ramas; cada vista es una hoja. Un 'cliente' solo ve
@@ -75,7 +75,7 @@ const ARBOL = computed(() => {
                 icono: 'fuentes',
                 hijos: [
                     ...(tieneFuentes.value ? [{ vista: 'fuentes', label: 'Fuentes' }, { vista: 'funnel', label: 'Funnel' }] : []),
-                    ...(tieneCanales.value ? [{ vista: 'channel', label: 'Channel' }] : []),
+                    ...(tieneCanales.value ? [{ vista: 'channel', label: 'Channel' }, { vista: 'so', label: 'SO' }] : []),
                 ],
             }]
             : []),
@@ -121,7 +121,7 @@ const vistaParaPais = computed(() => (RUTA_VISTA[props.vistaActiva] ? props.vist
 // tiene (México) lleva a Creativos.
 const vistaDestino = (paisId) => {
     const v = vistaParaPais.value;
-    if (['channel', 'medios-data', 'diario-medio', 'diario-campania', 'daily', 'control-gasto', 'optimizaciones'].includes(v)) return (usePage().props.paisesConCanales ?? []).includes(paisId) ? v : 'creativos';
+    if (['channel', 'so', 'medios-data', 'diario-medio', 'diario-campania', 'daily', 'control-gasto', 'optimizaciones'].includes(v)) return (usePage().props.paisesConCanales ?? []).includes(paisId) ? v : 'creativos';
     return VISTAS_FUENTES.includes(v) && !(usePage().props.paisesConFuentes ?? []).includes(paisId) ? 'creativos' : v;
 };
 
