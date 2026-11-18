@@ -96,8 +96,11 @@ class PanelDaily
 
         $campanias = $filas->map(function ($c) use ($costos, $resultados, $ideal, $restantes) {
             $k = self::clave($c->campania);
-            $co = ($c->campania_id ? ($costos['id'][$c->campania_id] ?? null) : null) ?? $costos['nombre'][$k] ?? null;
-            $re = ($c->campania_id ? ($resultados['id'][$c->campania_id] ?? null) : null) ?? $resultados['nombre'][$k] ?? null;
+            // Por nombre, como la hoja (SUMIFS por campaña): una campaña puede
+            // tener varios IDs con el mismo nombre (TikTok) y hay que sumarlos
+            // todos. El ID solo sirve si el nombre ya no aparece (renombrada).
+            $co = $costos['nombre'][$k] ?? ($c->campania_id ? ($costos['id'][$c->campania_id] ?? null) : null);
+            $re = $resultados['nombre'][$k] ?? ($c->campania_id ? ($resultados['id'][$c->campania_id] ?? null) : null);
             $budget = (float) $c->budget;
             $costo = round((float) ($co['costo'] ?? 0), 2);
             $consumido = $budget > 0 ? $costo / $budget : null;
@@ -244,7 +247,12 @@ class PanelDaily
             $k = self::clave($f->campania);
             self::sumar($costos['nombre'][$k], $v);
             $costos['nombre'][$k]['_campania'] = $f->campania;
-            $costos['nombre'][$k]['_id'] ??= $f->campania_id;
+            // Con varios IDs para el mismo nombre se queda el que más gasta.
+            if ($f->campania_id && (float) $f->costo >= ($costos['nombre'][$k]['_costoId'] ?? -1)) {
+                $costos['nombre'][$k]['_id'] = $f->campania_id;
+                $costos['nombre'][$k]['_costoId'] = (float) $f->costo;
+            }
+            $costos['nombre'][$k]['_id'] ??= null;
             $costos['nombre'][$k]['_medio'] = $f->medio;
         }
 
