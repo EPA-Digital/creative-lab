@@ -14,6 +14,9 @@ use Illuminate\Support\Str;
  *   compras, órdenes e installs = AF data de la fuente paid (TADA
  *   PERFORMANCE). CPO = gasto / órdenes, CAC = gasto / NC, onboarding =
  *   NC / installs, CPI = gasto / installs.
+ * - Por funnel, cada etapa con su indicador: Awareness = impresiones / CPM
+ *   (data.medios), Consideration = installs / CPI, Conversion = primeras
+ *   compras / CAC, Loyalty = órdenes / CPO (AF data).
  * - Por tipo de campaña: cada campaña con gasto (también _BRD_) con su
  *   nombre corto; NC y órdenes de AF data cruzadas por nombre de campaña
  *   (todas las fuentes, como el Daily).
@@ -28,7 +31,7 @@ class PanelWeekly
     /**
      * global: [fecha, gasto, nc, ordenes, installs] (Paid).
      * campanias: [{id, campania, medio, tipo, auto, oculta}].
-     * porCampania: [fecha, idx de campanias, gasto, nc, ordenes].
+     * porCampania: [fecha, idx de campanias, gasto, nc, ordenes, installs, impresiones].
      *
      * @return array<string, mixed>
      */
@@ -56,7 +59,7 @@ class PanelWeekly
 
         // --- Por campaña ---------------------------------------------------------------
         $gastos = DB::table('medios_diario')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)->whereBetween('fecha', [$desde, $hasta])
-            ->selectRaw('fecha, medio, campania, SUM(costo) c')->groupBy('fecha', 'medio', 'campania')->orderBy('campania')->orderBy('fecha')->get();
+            ->selectRaw('fecha, medio, campania, SUM(costo) c, SUM(impresiones) imp')->groupBy('fecha', 'medio', 'campania')->orderBy('campania')->orderBy('fecha')->get();
         $campanias = [];
         $indice = [];
         $porCampania = [];
@@ -66,16 +69,16 @@ class PanelWeekly
                 $indice[$clave] = count($campanias);
                 $campanias[] = ['campania' => trim((string) $g->campania), 'medio' => $g->medio];
             }
-            $porCampania[substr((string) $g->fecha, 0, 10).'|'.$indice[$clave]] = [round((float) $g->c, 2), 0, 0];
+            $porCampania[substr((string) $g->fecha, 0, 10).'|'.$indice[$clave]] = [round((float) $g->c, 2), 0, 0, 0, (int) $g->imp];
         }
         if ($indice) {
             foreach (DB::table('fuentes_appsflyer')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)->whereBetween('fecha', [$desde, $hasta])
-                ->selectRaw('fecha, LOWER(TRIM(campania)) c, SUM(nc) nc, SUM(ordenes) o')->groupBy('fecha', 'c')->get() as $a) {
+                ->selectRaw('fecha, LOWER(TRIM(campania)) c, SUM(nc) nc, SUM(ordenes) o, SUM(installs) i')->groupBy('fecha', 'c')->get() as $a) {
                 if (! isset($indice[$a->c])) {
                     continue;
                 }
                 $k = substr((string) $a->fecha, 0, 10).'|'.$indice[$a->c];
-                $porCampania[$k] = [$porCampania[$k][0] ?? 0, (int) $a->nc, (int) $a->o];
+                $porCampania[$k] = [$porCampania[$k][0] ?? 0, (int) $a->nc, (int) $a->o, (int) $a->i, $porCampania[$k][4] ?? 0];
             }
         }
         ksort($porCampania);
