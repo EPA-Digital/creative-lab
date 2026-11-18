@@ -17,6 +17,7 @@ env:
   JOB_MIGRATE: zx-dashboard-migrate
   JOB_IMPORTAR_APPSFLYER: zx-dashboard-importar-appsflyer
   JOB_SYNC_ADS: zx-dashboard-sincronizar-ads
+  JOB_SYNC_OPTIS: zx-dashboard-sincronizar-optimizaciones
   JOB_QUEUE_WORKER: zx-dashboard-queue-worker
 
 jobs:
@@ -147,6 +148,20 @@ jobs:
             --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
             --command=php --args="artisan,meta:sincronizar-estado-ads" \
             --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest" \
+            --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,META_GRAPH_API_VERSION=v21.0"
+
+          # Optimizaciones automáticas (2026-11-18): cambios de Meta (Activity
+          # Log) y TikTok (contra la foto) a Optimizaciones -- lo que hacía el
+          # trigger diario de Optis_Optimizaciones.gs. Lo dispara Cloud Scheduler
+          # una vez al día (zx-dashboard-sincronizar-optimizaciones-diario).
+          gcloud run jobs deploy ${{ env.JOB_SYNC_OPTIS }} \
+            --project=${{ env.PROJECT_ID }} --region=${{ env.REGION }} \
+            --image="$IMAGE_URI" \
+            --service-account=${{ env.RUNTIME_SA }} \
+            --set-cloudsql-instances=${{ env.CLOUDSQL_INSTANCE }} \
+            --command=php --args="artisan,optimizaciones:sincronizar" \
+            --task-timeout=1800 \
+            --set-secrets="APP_KEY=ZxDashboardAppKey:latest,DB_PASSWORD=ZxDashboardDbPassword:latest,META_ACCESS_TOKEN=ZxDashboardMetaAccessToken:latest,TIKTOK_ACCESS_TOKEN=ZxDashboardTiktokAccessToken:latest" \
             --update-env-vars="APP_ENV=production,LOG_CHANNEL=stderr,DB_CONNECTION=mysql,DB_SOCKET=/cloudsql/${{ env.CLOUDSQL_INSTANCE }},DB_DATABASE=zx_dashboard,DB_USERNAME=zx_dashboard_app,META_GRAPH_API_VERSION=v21.0"
 
           # Worker de la cola (QUEUE_CONNECTION=database) -- procesa

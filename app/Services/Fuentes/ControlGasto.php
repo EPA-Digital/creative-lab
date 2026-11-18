@@ -170,6 +170,8 @@ class ControlGasto
             ] : ['inicio' => $inicioPlan, 'fin' => $finPlan, 'metas' => null],
             'revisadas' => (object) $revisadas,
             'sinGastoPropio' => $sinGastoPropio,
+            // Optimizaciones del rango (marcas en el histórico y en las alertas).
+            'optimizaciones' => app(Optimizaciones::class)->entre($paisId, $fechas[0], $corte->toDateString()),
             'historialExcluidas' => $movimientos->map(fn ($m) => [
                 'id' => $m->id,
                 'clave' => $m->clave,

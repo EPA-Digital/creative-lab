@@ -18,7 +18,7 @@
  * - color: token de serie de app.css para el encabezado del canal.
  */
 $meta = ['id' => 'meta', 'nombre' => 'Meta', 'media' => ['Facebook Ads'], 'datos' => ['facebook', 'meta', 'facebook ads'], 'color' => 'serie-1'];
-$tiktok = ['id' => 'tiktok', 'nombre' => 'TikTok', 'media' => ['tiktokglobal_int'], 'datos' => ['tiktok', 'tiktok ads'], 'color' => 'serie-6'];
+$tiktok = ['id' => 'tiktok', 'nombre' => 'TikTok', 'media' => ['tiktokglobal_int'], 'datos' => ['tiktok', 'tiktok ads', 'tik tok'], 'color' => 'serie-6'];
 $asa = ['id' => 'asa', 'nombre' => 'ASA', 'media' => ['Apple Search Ads'], 'datos' => ['asa', 'apple', 'apple ads', 'apple search ads'], 'color' => 'serie-5'];
 $rtb = ['id' => 'rtb', 'nombre' => 'RTB', 'media' => ['rtbhouse_int'], 'datos' => ['rtb house', 'rtb', 'rtbhouse'], 'color' => 'serie-2'];
 $twitter = ['id' => 'twitter', 'nombre' => 'Twitter', 'media' => ['Twitter', 'twitterads_int'], 'datos' => ['twitter', 'x', 'twitter ads'], 'color' => 'serie-4'];

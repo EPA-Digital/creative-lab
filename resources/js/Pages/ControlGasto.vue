@@ -27,7 +27,26 @@ const props = defineProps({
     sinGastoPropio: { type: Number, default: 0 },
     // Historial de campañas quitadas / restauradas.
     historialExcluidas: { type: Array, default: () => [] },
+    // Optimizaciones del rango (2026-11-18): marcas en el histórico y alertas.
+    optimizaciones: { type: Array, default: () => [] },
 });
+
+// --- Optimizaciones --------------------------------------------------------------
+const NOMBRE_TIPO = {
+    creacion_campania: 'Creación de campaña', creacion_grupo: 'Creación de grupo', creacion_anuncios: 'Creación de anuncios',
+    activacion_campania: 'Activación de campaña', pauta_anuncios: 'Pauta de anuncios', ajuste_dinero: 'Ajuste de dinero',
+    ajuste_anuncios: 'Ajuste de anuncios', ajuste_estrategia: 'Ajuste de estrategia', ajuste_metas: 'Ajuste de metas',
+    ajuste_optimizacion: 'Ajuste / optimización', apagado_campania: 'Apagado de campaña', apagado_grupo: 'Apagado de grupo',
+    apagado_anuncio: 'Apagado de anuncio', otro: 'Otro',
+};
+/** Optimizaciones que tocan una campaña (por nombre), un medio o toda la cuenta. */
+function optisDe({ campania = null, medio = null } = {}) {
+    return props.optimizaciones.filter((o) => {
+        if (campania) return o.campanias.some((c) => c.trim().toLowerCase() === campania);
+        if (medio) return o.medio === medio;
+        return true;
+    });
+}
 
 // --- Quitar campañas que no son nuestras (con historial) -------------------------
 const quitando = ref(null); // { campania, medio, nombre }
@@ -56,6 +75,7 @@ async function restaurar(m) {
         notificar({ tipo: 'error', titulo: 'No se pudo restaurar', texto: mensajeDeError(err) });
     }
 }
+const hrefOptimizaciones = location.pathname.replace(/control-gasto$/, 'optimizaciones');
 const hrefHistorial = `${location.pathname.replace(/control-gasto$/, 'historial')}?area=control`;
 const quitadasActivas = computed(() => props.historialExcluidas.filter((m) => !m.restaurada_en).length);
 // El servidor guarda en UTC: se muestra en la hora local de quien lo ve.
@@ -352,7 +372,18 @@ const historico = computed(() => {
     const fuentes = esGeneral.value ? mediosConDatos.value.map((id) => ({ id, e: agregar(campaniasDe(id), nombreMedio(id)) })) : campaniasDe(pestana.value).map((c) => ({ id: c.k, e: { ...c, nombre: etiqueta(c) } }));
     const acum = fuentes.map((f) => ({ id: f.id, nombre: f.e.nombre, v: valor(f.e, met.k, desde, L.value), g: off ? valor(f.e, met.k, desde - off, L.value - off) : null }));
     const accMax = Math.max(...acum.map((a) => Math.max(a.v || 0, a.g || 0)), 1);
+    // Días con optimización de lo que se está viendo.
+    const optis = optisDe(sel.value ? { campania: sel.value } : esGeneral.value ? {} : { medio: pestana.value });
+    const marcas = [];
+    for (let i = 0; i < dias; i++) {
+        const f = props.fechas[desde + i];
+        const delDia = optis.filter((o) => o.fecha === f);
+        if (delDia.length) marcas.push({ x: G.x0 + i * ancho + ancho / 2, n: delDia.length, titulo: `${conDia(f)}: ${delDia.map((o) => NOMBRE_TIPO[o.tipo] ?? o.tipo).join(', ')}` });
+    }
+    const optisRango = optis.filter((o) => o.fecha >= props.fechas[desde] && o.fecha <= props.fechas[L.value]);
     return {
+        marcas,
+        optisRango,
         entidad: sel.value ? etiqueta(props.campanias.find((c) => c.k === sel.value) ?? { campania: '' }) : alcance.value.nombre,
         met,
         dias,
@@ -498,6 +529,9 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                                     <li v-for="x in al.cambios" :key="x.l"><span>{{ x.l }}</span><b :class="`tono-${x.tono}`">{{ x.d }}</b></li>
                                 </ul>
                                 <p class="pista">{{ al.pista }}</p>
+                                <p v-for="o in optisDe({ campania: al.k }).filter((o) => o.fecha >= fechas[fechas.length - 1 - baseSel.off]).slice(0, 2)" :key="o.id" class="opti-alerta">
+                                    <b>{{ NOMBRE_TIPO[o.tipo] ?? o.tipo }}</b> el {{ fechaCorta(o.fecha) }}<template v-if="o.responsable"> · {{ o.responsable }}</template>
+                                </p>
                                 <p v-if="al.c.responsable" class="responsable">Responsable: {{ al.c.responsable }}</p>
                                 <div class="alerta-acciones">
                                     <button type="button" class="revisar" :class="{ hecho: al.estado === 'revisada' }" @click="alternarRevisada(al)">
@@ -627,6 +661,7 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                                     <span><i class="cuadro ultimo" />{{ fechaCorta(corte) }}</span>
                                     <span v-if="historico.nombreSombra"><i class="cuadro sombra" />{{ historico.nombreSombra }}</span>
                                     <span v-if="historico.nombreSombra"><i class="circulo" />Día con cambio ≥ {{ umbral }}%</span>
+                                    <span v-if="historico.marcas.length"><i class="rombo" />Optimización</span>
                                 </div>
                                 <svg :viewBox="`0 0 ${G.W} ${G.H}`" role="img" :aria-label="`${historico.met.l} por día`">
                                     <g v-for="(g, i) in historico.lineas" :key="`l${i}`">
@@ -637,8 +672,24 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                                         <title v-if="b.titulo">{{ b.titulo }}</title>
                                     </rect>
                                     <circle v-for="(d, i) in historico.puntos" :key="`d${i}`" :cx="d.x" :cy="d.y" r="3.5" class="punto-var" />
+                                    <g v-for="(m, i) in historico.marcas" :key="`o${i}`" class="marca-opti">
+                                        <line :x1="m.x" :x2="m.x" y1="8" :y2="G.alto + 8" />
+                                        <rect :x="m.x - 5" y="0" width="10" height="10" rx="2" />
+                                        <title>{{ m.titulo }}</title>
+                                    </g>
                                     <text v-for="(x, i) in historico.etiquetas" :key="`x${i}`" :x="x.x" y="224" text-anchor="middle">{{ x.t }}</text>
                                 </svg>
+                            </div>
+                            <div v-if="historico.optisRango.length" class="optis-lista">
+                                <p class="periodo-label mono">Optimizaciones en el periodo · {{ historico.optisRango.length }}</p>
+                                <ul>
+                                    <li v-for="o in historico.optisRango.slice(0, 12)" :key="o.id">
+                                        <span class="mono">{{ fechaCorta(o.fecha) }}</span>
+                                        <b>{{ NOMBRE_TIPO[o.tipo] ?? o.tipo }}</b>
+                                        <span class="texto" :title="o.descripcion">{{ o.descripcion }}</span>
+                                    </li>
+                                </ul>
+                                <a :href="hrefOptimizaciones" class="link">Ver todas en Optimizaciones</a>
                             </div>
                             <div class="acumulado">
                                 <p class="periodo-label mono">{{ historico.met.t === 'cost' ? 'Costo' : 'Acumulado' }} por {{ esGeneral ? 'medio' : 'campaña' }}</p>
@@ -1447,6 +1498,60 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
 .acum .pista .v {
     background: var(--amber);
     opacity: 0.85;
+}
+
+/* Optimizaciones en el histórico y en las alertas */
+.grafica .marca-opti line {
+    stroke: var(--serie-6);
+    stroke-dasharray: 2 3;
+    opacity: 0.6;
+}
+.grafica .marca-opti rect {
+    fill: var(--serie-6);
+    transform: rotate(45deg);
+    transform-box: fill-box;
+}
+.rombo {
+    width: 8px;
+    height: 8px;
+    background: var(--serie-6);
+    transform: rotate(45deg);
+    display: inline-block;
+}
+.opti-alerta {
+    font-size: 0.7rem;
+    color: var(--serie-6);
+    margin: 0;
+}
+.optis-lista {
+    grid-column: 1 / -1;
+    order: 3;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+}
+.optis-lista ul {
+    list-style: none;
+    margin: 6px 0 8px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.optis-lista li {
+    display: grid;
+    grid-template-columns: 52px 170px minmax(0, 1fr);
+    gap: 10px;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+.optis-lista li b {
+    color: var(--serie-6);
+    font-weight: 600;
+}
+.optis-lista .texto {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* 4. Metas */

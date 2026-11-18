@@ -22,6 +22,7 @@ class HistorialCambios
         'control' => ['nombre' => 'Control de gasto', 'eventos' => ['control.']],
         'datos' => ['nombre' => 'Datos', 'eventos' => ['fuentes.importadas', 'medios.', 'datos.mes_eliminado']],
         'fuentes' => ['nombre' => 'Fuentes', 'eventos' => ['fuentes.venta_real']],
+        'optimizaciones' => ['nombre' => 'Optimizaciones', 'eventos' => ['optimizacion.']],
     ];
 
     private const CAMPOS = [
@@ -126,8 +127,29 @@ class HistorialCambios
             'medios.gasto_manual_borrado' => 'Borró un gasto capturado a mano.',
             'fuentes.venta_real' => 'Capturó la venta real '.(($d['tipo'] ?? '') === 'semana' ? 'de la semana del '.self::fecha($d['clave'] ?? null) : 'de '.self::mes($d['clave'] ?? '')).': '.
                 'órdenes '.($d['ordenes'] ?? '—').', NC '.($d['nc'] ?? '—').'.',
+            'optimizacion.creada' => 'Registró una optimización ('.self::nombreTipo($d['tipo'] ?? '').') del '.self::fecha($d['fecha'] ?? null).self::enCampanias($d).'.',
+            'optimizacion.editada' => 'Editó la optimización ('.self::nombreTipo($d['tipo'] ?? '').') del '.self::fecha($d['fecha'] ?? null).self::enCampanias($d).'.',
+            'optimizacion.borrada' => 'Borró la optimización ('.self::nombreTipo($d['tipo'] ?? '').') del '.self::fecha($d['fecha'] ?? null).self::enCampanias($d).'.',
+            'optimizacion.sincronizadas' => 'Sincronizó optimizaciones de las plataformas: '.($d['meta'] ?? 0).' de Meta y '.($d['tiktok'] ?? 0).' de TikTok.',
+            'optimizacion.importadas' => 'Importó optimizaciones de la hoja del '.self::fecha($d['desde'] ?? null).' al '.self::fecha($d['hasta'] ?? null).' ('.number_format((int) ($d['filas'] ?? 0)).').',
             'datos.mes_eliminado' => "Borró los datos de {$mes()}.",
             default => $evento,
+        };
+    }
+
+    private static function nombreTipo(string $tipo): string
+    {
+        return config("optimizaciones.tipos.{$tipo}.nombre", $tipo);
+    }
+
+    private static function enCampanias(array $d): string
+    {
+        $c = $d['campanias'] ?? [];
+
+        return match (count($c)) {
+            0 => '',
+            1 => " en {$c[0]}",
+            default => ' en '.count($c).' campañas',
         };
     }
 
