@@ -27,6 +27,7 @@ use App\Http\Controllers\SistemaOperativoController;
 use App\Http\Controllers\TareaMediosController;
 use App\Http\Controllers\UsuariosController;
 use App\Http\Controllers\VideoCreativoController;
+use App\Http\Controllers\WeeklyController;
 use App\Models\Cuenta;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -115,6 +116,9 @@ Route::middleware('auth')->group(function () {
             Route::get('/channel', [ChannelController::class, 'index'])->name('channel');
             // SO (2026-11-18): métricas por sistema operativo (so.2026 / ✅SO).
             Route::get('/so', [SistemaOperativoController::class, 'index'])->name('so');
+            // Weekly (2026-11-18): weekly.fer, solo Ecuador y Panamá.
+            Route::get('/weekly', [WeeklyController::class, 'index'])->name('weekly');
+            Route::patch('/weekly/tipo', [WeeklyController::class, 'tipo'])->name('weekly.tipo');
 
             Route::get('/ajustes/nombres', [GestionNombresController::class, 'index'])->name('gestion-nombres');
             // Cola "Sin creativo" (Spark Ads y demás): asignar crea una regla

@@ -58,6 +58,7 @@ class HandleInertiaRequests extends Middleware
             // Países con AF data / Medios data / Fuentes (reglas en config/fuentes.php).
             'paisesConFuentes' => array_keys(config('fuentes', [])),
             'paisesConCanales' => array_keys(config('canales', [])),
+            'paisesConWeekly' => config('weekly.paises', []),
             'misCuentas' => fn () => $this->contextoCuentas($request)['todas'],
         ];
     }

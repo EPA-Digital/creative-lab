@@ -23,6 +23,7 @@ class HistorialCambios
         'datos' => ['nombre' => 'Datos', 'eventos' => ['fuentes.importadas', 'medios.', 'datos.mes_eliminado']],
         'fuentes' => ['nombre' => 'Fuentes', 'eventos' => ['fuentes.venta_real']],
         'optimizaciones' => ['nombre' => 'Optimizaciones', 'eventos' => ['optimizacion.']],
+        'weekly' => ['nombre' => 'Weekly', 'eventos' => ['weekly.']],
     ];
 
     private const CAMPOS = [
@@ -130,6 +131,9 @@ class HistorialCambios
             'optimizacion.creada' => 'Registró una optimización ('.self::nombreTipo($d['tipo'] ?? '').') del '.self::fecha($d['fecha'] ?? null).self::enCampanias($d).'.',
             'optimizacion.editada' => 'Editó la optimización ('.self::nombreTipo($d['tipo'] ?? '').') del '.self::fecha($d['fecha'] ?? null).self::enCampanias($d).'.',
             'optimizacion.borrada' => 'Borró la optimización ('.self::nombreTipo($d['tipo'] ?? '').') del '.self::fecha($d['fecha'] ?? null).self::enCampanias($d).'.',
+            'weekly.tipo' => ($d['oculta'] ?? false)
+                ? 'Ocultó '.($d['campania'] ?? '').' del Weekly.'
+                : 'Nombró '.($d['campania'] ?? '').' como "'.($d['tipo'] ?? 'automático').'" en el Weekly.',
             'optimizacion.sincronizadas' => 'Sincronizó optimizaciones de las plataformas: '.($d['meta'] ?? 0).' de Meta y '.($d['tiktok'] ?? 0).' de TikTok.',
             'optimizacion.importadas' => 'Importó optimizaciones de la hoja del '.self::fecha($d['desde'] ?? null).' al '.self::fecha($d['hasta'] ?? null).' ('.number_format((int) ($d['filas'] ?? 0)).').',
             'datos.mes_eliminado' => "Borró los datos de {$mes()}.",
