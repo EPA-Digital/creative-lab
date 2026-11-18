@@ -107,6 +107,29 @@ class DailyTest extends TestCase
         $this->assertSame([null, null, null, null, null, null, 950.0], $r['plan']['total_dia']);
     }
 
+    public function test_cruza_por_nombre_aunque_la_campania_tenga_varios_ids(): void
+    {
+        $user = $this->usuario();
+        $this->datos();
+        $paisId = Pais::where('codigo', 'EC')->value('id');
+        // Misma campaña con otro ID viejo, sin gasto ni resultados (pasa en TikTok).
+        DB::table('medios_diario')->insert([
+            'cuenta_id' => CuentaActual::id(), 'pais_id' => $paisId, 'fecha' => '2026-11-01', 'medio' => 'meta', 'medio_original' => 'facebook',
+            'campania' => self::CAMP, 'campania_id' => 'VIEJO', 'costo' => 0, 'clicks' => 0, 'impresiones' => 0,
+        ]);
+        FuenteAppsflyer::create([
+            'pais_id' => $paisId, 'fecha' => '2026-11-02', 'app' => 'TaDa', 'media_source' => 'Facebook Ads', 'campania' => self::CAMP,
+            'campania_id' => 'VIEJO', 'installs' => 0, 'nc' => 0, 'recompras' => 0, 'ordenes' => 0, 'fuente_final' => 'TADA PERFORMANCE', 'canal' => 'Facebook Ads',
+        ]);
+        $this->actingAs($user)->post('/tada/pais/ecuador/daily/2026-11/iniciar', ['desde' => 'datos'])->assertOk();
+        // Se queda el ID que gasta, pero aunque tuviera el viejo, cruza por nombre.
+        $this->assertSame('120237019589620661', DB::table('daily_campanias')->value('campania_id'));
+        DB::table('daily_campanias')->update(['campania_id' => 'VIEJO']);
+
+        $c = app(PanelDaily::class)->armar($paisId, 'ecuador', '2026-11', CarbonImmutable::parse('2026-11-04'))['campanias'][0];
+        $this->assertSame([150.0, 30, 15], [$c['costo'], $c['installs'], $c['orders']]);
+    }
+
     public function test_ecuador_tiene_daily_paid_y_bi(): void
     {
         $user = $this->usuario();

@@ -62,7 +62,14 @@ const pct = (v, d = 1) => (v === null || v === undefined || !Number.isFinite(v) 
 const pp = (v) => (v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)} pp`);
 const div = (a, b) => (b ? a / b : null);
 
-// Semáforo de pacing: dentro de ±5 pp va bien, hasta ±15 pp ojo, más allá alerta.
+// Colores de la hoja (2026-11-17, pedido explícito, "% LÍMITE DEL COLOR"):
+// - KPI, por % alcanzado: < 50% rojo, < 85% naranja, < 90% amarillo, 90%+ verde.
+// - Presupuesto, por % consumido: < 50% verde, < 85% amarillo, < 100% naranja,
+//   100%+ rojo (ya no hay dinero).
+const colorKpi = (v) => (v === null || v === undefined || !Number.isFinite(v) ? 'neutro' : v >= 0.9 ? 'verde' : v >= 0.85 ? 'amarillo' : v >= 0.5 ? 'naranja' : 'rojo');
+const colorBudget = (v) => (v === null || v === undefined || !Number.isFinite(v) ? 'neutro' : v >= 1 ? 'rojo' : v >= 0.85 ? 'naranja' : v >= 0.5 ? 'amarillo' : 'verde');
+
+// Semáforo de pacing (columna Dif. y tarjeta Pacing): dentro de ±5 pp va bien, hasta ±15 pp ojo, más allá alerta.
 const ritmo = (dif) => (dif === null || dif === undefined ? 'neutro' : Math.abs(dif) <= 0.05 ? 'bien' : Math.abs(dif) <= 0.15 ? 'ojo' : 'mal');
 
 const nombreMedio = (id) => props.medios.find((m) => m.id === id)?.nombre ?? id;
@@ -381,12 +388,12 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                             </div>
                             <div class="meta-valor">
                                 <b class="num">{{ entero(totalGeneral[m.real]) }}</b>
-                                <span :class="`ritmo-texto-${ritmo(plan[m.campo] ? div(totalGeneral[m.real], plan[m.campo]) - fechas.ideal : null)}`">
+                                <span :class="`color-texto-${colorKpi(plan[m.campo] ? div(totalGeneral[m.real], plan[m.campo]) : null)}`">
                                     {{ plan[m.campo] ? pct(div(totalGeneral[m.real], plan[m.campo])) + ' de la meta' : 'Sin meta' }}
                                 </span>
                             </div>
                             <div class="pista">
-                                <i :style="{ width: anchoBarra(div(totalGeneral[m.real], plan[m.campo])) }" />
+                                <i :class="`color-fondo-${colorKpi(plan[m.campo] ? div(totalGeneral[m.real], plan[m.campo]) : null)}`" :style="{ width: anchoBarra(div(totalGeneral[m.real], plan[m.campo])) }" />
                                 <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" :title="`Ideal al ${fechaCorta(fechas.ayer)}: ${pct(fechas.ideal)}`" />
                             </div>
                         </div>
@@ -426,10 +433,10 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <i v-if="b.color" class="punto" :style="{ background: `var(--${b.color})` }" />{{ b.nombre }}
                                             <span class="parte">· {{ pct(div(b.budget, totalGeneral.budget)) }} del budget</span>
                                         </span>
-                                        <span class="mono">{{ dinero(b.costo) }} / {{ dinero(b.budget) }} · <b :class="`ritmo-texto-${ritmo(b.dif)}`">{{ pct(b.consumido) }}</b></span>
+                                        <span class="mono">{{ dinero(b.costo) }} / {{ dinero(b.budget) }} · <b :class="`color-texto-${colorBudget(b.consumido)}`">{{ pct(b.consumido) }}</b></span>
                                     </div>
                                     <div class="pista">
-                                        <i :class="`ritmo-fondo-${ritmo(b.dif)}`" :style="{ width: anchoBarra(b.consumido) }" />
+                                        <i :class="`color-fondo-${colorBudget(b.consumido)}`" :style="{ width: anchoBarra(b.consumido) }" />
                                         <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" />
                                     </div>
                                 </div>
@@ -441,10 +448,10 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                             <div v-for="b in porMedio" :key="b.k" class="tarjeta-medio">
                                 <div class="tm-cabeza">
                                     <span><i v-if="b.color" class="cuadro" :style="{ background: `var(--${b.color})` }" />{{ b.nombre }}</span>
-                                    <b :class="`ritmo-texto-${ritmo(b.dif)}`">{{ pct(b.consumido) }}</b>
+                                    <b :class="`color-texto-${colorBudget(b.consumido)}`">{{ pct(b.consumido) }}</b>
                                 </div>
                                 <div class="pista">
-                                    <i :class="`ritmo-fondo-${ritmo(b.dif)}`" :style="{ width: anchoBarra(b.consumido) }" />
+                                    <i :class="`color-fondo-${colorBudget(b.consumido)}`" :style="{ width: anchoBarra(b.consumido) }" />
                                     <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" />
                                 </div>
                                 <div class="tm-montos mono">
@@ -476,10 +483,10 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                     <div v-for="x in r.filas" :key="x.k" class="barra">
                                         <div class="barra-cabeza">
                                             <span>{{ x.nombre }}</span>
-                                            <span class="mono">{{ dinero(x.costo) }} / {{ dinero(x.budget) }} · <b :class="`ritmo-texto-${ritmo(x.dif)}`">{{ pct(x.consumido) }}</b></span>
+                                            <span class="mono">{{ dinero(x.costo) }} / {{ dinero(x.budget) }} · <b :class="`color-texto-${colorBudget(x.consumido)}`">{{ pct(x.consumido) }}</b></span>
                                         </div>
                                         <div class="pista">
-                                            <i :class="`ritmo-fondo-${ritmo(x.dif)}`" :style="{ width: anchoBarra(x.consumido) }" />
+                                            <i :class="`color-fondo-${colorBudget(x.consumido)}`" :style="{ width: anchoBarra(x.consumido) }" />
                                             <span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" />
                                         </div>
                                     </div>
@@ -573,8 +580,8 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                         <template v-for="t in [total(g.todas)]" :key="'t'">
                                             <td class="grupo">{{ dinero(t.budget) }}</td>
                                             <td>{{ dinero(t.costo) }}</td>
-                                            <td :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pct(t.consumido, 0) }}</td>
-                                            <td class="izq"><div class="pista chica"><i :class="`ritmo-fondo-${ritmo(t.dif)}`" :style="{ width: anchoBarra(t.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                            <td :class="`color-texto-${colorBudget(t.consumido)}`">{{ pct(t.consumido, 0) }}</td>
+                                            <td class="izq"><div class="pista chica"><i :class="`color-fondo-${colorBudget(t.consumido)}`" :style="{ width: anchoBarra(t.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
                                             <td class="grupo" :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pp(t.dif) }}</td>
                                             <td>{{ dinero(t.costo_ayer) }}</td>
                                             <td>{{ dinero(t.daily_plataforma) }}</td>
@@ -582,8 +589,8 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <template v-for="m in metricasKpi" :key="`s${m.k}`">
                                                 <td class="grupo">{{ t[m.kpi] ? entero(t[m.kpi]) : '—' }}</td>
                                                 <td>{{ entero(t[m.k]) }}</td>
-                                                <td :class="`ritmo-texto-${ritmo(alcance(t[m.k], t[m.kpi]))}`">{{ t[m.kpi] ? pct(div(t[m.k], t[m.kpi]), 0) : '—' }}</td>
-                                                <td class="izq"><div v-if="t[m.kpi]" class="pista chica"><i :class="`ritmo-fondo-${ritmo(alcance(t[m.k], t[m.kpi]))}`" :style="{ width: anchoBarra(div(t[m.k], t[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                                <td :class="`color-texto-${colorKpi(div(t[m.k], t[m.kpi]))}`">{{ t[m.kpi] ? pct(div(t[m.k], t[m.kpi]), 0) : '—' }}</td>
+                                                <td class="izq"><div v-if="t[m.kpi]" class="pista chica"><i :class="`color-fondo-${colorKpi(div(t[m.k], t[m.kpi]))}`" :style="{ width: anchoBarra(div(t[m.k], t[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
                                             </template>
                                             <td class="grupo">{{ dinero2(div(t.costo, t.installs)) }}</td>
                                             <td>{{ dinero2(div(t.costo, t.nc)) }}</td>
@@ -614,8 +621,8 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                         </td>
                                         <td class="grupo"><CeldaEditable :valor="c.budget || null" tipo="numero" :formato="dinero" vacio="—" etiqueta="Budget" @guardar="editarCampania(c, 'budget', $event)" /></td>
                                         <td>{{ dinero2(c.costo) }}</td>
-                                        <td :class="`ritmo-texto-${ritmo(c.dif)}`">{{ pct(c.consumido, 0) }}</td>
-                                        <td class="izq"><div class="pista chica"><i :class="`ritmo-fondo-${ritmo(c.dif)}`" :style="{ width: anchoBarra(c.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                        <td :class="`color-texto-${colorBudget(c.consumido)}`">{{ pct(c.consumido, 0) }}</td>
+                                        <td class="izq"><div class="pista chica"><i :class="`color-fondo-${colorBudget(c.consumido)}`" :style="{ width: anchoBarra(c.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
                                         <td class="grupo" :class="`ritmo-texto-${ritmo(c.dif)}`">{{ pp(c.dif) }}</td>
                                         <td>{{ dinero2(c.costo_ayer) }}</td>
                                         <td><CeldaEditable :valor="c.daily_plataforma" tipo="numero" :formato="dinero" etiqueta="Daily de plataforma" @guardar="editarCampania(c, 'daily_plataforma', $event)" /></td>
@@ -623,8 +630,8 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                         <template v-for="m in metricasKpi" :key="`c${m.k}`">
                                             <td class="grupo"><CeldaEditable :valor="c[m.kpi]" tipo="numero" :formato="entero" vacio="—" :etiqueta="`KPI de ${m.label}`" @guardar="editarCampania(c, m.kpi, $event)" /></td>
                                             <td>{{ entero(c[m.k]) }}</td>
-                                            <td :class="`ritmo-texto-${ritmo(alcance(c[m.k], c[m.kpi]))}`">{{ c[m.kpi] ? pct(div(c[m.k], c[m.kpi]), 0) : '—' }}</td>
-                                            <td class="izq"><div v-if="c[m.kpi]" class="pista chica"><i :class="`ritmo-fondo-${ritmo(alcance(c[m.k], c[m.kpi]))}`" :style="{ width: anchoBarra(div(c[m.k], c[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                            <td :class="`color-texto-${colorKpi(div(c[m.k], c[m.kpi]))}`">{{ c[m.kpi] ? pct(div(c[m.k], c[m.kpi]), 0) : '—' }}</td>
+                                            <td class="izq"><div v-if="c[m.kpi]" class="pista chica"><i :class="`color-fondo-${colorKpi(div(c[m.k], c[m.kpi]))}`" :style="{ width: anchoBarra(div(c[m.k], c[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
                                         </template>
                                         <td class="grupo">{{ dinero2(div(c.costo, c.installs)) }}</td>
                                         <td>{{ dinero2(div(c.costo, c.nc)) }}</td>
@@ -652,8 +659,8 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                         <template v-for="t in [totalGeneral]" :key="'tg'">
                                             <td class="grupo">{{ dinero(t.budget) }}</td>
                                             <td>{{ dinero(t.costo) }}</td>
-                                            <td :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pct(t.consumido, 0) }}</td>
-                                            <td class="izq"><div class="pista chica"><i :class="`ritmo-fondo-${ritmo(t.dif)}`" :style="{ width: anchoBarra(t.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                            <td :class="`color-texto-${colorBudget(t.consumido)}`">{{ pct(t.consumido, 0) }}</td>
+                                            <td class="izq"><div class="pista chica"><i :class="`color-fondo-${colorBudget(t.consumido)}`" :style="{ width: anchoBarra(t.consumido) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
                                             <td class="grupo" :class="`ritmo-texto-${ritmo(t.dif)}`">{{ pp(t.dif) }}</td>
                                             <td>{{ dinero(t.costo_ayer) }}</td>
                                             <td>{{ dinero(t.daily_plataforma) }}</td>
@@ -661,8 +668,8 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                                             <template v-for="m in metricasKpi" :key="`f${m.k}`">
                                                 <td class="grupo">{{ t[m.kpi] ? entero(t[m.kpi]) : '—' }}</td>
                                                 <td>{{ entero(t[m.k]) }}</td>
-                                                <td :class="`ritmo-texto-${ritmo(alcance(t[m.k], t[m.kpi]))}`">{{ t[m.kpi] ? pct(div(t[m.k], t[m.kpi]), 0) : '—' }}</td>
-                                                <td class="izq"><div v-if="t[m.kpi]" class="pista chica"><i :class="`ritmo-fondo-${ritmo(alcance(t[m.k], t[m.kpi]))}`" :style="{ width: anchoBarra(div(t[m.k], t[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
+                                                <td :class="`color-texto-${colorKpi(div(t[m.k], t[m.kpi]))}`">{{ t[m.kpi] ? pct(div(t[m.k], t[m.kpi]), 0) : '—' }}</td>
+                                                <td class="izq"><div v-if="t[m.kpi]" class="pista chica"><i :class="`color-fondo-${colorKpi(div(t[m.k], t[m.kpi]))}`" :style="{ width: anchoBarra(div(t[m.k], t[m.kpi])) }" /><span class="marca-ideal" :style="{ left: anchoBarra(fechas.ideal) }" /></div></td>
                                             </template>
                                             <td class="grupo">{{ dinero2(div(t.costo, t.installs)) }}</td>
                                             <td>{{ dinero2(div(t.costo, t.nc)) }}</td>
@@ -1244,6 +1251,38 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
     padding-top: 8px;
     font-weight: 600;
     font-size: 0.82rem;
+}
+
+/* Colores de la hoja: KPI por % alcanzado, presupuesto por % consumido */
+.color-texto-verde {
+    color: var(--mint);
+}
+.color-texto-amarillo {
+    color: var(--yellow);
+}
+.color-texto-naranja {
+    color: var(--serie-2);
+}
+.color-texto-rojo {
+    color: var(--coral);
+}
+.color-texto-neutro {
+    color: var(--text-faint);
+}
+.color-fondo-verde {
+    background: var(--mint) !important;
+}
+.color-fondo-amarillo {
+    background: var(--yellow) !important;
+}
+.color-fondo-naranja {
+    background: var(--serie-2) !important;
+}
+.color-fondo-rojo {
+    background: var(--coral) !important;
+}
+.color-fondo-neutro {
+    background: var(--text-faint) !important;
 }
 
 /* Barras */
