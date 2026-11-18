@@ -145,24 +145,34 @@ function delta(k) {
 
 // --- Por tipo de campaña --------------------------------------------------------------
 const mostrarOcultas = ref(false);
+// Indicador de cada etapa (pedido explícito): Awareness = impresiones / CPM,
+// Consideration = installs / CPI, Conversion = primeras compras / CAC,
+// Loyalty = órdenes / CPO. Columnas de porCampania: 3 nc, 4 órdenes, 5 installs, 6 impresiones.
+const KPI_ETAPA = {
+    AWA: { col: 6, kpi: 'Impresiones', costo: 'CPM', costoDe: (g, k) => (k ? (g / k) * 1000 : null), por: 1000 },
+    CONS: { col: 5, kpi: 'Installs', costo: 'CPI', costoDe: (g, k) => (k ? g / k : null), por: 100 },
+    CNV: { col: 3, kpi: 'Primeras compras', costo: 'CAC', costoDe: (g, k) => (k ? g / k : null), por: 100 },
+    LOY: { col: 4, kpi: 'Órdenes', costo: 'CPO', costoDe: (g, k) => (k ? g / k : null), por: 100 },
+};
+KPI_ETAPA.SIN = KPI_ETAPA.CNV;
 function porTipo(desde, hasta, funnel) {
+    const def = KPI_ETAPA[funnel];
     const acc = new Map();
     for (const d of props.porCampania) {
         if (d[0] < desde || d[0] > hasta) continue;
         const c = props.campanias[d[1]];
         if (!c || (c.oculta && !mostrarOcultas.value) || c.funnel !== funnel) continue;
-        const t = acc.get(c.tipo) ?? { tipo: c.tipo, color: c.color, gasto: 0, nc: 0, ordenes: 0, campanias: new Set(), oculta: c.oculta };
+        const t = acc.get(c.tipo) ?? { tipo: c.tipo, color: c.color, gasto: 0, kpi: 0, campanias: new Set(), oculta: c.oculta };
         t.gasto += d[2];
-        t.nc += d[3];
-        t.ordenes += d[4];
+        t.kpi += d[def.col] ?? 0;
         t.campanias.add(c.campania);
         acc.set(c.tipo, t);
     }
     // Sin gasto real en el periodo no se lista (la hoja solo pone lo que corrió).
-    const filas = [...acc.values()].filter((t) => t.gasto >= 1).map((t) => ({ ...t, cac: t.nc ? t.gasto / t.nc : null, campanias: [...t.campanias] }));
+    const filas = [...acc.values()].filter((t) => t.gasto >= 1).map((t) => ({ ...t, costo: def.costoDe(t.gasto, t.kpi), campanias: [...t.campanias] }));
     filas.sort((a, b) => b.gasto - a.gasto);
-    const total = filas.reduce((s, t) => ({ gasto: s.gasto + t.gasto, nc: s.nc + t.nc, ordenes: s.ordenes + t.ordenes }), { gasto: 0, nc: 0, ordenes: 0 });
-    return { filas, total: { ...total, cac: total.nc ? total.gasto / total.nc : null } };
+    const total = filas.reduce((s, t) => ({ gasto: s.gasto + t.gasto, kpi: s.kpi + t.kpi }), { gasto: 0, kpi: 0 });
+    return { filas, total: { ...total, costo: def.costoDe(total.gasto, total.kpi) } };
 }
 const semanaSel = computed(() => semanas.value.find((s) => s.n === semana.value) ?? semanas.value[0]);
 const finSemana = computed(() => (semanaSel.value.fin > corte.value ? corte.value : semanaSel.value.fin));
@@ -186,7 +196,7 @@ watch(vistaTabla, (v) => {
 const nombreEtapa = (f) => (f === 'SIN' ? 'Sin funnel en el nombre' : FUNNEL_LABELS[f]);
 const colorEtapa = (f) => FUNNEL_COLOR_VAR[f] ?? 'var(--text-faint)';
 const etapas = computed(() =>
-    ETAPAS.map((f) => ({ funnel: f, nombre: nombreEtapa(f), color: colorEtapa(f), bloques: periodosTabla.value.map((p) => ({ ...p, ...porTipo(p.desde, p.hasta, f) })) })).filter((e) =>
+    ETAPAS.map((f) => ({ funnel: f, nombre: nombreEtapa(f), color: colorEtapa(f), def: KPI_ETAPA[f], bloques: periodosTabla.value.map((p) => ({ ...p, ...porTipo(p.desde, p.hasta, f) })) })).filter((e) =>
         e.bloques.some((b) => b.filas.length),
     ),
 );
@@ -197,12 +207,12 @@ function regresion(p) {
     const n = p.length;
     if (n < 3) return null;
     const mx = p.reduce((s, t) => s + t.gasto, 0) / n;
-    const my = p.reduce((s, t) => s + t.nc, 0) / n;
+    const my = p.reduce((s, t) => s + t.kpi, 0) / n;
     let sxy = 0, sxx = 0, syy = 0;
     for (const t of p) {
-        sxy += (t.gasto - mx) * (t.nc - my);
+        sxy += (t.gasto - mx) * (t.kpi - my);
         sxx += (t.gasto - mx) ** 2;
-        syy += (t.nc - my) ** 2;
+        syy += (t.kpi - my) ** 2;
     }
     if (!sxx || !syy) return null;
     const m = sxy / sxx;
@@ -220,7 +230,7 @@ function ticks(max) {
 function grafica(etapa) {
     const puntos = etapa.bloques.find((b) => b.key === bloqueGrafica.value)?.filas ?? [];
     const maxX = Math.max(1, ...puntos.map((t) => t.gasto)) * 1.1;
-    const maxY = Math.max(1, ...puntos.map((t) => t.nc)) * 1.15;
+    const maxY = Math.max(1, ...puntos.map((t) => t.kpi)) * 1.15;
     const x = (v) => G.l + (v / maxX) * (G.w - G.l - G.r);
     const y = (v) => G.h - G.b - (v / maxY) * (G.h - G.t - G.b);
     const r = regresion(puntos);
@@ -285,7 +295,7 @@ const fechaLarga = (f) => `${+f.slice(8, 10)} de ${MESES[+f.slice(5, 7) - 1].toL
                         <p class="eyebrow mono">{{ pais }}</p>
                         <h1 class="title">Weekly</h1>
                         <p class="subtitle">
-                            Cómo vamos en Paid cada semana y cada mes, por tipo de campaña y qué tanto explica el gasto las primeras compras (R²).
+                            Cómo vamos en Paid cada semana y cada mes, y por funnel con el indicador de cada etapa y qué tanto lo explica el gasto (R²).
                             <template v-if="props.corte">Datos al {{ fechaLarga(props.corte) }} (último día con data.medios y AF data).</template>
                         </p>
                     </div>
@@ -348,30 +358,27 @@ const fechaLarga = (f) => `${+f.slice(8, 10)} de ${MESES[+f.slice(5, 7) - 1].toL
                                             <tr>
                                                 <th class="izq">Tipo de campaña</th>
                                                 <th>Gasto</th>
-                                                <th>NC</th>
-                                                <th>Órdenes</th>
-                                                <th>CAC</th>
+                                                <th>{{ e.def.kpi }}</th>
+                                                <th>{{ e.def.costo }}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <tr v-for="t in b.filas" :key="t.tipo" :class="{ oculta: t.oculta }">
                                                 <th class="izq" :title="t.campanias.join('\n')"><i class="punto" :style="{ background: `var(--${t.color})` }" />{{ t.tipo }}</th>
                                                 <td>{{ fmtUsd2(t.gasto) }}</td>
-                                                <td>{{ fmtN(t.nc) }}</td>
-                                                <td>{{ fmtN(t.ordenes) }}</td>
-                                                <td>{{ fmtUsd2(t.cac) }}</td>
+                                                <td>{{ fmtN(t.kpi) }}</td>
+                                                <td>{{ fmtUsd2(t.costo) }}</td>
                                             </tr>
                                             <tr v-if="!b.filas.length">
-                                                <td colspan="5" class="vacio-fila">Sin gasto en este periodo.</td>
+                                                <td colspan="4" class="vacio-fila">Sin gasto en este periodo.</td>
                                             </tr>
                                         </tbody>
                                         <tfoot v-if="b.filas.length">
                                             <tr>
                                                 <th class="izq">Total</th>
                                                 <td>{{ fmtUsd2(b.total.gasto) }}</td>
-                                                <td>{{ fmtN(b.total.nc) }}</td>
-                                                <td>{{ fmtN(b.total.ordenes) }}</td>
-                                                <td>{{ fmtUsd2(b.total.cac) }}</td>
+                                                <td>{{ fmtN(b.total.kpi) }}</td>
+                                                <td>{{ fmtUsd2(b.total.costo) }}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -381,9 +388,9 @@ const fechaLarga = (f) => `${+f.slice(8, 10)} de ${MESES[+f.slice(5, 7) - 1].toL
 
                         <div v-if="graficas[e.funnel].puntos.length" class="grafica">
                             <p v-if="graficas[e.funnel].r" class="hint-chico lectura">
-                                {{ periodosTabla.find((p) => p.key === bloqueGrafica).titulo }}: cada $100 más de gasto ≈ {{ (graficas[e.funnel].r.m * 100).toFixed(1) }} primeras compras más.
+                                {{ periodosTabla.find((p) => p.key === bloqueGrafica).titulo }}: cada {{ usd0.format(e.def.por) }} más de gasto ≈ {{ nf.format(Math.round(graficas[e.funnel].r.m * e.def.por * 10) / 10) }} {{ e.def.kpi.toLowerCase() }} más.
                             </p>
-                            <svg :viewBox="`0 0 ${G.w} ${G.h}`" role="img" :aria-label="`${e.nombre}: dispersión gasto contra primeras compras`">
+                            <svg :viewBox="`0 0 ${G.w} ${G.h}`" role="img" :aria-label="`${e.nombre}: dispersión gasto contra ${e.def.kpi.toLowerCase()}`">
                                 <g class="ejes">
                                     <g v-for="t in graficas[e.funnel].ty" :key="`y${t}`">
                                         <line :x1="G.l" :x2="G.w - G.r" :y1="graficas[e.funnel].y(t)" :y2="graficas[e.funnel].y(t)" class="grid" />
@@ -391,20 +398,20 @@ const fechaLarga = (f) => `${+f.slice(8, 10)} de ${MESES[+f.slice(5, 7) - 1].toL
                                     </g>
                                     <text v-for="t in graficas[e.funnel].tx" :key="`x${t}`" :x="graficas[e.funnel].x(t)" :y="G.h - G.b + 18" text-anchor="middle">{{ usd0.format(t) }}</text>
                                     <text :x="(G.l + G.w - G.r) / 2" :y="G.h - 6" text-anchor="middle" class="titulo-eje">Gasto</text>
-                                    <text :x="14" :y="(G.t + G.h - G.b) / 2" text-anchor="middle" class="titulo-eje" :transform="`rotate(-90 14 ${(G.t + G.h - G.b) / 2})`">Primeras compras</text>
+                                    <text :x="14" :y="(G.t + G.h - G.b) / 2" text-anchor="middle" class="titulo-eje" :transform="`rotate(-90 14 ${(G.t + G.h - G.b) / 2})`">{{ e.def.kpi }}</text>
                                 </g>
                                 <line v-if="graficas[e.funnel].linea" v-bind="graficas[e.funnel].linea" class="tendencia" />
                                 <g v-for="t in graficas[e.funnel].puntos" :key="t.tipo" class="punto-g" @mouseenter="hover = { funnel: e.funnel, t }" @mouseleave="hover = null">
-                                    <circle :cx="graficas[e.funnel].x(t.gasto)" :cy="graficas[e.funnel].y(t.nc)" r="14" class="hit" />
-                                    <circle :cx="graficas[e.funnel].x(t.gasto)" :cy="graficas[e.funnel].y(t.nc)" r="6" :style="{ fill: `var(--${t.color})` }" class="marca" />
-                                    <text v-if="graficas[e.funnel].puntos.length <= 8" :x="graficas[e.funnel].x(t.gasto) + 10" :y="graficas[e.funnel].y(t.nc) - 8" class="etiqueta">{{ t.tipo }}</text>
+                                    <circle :cx="graficas[e.funnel].x(t.gasto)" :cy="graficas[e.funnel].y(t.kpi)" r="14" class="hit" />
+                                    <circle :cx="graficas[e.funnel].x(t.gasto)" :cy="graficas[e.funnel].y(t.kpi)" r="6" :style="{ fill: `var(--${t.color})` }" class="marca" />
+                                    <text v-if="graficas[e.funnel].puntos.length <= 8" :x="graficas[e.funnel].x(t.gasto) + 10" :y="graficas[e.funnel].y(t.kpi) - 8" class="etiqueta">{{ t.tipo }}</text>
                                 </g>
                             </svg>
                             <div v-if="hover && hover.funnel === e.funnel" class="tooltip">
                                 <strong>{{ hover.t.tipo }}</strong>
                                 <span>Gasto {{ fmtUsd2(hover.t.gasto) }}</span>
-                                <span>NC {{ fmtN(hover.t.nc) }} · CAC {{ fmtUsd2(hover.t.cac) }}</span>
-                                <span v-if="graficas[e.funnel].r">Esperado por la tendencia: {{ fmtN(Math.max(0, Math.round(graficas[e.funnel].r.m * hover.t.gasto + graficas[e.funnel].r.b))) }} NC</span>
+                                <span>{{ e.def.kpi }} {{ fmtN(hover.t.kpi) }} · {{ e.def.costo }} {{ fmtUsd2(hover.t.costo) }}</span>
+                                <span v-if="graficas[e.funnel].r">Esperado por la tendencia: {{ fmtN(Math.max(0, Math.round(graficas[e.funnel].r.m * hover.t.gasto + graficas[e.funnel].r.b))) }}</span>
                             </div>
                         </div>
                     </section>
@@ -462,7 +469,7 @@ const fechaLarga = (f) => `${+f.slice(8, 10)} de ${MESES[+f.slice(5, 7) - 1].toL
                     </section>
 
                     <p class="nota">
-                        Gasto = data.medios sin campañas _BRD_; primeras compras, órdenes e installs = AF data de {{ fuentePaid }}. Por tipo de campaña, el gasto incluye todas las campañas
+                        Gasto = data.medios sin campañas _BRD_; primeras compras, órdenes e installs = AF data de {{ fuentePaid }}. Por funnel: Awareness mide impresiones / CPM (data.medios), Consideration installs / CPI, Conversion primeras compras / CAC y Loyalty órdenes / CPO (AF data). El gasto por funnel incluye todas las campañas
                         (también BI) y NC / órdenes se cruzan por nombre de campaña. El nombre de cada tipo se puede cambiar en "Tipos de campaña".
                     </p>
                 </template>

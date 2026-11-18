@@ -40,7 +40,7 @@ class WeeklyTest extends TestCase
     {
         DB::table('medios_diario')->insert([
             'cuenta_id' => CuentaActual::id(), 'pais_id' => Pais::where('codigo', 'EC')->value('id'), 'fecha' => $fecha,
-            'medio' => $medio, 'medio_original' => $medio, 'campania' => $campania, 'costo' => $costo, 'creado_en' => now(),
+            'medio' => $medio, 'medio_original' => $medio, 'campania' => $campania, 'costo' => $costo, 'impresiones' => 1000, 'creado_en' => now(),
         ]);
     }
 
@@ -72,7 +72,7 @@ class WeeklyTest extends TestCase
                 ->where('campanias.1.tipo', 'Meta - Conversion AND RMK')
                 // Funnel por el token del nombre: las tablas se dividen por etapa.
                 ->where('campanias.1.funnel', 'CNV')->where('campanias.0.funnel', 'CONS')
-                ->where('porCampania', [['2026-11-03', 0, 40, 4, 6], ['2026-11-03', 1, 100, 11, 32]]));
+                ->where('porCampania', [['2026-11-03', 0, 40, 4, 6, 20, 1000], ['2026-11-03', 1, 100, 11, 32, 55, 1000]]));
 
         $this->actingAs($user)->patch('/tada/pais/ecuador/weekly/tipo', ['campania' => $rmk, 'tipo' => 'Meta - Remarketing', 'oculta' => false])->assertOk();
         $this->actingAs($user)->patch('/tada/pais/ecuador/weekly/tipo', ['campania' => $bi, 'tipo' => null, 'oculta' => true])->assertOk();
