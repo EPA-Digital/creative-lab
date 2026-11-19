@@ -165,3 +165,11 @@ it('el mapa de patrones existente sigue ganando antes de llegar al regex del she
     $resultado = ClasificadorNombres::clasificarCampania('BI-ADVANTAGE-AND-SHOPPING-BROAD', 'meta');
     expect($resultado['funnel'])->toBe('CONS')->and($resultado['patron'])->toBe('BI-');
 });
+
+it('quita extensión y sufijo aleatorio del arte cuando el ad se llama como el archivo (Perú)', function () {
+    expect(ClasificadorNombres::extraerArte('VID-AON-05MAY-CUPON24-RETO-CERVECERO-LAL_Abnixwh9.mov'))
+        ->toBe('VID-AON-05MAY-CUPON24-RETO-CERVECERO-LAL')
+        ->and(ClasificadorNombres::extraerArte('VID-AON-05MAY-CUPON-RETO.mp4'))->toBe('VID-AON-05MAY-CUPON-RETO')
+        // Sin extensión no se recorta nada.
+        ->and(ClasificadorNombres::extraerArte('VID-AON-20MAR-CUPON24-RETO-CERVECERO'))->toBe('VID-AON-20MAR-CUPON24-RETO-CERVECERO');
+});
