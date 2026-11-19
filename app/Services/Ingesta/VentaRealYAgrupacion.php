@@ -79,9 +79,9 @@ class VentaRealYAgrupacion
 
     /**
      * REGLA DE SUMA POR ARTE -- el mismo concepto creativo (arte) publicado
-     * bajo campañas del MISMO funnel se suma. El mismo arte en un funnel
+     * bajo campañas del MISMO funnel y la MISMA plataforma se suma. El mismo arte en un funnel
      * distinto NUNCA se suma con sus pares -- es otra evaluación, va aparte.
-     * La llave de agrupación es (funnel + arte), no solo arte.
+     * La llave de agrupación es (plataforma + funnel + arte), no solo arte.
      *
      * Ratios (CAC, CPO, CPI, CTR, CPM) se recalculan desde los totales YA
      * sumados, nunca promediando los ratios de cada fila -- promediar
@@ -106,7 +106,10 @@ class VentaRealYAgrupacion
 
                 continue;
             }
-            $key = $etapaFunnel.'::'.$arte;
+            // La plataforma va en la llave (2026-11-19, pedido explícito):
+            // el mismo arte en Meta y en TikTok son anuncios distintos con
+            // gasto propio -- nunca se suman en una sola card.
+            $key = ($card['plataforma'] ?? '').'::'.$etapaFunnel.'::'.$arte;
             $grupos[$key][] = $card;
         }
 

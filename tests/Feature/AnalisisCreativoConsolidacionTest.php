@@ -134,3 +134,19 @@ it('un creativo sin arte clasificado queda "Sin clasificar" -> funnel null en el
 
     expect($json['funnel'])->toBeNull();
 });
+
+it('no suma el mismo arte de Meta y TikTok en una sola card (Perú, RETO-CERVECERO)', function () {
+    $controller = app(AnalisisCreativoController::class);
+    $meta = creativoConResultado(1, '120247485109300242', 'VID-AON-20MAR-CUPON24-RETO-CERVECERO', 'LOY', 347.14, 7);
+    $tiktok = creativoConResultado(2, '1860211432844306', 'VID-AON-20MAR-CUPON24-RETO-CERVECERO', 'LOY', 145.85, 5);
+    $tiktok->plataforma = 'tiktok';
+
+    $cards = metodoPrivado($controller, 'cardsDesdeMes')->invoke($controller, collect([$meta, $tiktok]));
+    $agrupado = VentaRealYAgrupacion::agruparPorArteYFunnel($cards);
+
+    expect($agrupado['stats']['grupos'])->toBe(2);
+    $porPlataforma = collect($agrupado['cards'])->keyBy('plataforma');
+    expect($porPlataforma['meta']['cost'])->toBe(347.14)
+        ->and($porPlataforma['tiktok']['cost'])->toBe(145.85)
+        ->and($porPlataforma['tiktok']['adIdsMostrables'])->toBe(['1860211432844306']);
+});

@@ -272,10 +272,26 @@ class ClasificadorNombres
     public static function extraerArte(?string $bloqueCampania): ?string
     {
         if (preg_match(self::ARTE_RE, (string) $bloqueCampania, $m)) {
-            return mb_strtoupper($m[1]);
+            return self::limpiarArchivo(mb_strtoupper($m[1]));
         }
 
         return null;
+    }
+
+    /**
+     * Ads de TikTok que se llaman como el archivo subido (2026-11-19, Perú:
+     * "VID-AON-05MAY-...-LAL_Abnixwh9.mov"): quita la extensión de video y
+     * el sufijo aleatorio "_xxxxxxxx" que TikTok le agrega al archivo. Solo
+     * cuando hay extensión, para no recortar artes normales.
+     */
+    public static function limpiarArchivo(string $arte): string
+    {
+        if (! preg_match('/\.(MP4|MOV)$/i', $arte)) {
+            return $arte;
+        }
+        $sin = preg_replace('/\.(MP4|MOV)$/i', '', $arte);
+
+        return preg_replace('/_[A-Z0-9]{6,10}$/i', '', $sin) ?: $sin;
     }
 
     private static function buscarSegmento(?string $texto, array $codigos): ?string
