@@ -29,6 +29,9 @@ const props = defineProps({
     historialExcluidas: { type: Array, default: () => [] },
     // Optimizaciones del rango (2026-11-18): marcas en el histórico y alertas.
     optimizaciones: { type: Array, default: () => [] },
+    // Alertas de la cuenta (2026-11-20): campaña creada fuera del equipo,
+    // base subida ≥ 50%, gasto arriba de lo planeado (AlertasCuenta.php).
+    alertasCuenta: { type: Array, default: () => [] },
 });
 
 // --- Optimizaciones --------------------------------------------------------------
@@ -227,6 +230,24 @@ const alertas = computed(() => {
     const orden = { alerta: 0, revisar: 1, revisada: 2 };
     return lista.sort((a, b) => orden[a.estado] - orden[b.estado] || b.cambios.length - a.cambios.length);
 });
+// --- Alertas de la cuenta ------------------------------------------------------------
+const TIPO_ALERTA_CUENTA = { externo: 'Fuera del equipo', base: 'Base +50%', sobre_plan: 'Ppto vs planeado', plan: 'Gasto vs planeado' };
+const alertasCuentaVista = computed(() =>
+    props.alertasCuenta
+        .filter((a) => esGeneral.value || a.medio === pestana.value)
+        .map((a) => ({ ...a, revisadaPor: props.revisadas[a.clave] ?? null }))
+        .sort((a, b) => !!a.revisadaPor - !!b.revisadaPor || b.fecha.localeCompare(a.fecha)),
+);
+const alertasCuentaPendientes = computed(() => alertasCuentaVista.value.filter((a) => !a.revisadaPor).length);
+async function alternarRevisadaCuenta(a) {
+    try {
+        await axios.post(`${location.pathname}/revisar`, { fecha: a.fecha, clave: a.clave, revisada: !a.revisadaPor });
+        router.reload({ only: ['revisadas'], preserveScroll: true });
+    } catch (err) {
+        notificar({ tipo: 'error', titulo: 'No se guardó', texto: mensajeDeError(err) });
+    }
+}
+
 const carrusel = ref(null);
 const moverCarrusel = (dir) => carrusel.value?.scrollBy({ left: dir * 340, behavior: 'smooth' });
 async function alternarRevisada(al) {
@@ -503,6 +524,33 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                         Solo campañas que gastan desde nuestras cuentas (data.medios) o están en el Daily<template v-if="sinGastoPropio">; {{ sinGastoPropio }} de AF data sin gasto nuestro no se muestran</template>.
                         <template v-if="quitadasActivas"> {{ quitadasActivas }} quitada{{ quitadasActivas === 1 ? '' : 's' }} por el equipo (ver historial abajo).</template>
                     </p>
+
+                    <!-- Alertas de la cuenta -->
+                    <section v-if="alertasCuentaVista.length" class="import-panel panel alertas-cuenta">
+                        <div class="cabeza">
+                            <div>
+                                <h2>Alertas de la cuenta <span class="mono cuenta">{{ alertasCuentaPendientes }} pendientes</span></h2>
+                                <p class="hint">Campañas creadas en Meta por alguien fuera del equipo EPA; presupuestos subidos ≥ 50% de un jalón o que dejan la campaña ≥ 50% arriba de su daily planeado (últimos 14 días, de quien sea); y campañas que van a gastar ≥ 50% más de lo planeado en el Daily.</p>
+                            </div>
+                        </div>
+                        <ul class="lista-cuenta">
+                            <li v-for="a in alertasCuentaVista" :key="a.clave" class="fila-cuenta" :class="[`c-${a.tipo}`, { hecha: a.revisadaPor }]">
+                                <span class="tipo-cuenta mono">{{ TIPO_ALERTA_CUENTA[a.tipo] }}</span>
+                                <div class="cuerpo-cuenta">
+                                    <p class="titulo-cuenta">
+                                        {{ a.titulo }}<template v-if="a.medio"> · {{ nombreMedio(a.medio) }}</template>
+                                        <span v-if="a.tipo !== 'plan'" class="mono fecha-cuenta">{{ fechaCorta(a.fecha) }}</span>
+                                    </p>
+                                    <p class="campania-cuenta mono" :title="a.campania">{{ a.campania }}</p>
+                                    <p class="detalle-cuenta">{{ a.detalle }}<template v-if="a.quien && a.tipo !== 'externo'"> · {{ a.quien }}</template></p>
+                                </div>
+                                <button type="button" class="revisar" :class="{ hecho: a.revisadaPor }" @click="alternarRevisadaCuenta(a)">
+                                    <span class="caja">{{ a.revisadaPor ? '✓' : '' }}</span>
+                                    {{ a.revisadaPor ? `Revisada por ${a.revisadaPor}` : 'Marcar revisada' }}
+                                </button>
+                            </li>
+                        </ul>
+                    </section>
 
                     <!-- Alertas: carrusel -->
                     <section class="import-panel panel alertas">
@@ -1049,6 +1097,75 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
     align-items: flex-start;
     gap: 12px;
     margin-bottom: 12px;
+}
+
+/* Alertas de la cuenta */
+.lista-cuenta {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.fila-cuenta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--coral);
+    border-radius: 12px;
+    padding: 10px 14px;
+}
+.fila-cuenta.c-plan {
+    border-left-color: var(--yellow);
+}
+.fila-cuenta.hecha {
+    border-left-color: var(--border);
+    opacity: 0.65;
+}
+.tipo-cuenta {
+    flex: 0 0 auto;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: var(--coral);
+    background: color-mix(in srgb, var(--coral) 20%, transparent);
+}
+.c-plan .tipo-cuenta {
+    color: var(--yellow);
+    background: color-mix(in srgb, var(--yellow) 20%, transparent);
+}
+.cuerpo-cuenta {
+    flex: 1;
+    min-width: 0;
+}
+.cuerpo-cuenta p {
+    margin: 0;
+}
+.titulo-cuenta {
+    font-weight: 600;
+    font-size: 0.82rem;
+}
+.fecha-cuenta {
+    margin-left: 6px;
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    font-weight: 400;
+}
+.campania-cuenta {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.detalle-cuenta {
+    font-size: 0.76rem;
+    color: var(--text-muted);
 }
 
 /* Alertas en carrusel */

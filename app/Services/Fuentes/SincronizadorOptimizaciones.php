@@ -129,7 +129,7 @@ class SincronizadorOptimizaciones
             }
         }
 
-        return $filas;
+        return $this->detallarPresupuestosMeta($filas);
     }
 
     /** Una actividad de Meta → optimización (null si no es de las que se registran). */
@@ -163,6 +163,24 @@ class SincronizadorOptimizaciones
         }
         $fecha = Carbon::parse(is_numeric($item['event_time']) ? '@'.$item['event_time'] : $item['event_time'])->setTimezone($zona)->toDateString();
 
+        $presupuesto = [];
+        if (str_contains($evento, 'budget') && $evento !== 'update_campaign_group_high_demand_periods') {
+            $valor = fn (string $k) => is_array($extra[$k] ?? null) ? ($extra[$k][$k] ?? null) : ($extra[$k] ?? null);
+            // Meta manda "por día" / "total" en additional_value, o el tipo (daily_budget...).
+            $tipoValor = mb_strtolower(json_encode([$extra['old_value'] ?? null, $extra['new_value'] ?? null], JSON_UNESCAPED_UNICODE));
+            $presupuesto = [
+                'presupuesto_anterior' => is_numeric($valor('old_value')) ? $valor('old_value') / 100 : null,
+                'presupuesto_nuevo' => is_numeric($valor('new_value')) ? $valor('new_value') / 100 : null,
+                // Diario o total por el nombre del evento o el tipo que manda Meta; si no
+                // lo dice, se resuelve con la API (detallarPresupuestosMeta).
+                'presupuesto_diario' => str_contains($evento, 'lifetime') || str_contains($tipoValor, 'lifetime') || str_contains($tipoValor, '"total') ? false
+                    : (str_contains($evento, 'daily') || str_contains($tipoValor, 'daily') || str_contains($tipoValor, 'por día') ? true : null),
+                '_objeto' => (string) ($item['object_id'] ?? ''),
+                // CAMPAIGN_GROUP = campaña; CAMPAIGN = ad set (nombres viejos de Meta).
+                '_nivel' => $item['object_type'] ?? null,
+            ];
+        }
+
         return [
             'fecha' => $fecha,
             'medio' => 'meta',
@@ -172,7 +190,79 @@ class SincronizadorOptimizaciones
             'responsable' => Optimizaciones::responsable($item['actor_name'] ?? null) ?? 'Auto-Meta',
             'origen' => 'meta',
             'externo' => 'meta:'.substr(sha1($evento.'|'.($item['object_id'] ?? $objeto).'|'.$item['event_time'].'|'.json_encode($extra)), 0, 32),
+            ...$presupuesto,
         ];
+    }
+
+    /**
+     * Cambios de presupuesto de Meta: a qué campaña pertenecen, si son diarios y
+     * el daily total de la campaña después del cambio (para compararlo contra el
+     * Daily). Una consulta por objeto; si falla, el cambio se guarda sin detalle.
+     *
+     * @param  list<array<string, mixed>>  $filas
+     * @return list<array<string, mixed>>
+     */
+    public function detallarPresupuestosMeta(array $filas): array
+    {
+        $cache = [];
+        foreach ($filas as $i => $f) {
+            $id = $f['_objeto'] ?? '';
+            $nivel = $f['_nivel'] ?? null;
+            unset($filas[$i]['_objeto'], $filas[$i]['_nivel']);
+            if ($id === '' || ! $this->meta) {
+                continue;
+            }
+            $cache[$id] ??= $this->objetoMeta($id, $nivel === 'CAMPAIGN_GROUP');
+            $o = $cache[$id];
+            if (! $o) {
+                continue;
+            }
+            $diario = $f['presupuesto_diario'] ?? $o['diario'];
+            $nuevo = $f['presupuesto_nuevo'] ?? null;
+            $filas[$i]['campania_padre'] = $o['campania'];
+            $filas[$i]['campania_padre_id'] = $o['campania_id'];
+            $filas[$i]['presupuesto_diario'] = $diario;
+            if ($diario && $nuevo !== null) {
+                // Campaña (CBO): el nuevo valor es su daily. Ad set: el nuevo + los demás ad sets activos.
+                $filas[$i]['presupuesto_campania'] = $o['es_campania'] ? $nuevo : $nuevo + $o['otros_adsets'];
+            }
+        }
+
+        return array_values($filas);
+    }
+
+    /** @return array{campania: string, campania_id: string, es_campania: bool, diario: ?bool, otros_adsets: float}|null */
+    private function objetoMeta(string $id, bool $esCampania = false): ?array
+    {
+        $diarioDe = fn (array $n) => ((float) ($n['daily_budget'] ?? 0)) > 0 ? true : (((float) ($n['lifetime_budget'] ?? 0)) > 0 ? false : null);
+        try {
+            if ($esCampania) {
+                throw new \RuntimeException('campaña');
+            }
+            // Ad set: trae su campaña.
+            $n = $this->meta->get($id, ['fields' => 'name,daily_budget,lifetime_budget,campaign{id,name}']);
+            $campaniaId = (string) ($n['campaign']['id'] ?? '');
+            $otros = 0.0;
+            if ($campaniaId !== '') {
+                $adsets = $this->meta->get("{$campaniaId}/adsets", ['fields' => 'id,daily_budget,effective_status', 'limit' => '200']);
+                foreach ($adsets['data'] ?? [] as $a) {
+                    if (($a['id'] ?? '') !== $id && ($a['effective_status'] ?? '') === 'ACTIVE') {
+                        $otros += ((float) ($a['daily_budget'] ?? 0)) / 100;
+                    }
+                }
+            }
+
+            return ['campania' => (string) ($n['campaign']['name'] ?? ''), 'campania_id' => $campaniaId, 'es_campania' => false, 'diario' => $diarioDe($n), 'otros_adsets' => $otros];
+        } catch (Throwable) {
+            // No es ad set: es la campaña misma.
+        }
+        try {
+            $n = $this->meta->get($id, ['fields' => 'name,daily_budget,lifetime_budget']);
+
+            return ['campania' => (string) ($n['name'] ?? ''), 'campania_id' => $id, 'es_campania' => true, 'diario' => $diarioDe($n), 'otros_adsets' => 0.0];
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function descripcionMeta(string $evento, array $extra, string $objeto, string $zona = 'UTC'): string
@@ -259,8 +349,8 @@ class SincronizadorOptimizaciones
     {
         $actual = [];
         foreach ([
-            'campaign' => ['/campaign/get/', ['campaign_id', 'campaign_name', 'operation_status', 'budget', 'create_time', 'modify_time'], 'campaign_id', 'campaign_name'],
-            'adgroup' => ['/adgroup/get/', ['adgroup_id', 'adgroup_name', 'campaign_id', 'operation_status', 'budget', 'create_time', 'modify_time'], 'adgroup_id', 'adgroup_name'],
+            'campaign' => ['/campaign/get/', ['campaign_id', 'campaign_name', 'operation_status', 'budget', 'budget_mode', 'create_time', 'modify_time'], 'campaign_id', 'campaign_name'],
+            'adgroup' => ['/adgroup/get/', ['adgroup_id', 'adgroup_name', 'campaign_id', 'operation_status', 'budget', 'budget_mode', 'create_time', 'modify_time'], 'adgroup_id', 'adgroup_name'],
             'ad' => ['/ad/get/', ['ad_id', 'ad_name', 'adgroup_id', 'operation_status', 'create_time', 'modify_time'], 'ad_id', 'ad_name'],
         ] as $tipo => [$ruta, $campos, $id, $nombre]) {
             for ($pagina = 1; $pagina <= 50; $pagina++) {
@@ -270,6 +360,8 @@ class SincronizadorOptimizaciones
                         'tipo' => $tipo, 'nombre' => $o[$nombre] ?? '', 'status' => $o['operation_status'] ?? null,
                         'budget' => $tipo === 'ad' ? null : (isset($o['budget']) ? (float) $o['budget'] : null),
                         'creado' => $o['create_time'] ?? null, 'modificado' => $o['modify_time'] ?? null,
+                        'campaign_id' => (string) ($tipo === 'campaign' ? $o[$id] : ($o['campaign_id'] ?? '')),
+                        'diario' => isset($o['budget_mode']) ? in_array($o['budget_mode'], ['BUDGET_MODE_DAY', 'BUDGET_MODE_DYNAMIC_DAILY_BUDGET'], true) : null,
                     ];
                 }
                 if ($pagina >= ($data['page_info']['total_page'] ?? 1)) {
@@ -300,7 +392,8 @@ class SincronizadorOptimizaciones
                     $filas[] = $this->filaTiktok($fecha, $a['nombre'], $tipoStatus, ucfirst($entidad[$a['tipo']]).($apagado ? ' pausada/o' : ' activada/o'), "{$clave}:status:{$a['status']}:{$a['modificado']}");
                 }
                 if ($a['tipo'] !== 'ad' && (float) $p->budget !== (float) $a['budget']) {
-                    $filas[] = $this->filaTiktok($fecha, $a['nombre'], 'ajuste_dinero', self::textoPresupuesto((float) $p->budget, (float) $a['budget']), "{$clave}:budget:{$a['budget']}:{$a['modificado']}");
+                    $filas[] = $this->filaTiktok($fecha, $a['nombre'], 'ajuste_dinero', self::textoPresupuesto((float) $p->budget, (float) $a['budget']), "{$clave}:budget:{$a['budget']}:{$a['modificado']}",
+                        self::detallePresupuestoTiktok($actual, $a, (float) $p->budget));
                 }
             }
         }
@@ -322,11 +415,45 @@ class SincronizadorOptimizaciones
         return $escritas;
     }
 
-    private function filaTiktok(string $fecha, string $nombre, string $tipo, string $desc, string $externo): array
+    private function filaTiktok(string $fecha, string $nombre, string $tipo, string $desc, string $externo, array $extra = []): array
     {
         return [
             'fecha' => $fecha, 'medio' => 'tiktok', 'campanias' => [$nombre], 'tipo' => $tipo, 'descripcion' => $desc,
             'responsable' => null, 'origen' => 'tiktok', 'externo' => 'tiktok:'.substr(sha1($externo), 0, 32),
+            ...$extra,
+        ];
+    }
+
+    /**
+     * Campaña madre, si es diario y daily total de la campaña después del cambio
+     * (campaña: su budget; ad group: la suma de los ad groups activos diarios).
+     *
+     * @param  array<string, array<string, mixed>>  $actual
+     * @param  array<string, mixed>  $a
+     * @return array<string, mixed>
+     */
+    public static function detallePresupuestoTiktok(array $actual, array $a, float $anterior): array
+    {
+        $campania = $actual['campaign:'.$a['campaign_id']] ?? null;
+        $total = null;
+        if ($a['diario']) {
+            $total = $a['tipo'] === 'campaign' ? (float) $a['budget'] : 0.0;
+            if ($a['tipo'] === 'adgroup') {
+                foreach ($actual as $o) {
+                    if ($o['tipo'] === 'adgroup' && $o['campaign_id'] === $a['campaign_id'] && $o['status'] === 'ENABLE' && $o['diario']) {
+                        $total += (float) $o['budget'];
+                    }
+                }
+            }
+        }
+
+        return [
+            'campania_padre' => $campania['nombre'] ?? ($a['tipo'] === 'campaign' ? $a['nombre'] : null),
+            'campania_padre_id' => $a['campaign_id'] !== '' ? $a['campaign_id'] : null,
+            'presupuesto_anterior' => $anterior,
+            'presupuesto_nuevo' => (float) $a['budget'],
+            'presupuesto_diario' => $a['diario'],
+            'presupuesto_campania' => $total,
         ];
     }
 

@@ -17,6 +17,10 @@ return [
         'fer' => 'Fernanda Ochoa',
     ],
 
+    // Nombres en Meta de gente del equipo que no tiene usuario @epa.digital
+    // en el dashboard (para no alertar sus campañas como externas).
+    'equipo_meta' => [],
+
     'tipos' => [
         'creacion_campania' => ['nombre' => 'Creación de campaña', 'grupo' => 'crear', 'claves' => ['creacion de campa']],
         'creacion_grupo' => ['nombre' => 'Creación de grupo de anuncios', 'grupo' => 'crear', 'claves' => ['creacion de grupo']],

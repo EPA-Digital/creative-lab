@@ -139,6 +139,7 @@ class ControlGasto
                 'status' => $p->status ?? null,
                 'responsable' => $p->responsable ?? null,
                 'budget' => $p ? (float) $p->budget : null,
+                'daily' => $p && $p->daily_plataforma !== null ? (float) $p->daily_plataforma : null,
                 'kpi' => $p ? [null, $p->kpi_installs, $p->kpi_nc, $p->kpi_recompras, $p->kpi_orders] : null,
                 'serie' => $c['serie'],
             ];
@@ -147,7 +148,8 @@ class ControlGasto
         $revisadas = DB::table('control_revisiones')
             ->leftJoin('users', 'users.id', '=', 'control_revisiones.usuario_id')
             ->where('control_revisiones.cuenta_id', $cuentaId)->where('control_revisiones.pais_id', $paisId)
-            ->where('control_revisiones.fecha', $corte->toDateString())
+            // Las alertas de la cuenta se revisan una vez (no por día de corte).
+            ->where(fn ($q) => $q->where('control_revisiones.fecha', $corte->toDateString())->orWhere('control_revisiones.clave', 'like', 'cuenta:%'))
             ->get(['control_revisiones.clave', 'users.name'])
             ->mapWithKeys(fn ($r) => [$r->clave => $r->name ?? 'Alguien'])
             ->all();
@@ -155,7 +157,10 @@ class ControlGasto
         $inicioPlan = $plan ? substr((string) $plan->fecha_inicio, 0, 10) : $corte->startOfMonth()->toDateString();
         $finPlan = $plan ? substr((string) $plan->fecha_fin, 0, 10) : $corte->endOfMonth()->toDateString();
 
+        $alertasCuenta = app(AlertasCuenta::class)->armar($paisId, $salida, $fechas, $inicioPlan, $finPlan, $corte->toDateString(), $hoy);
+
         return [
+            'alertasCuenta' => $alertasCuenta,
             'fechas' => $fechas,
             'corte' => $corte->toDateString(),
             'sugerido' => $sugerido->toDateString(),

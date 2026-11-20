@@ -195,4 +195,69 @@ class OptimizacionesTest extends TestCase
         $this->assertSame('Se pautó anuncio: AD_NUEVO', $filas['pauta_anuncios']->descripcion);
         $this->assertSame('tiktok', $filas['pauta_anuncios']->medio);
     }
+
+    public function test_meta_guarda_campania_madre_y_daily_de_la_campania(): void
+    {
+        $this->cuentaPublicitaria('meta', '111');
+        Http::fake(function ($req) {
+            $ruta = parse_url($req->url(), PHP_URL_PATH);
+            parse_str((string) parse_url($req->url(), PHP_URL_QUERY), $q);
+            if (str_ends_with($ruta, '/activities')) {
+                return Http::response(['data' => [
+                    // Ad set sin CBO: 70 → 120; su hermano activo tiene 50 → la campaña queda en 170/día.
+                    ['event_type' => 'update_ad_set_budget', 'event_time' => '2026-11-17T15:00:00+0000', 'object_id' => 'as1', 'object_name' => 'ADSET_A', 'actor_name' => 'Ana', 'extra_data' => json_encode(['old_value' => ['old_value' => 7000, 'type' => 'daily_budget'], 'new_value' => ['new_value' => 12000, 'type' => 'daily_budget']])],
+                    // Campaña (CBO): no tiene campo campaign → se toma como la campaña misma.
+                    ['event_type' => 'update_campaign_budget', 'event_time' => '2026-11-17T16:00:00+0000', 'object_id' => 'c2', 'object_name' => 'CAMP_CBO', 'actor_name' => 'Ana', 'extra_data' => json_encode(['old_value' => 10000, 'new_value' => 20000])],
+                    // Como lo manda Meta de verdad: nivel CAMPAIGN_GROUP y "por día".
+                    ['event_type' => 'update_campaign_budget', 'event_time' => '2026-11-17T17:00:00+0000', 'object_id' => 'c3', 'object_type' => 'CAMPAIGN_GROUP', 'object_name' => 'CAMP_REAL', 'actor_name' => 'Ana', 'extra_data' => json_encode(['old_value' => ['type' => 'payment_amount', 'old_value' => 7000, 'additional_value' => 'por día'], 'new_value' => ['type' => 'payment_amount', 'new_value' => 3000, 'additional_value' => 'por día']])],
+                ]]);
+            }
+            if (str_ends_with($ruta, '/as1')) {
+                return Http::response(['name' => 'ADSET_A', 'daily_budget' => '12000', 'campaign' => ['id' => 'c1', 'name' => 'CAMP_A']]);
+            }
+            if (str_ends_with($ruta, '/c1/adsets')) {
+                return Http::response(['data' => [
+                    ['id' => 'as1', 'daily_budget' => '12000', 'effective_status' => 'ACTIVE'],
+                    ['id' => 'as2', 'daily_budget' => '5000', 'effective_status' => 'ACTIVE'],
+                    ['id' => 'as3', 'daily_budget' => '9000', 'effective_status' => 'PAUSED'],
+                ]]);
+            }
+            if (str_ends_with($ruta, '/c2')) {
+                return str_contains($q['fields'] ?? '', 'campaign{')
+                    ? Http::response(['error' => ['message' => 'Tried accessing nonexisting field (campaign)']], 400)
+                    : Http::response(['name' => 'CAMP_CBO', 'daily_budget' => '20000']);
+            }
+
+            if (str_ends_with($ruta, '/c3')) {
+                // Directo como campaña, sin probar primero como ad set.
+                return str_contains($q['fields'] ?? '', 'campaign{') ? Http::response(['error' => ['message' => 'no']], 500) : Http::response(['name' => 'CAMP_REAL', 'daily_budget' => '3000']);
+            }
+
+            return Http::response([], 404);
+        });
+
+        (new SincronizadorOptimizaciones(new MetaApiClient('t')))->sincronizar('ecuador');
+        $filas = DB::table('optimizaciones')->where('origen', 'meta')->get()->keyBy(fn ($f) => json_decode($f->campanias)[0]);
+
+        $a = $filas['ADSET_A'];
+        $this->assertSame(['CAMP_A', 'c1', 1, 70.0, 120.0, 170.0], [$a->campania_padre, $a->campania_padre_id, (int) $a->presupuesto_diario, (float) $a->presupuesto_anterior, (float) $a->presupuesto_nuevo, (float) $a->presupuesto_campania]);
+        $c = $filas['CAMP_CBO'];
+        $this->assertSame(['CAMP_CBO', 'c2', 1, 200.0], [$c->campania_padre, $c->campania_padre_id, (int) $c->presupuesto_diario, (float) $c->presupuesto_campania]);
+        $r = $filas['CAMP_REAL'];
+        $this->assertSame(['CAMP_REAL', 'c3', 1, 70.0, 30.0, 30.0], [$r->campania_padre, $r->campania_padre_id, (int) $r->presupuesto_diario, (float) $r->presupuesto_anterior, (float) $r->presupuesto_nuevo, (float) $r->presupuesto_campania]);
+    }
+
+    public function test_tiktok_daily_de_la_campania_suma_sus_grupos(): void
+    {
+        $actual = [
+            'campaign:c1' => ['tipo' => 'campaign', 'nombre' => 'CAMP_T', 'status' => 'ENABLE', 'budget' => null, 'campaign_id' => 'c1', 'diario' => null],
+            'adgroup:g1' => ['tipo' => 'adgroup', 'nombre' => 'G1', 'status' => 'ENABLE', 'budget' => 80.0, 'campaign_id' => 'c1', 'diario' => true],
+            'adgroup:g2' => ['tipo' => 'adgroup', 'nombre' => 'G2', 'status' => 'ENABLE', 'budget' => 50.0, 'campaign_id' => 'c1', 'diario' => true],
+            'adgroup:g3' => ['tipo' => 'adgroup', 'nombre' => 'G3', 'status' => 'DISABLE', 'budget' => 90.0, 'campaign_id' => 'c1', 'diario' => true],
+            'adgroup:g4' => ['tipo' => 'adgroup', 'nombre' => 'G4', 'status' => 'ENABLE', 'budget' => 999.0, 'campaign_id' => 'c9', 'diario' => true],
+        ];
+        $d = SincronizadorOptimizaciones::detallePresupuestoTiktok($actual, $actual['adgroup:g1'], 70);
+
+        $this->assertSame(['CAMP_T', 'c1', 70.0, 80.0, true, 130.0], [$d['campania_padre'], $d['campania_padre_id'], $d['presupuesto_anterior'], $d['presupuesto_nuevo'], $d['presupuesto_diario'], $d['presupuesto_campania']]);
+    }
 }

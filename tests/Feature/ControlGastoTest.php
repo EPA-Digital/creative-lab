@@ -123,4 +123,61 @@ class ControlGastoTest extends TestCase
         $this->actingAs($this->usuario('junior', 'MX', 'México'))->get('/tada/pais/mexico/control-gasto')->assertOk();
         $this->actingAs($this->usuario('cliente'))->get('/tada/pais/ecuador/control-gasto')->assertForbidden();
     }
+
+    public function test_alertas_de_la_cuenta(): void
+    {
+        $this->usuario();
+        User::factory()->create(['name' => 'Ana Torres', 'email' => 'ana@epa.digital']);
+        $paisId = $this->datos();
+        $planId = DB::table('daily_planes')->insertGetId(['cuenta_id' => CuentaActual::id(), 'pais_id' => $paisId, 'mes' => '2026-11', 'fecha_inicio' => '2026-11-01', 'fecha_fin' => '2026-11-30']);
+        // Lleva 250 en 15 días: cerraría en 500 contra 300 planeados (+67%); el daily de 20 da 600.
+        DB::table('daily_campanias')->insert(['plan_id' => $planId, 'medio' => 'tiktok', 'campania' => self::CAMP, 'budget' => 300, 'daily_plataforma' => 20, 'status' => 'ACTIVA']);
+        $opti = fn (string $tipo, string $responsable, string $descripcion, string $campania = 'ECU_NUEVA') => DB::table('optimizaciones')->insertGetId([
+            'cuenta_id' => CuentaActual::id(), 'pais_id' => $paisId, 'fecha' => '2026-11-12', 'medio' => 'meta', 'campanias' => json_encode([$campania]),
+            'tipo' => $tipo, 'descripcion' => $descripcion, 'responsable' => $responsable, 'origen' => 'meta',
+        ]);
+        $externa = $opti('creacion_campania', 'Juan Cliente', 'Se creó campaña: ECU_NUEVA');
+        $opti('creacion_campania', 'Ana Torres Ruiz', 'Se creó campaña: ECU_EQUIPO', 'ECU_EQUIPO');
+        $subida = $opti('ajuste_dinero', 'Ana Torres', 'Se ajusta ppto de $70 a $120 (+71%)');
+        $opti('ajuste_dinero', 'Ana Torres', 'Se ajusta ppto de $70 a $80 (+14%)');
+
+        $r = app(ControlGasto::class)->armar($paisId, 'ecuador', null, CarbonImmutable::parse('2026-11-18'));
+        $porClave = collect($r['alertasCuenta'])->keyBy('clave');
+
+        $this->assertCount(3, $porClave);
+        $this->assertSame('externo', $porClave["cuenta:opt:{$externa}"]['tipo']);
+        $this->assertSame('Juan Cliente', $porClave["cuenta:opt:{$externa}"]['quien']);
+        $this->assertSame('Subió la base +71%', $porClave["cuenta:opt:{$subida}"]['titulo']);
+        $plan = $porClave['cuenta:plan:'.mb_strtolower(self::CAMP)];
+        $this->assertStringContainsString('cerraría en $500 (+67%)', $plan['detalle']);
+        $this->assertStringContainsString('da $600 en el mes (+100%)', $plan['detalle']);
+    }
+
+    public function test_alerta_cuando_el_presupuesto_queda_sobre_lo_planeado(): void
+    {
+        $this->usuario();
+        $paisId = $this->datos();
+        $planId = DB::table('daily_planes')->insertGetId(['cuenta_id' => CuentaActual::id(), 'pais_id' => $paisId, 'mes' => '2026-11', 'fecha_inicio' => '2026-11-01', 'fecha_fin' => '2026-11-30']);
+        // 2,400 en el mes = 80/día planeados.
+        DB::table('daily_campanias')->insert(['plan_id' => $planId, 'medio' => 'meta', 'campania' => 'ECU_CAMP_A', 'campania_id' => 'c1', 'budget' => 2400, 'status' => 'ACTIVA']);
+        $cambio = fn (float $antes, float $despues, float $campania) => DB::table('optimizaciones')->insertGetId([
+            'cuenta_id' => CuentaActual::id(), 'pais_id' => $paisId, 'fecha' => '2026-11-17', 'medio' => 'meta', 'campanias' => json_encode(['ADSET_A']),
+            'tipo' => 'ajuste_dinero', 'descripcion' => 'x', 'responsable' => 'Ana Torres', 'origen' => 'meta',
+            'campania_padre' => 'Otro nombre', 'campania_padre_id' => 'c1', 'presupuesto_anterior' => $antes, 'presupuesto_nuevo' => $despues,
+            'presupuesto_diario' => true, 'presupuesto_campania' => $campania,
+        ]);
+        // Del equipo y solo +30% vs el anterior, pero la campaña queda en 130/día (+62% vs 80).
+        $sobre = $cambio(100, 130, 130);
+        // Dentro de lo planeado: no alerta.
+        $cambio(60, 70, 70);
+
+        $r = app(ControlGasto::class)->armar($paisId, 'ecuador', null, CarbonImmutable::parse('2026-11-18'));
+        $alertas = collect($r['alertasCuenta'])->where('tipo', '!=', 'plan')->values();
+
+        $this->assertCount(1, $alertas);
+        $this->assertSame("cuenta:opt:{$sobre}", $alertas[0]['clave']);
+        $this->assertSame('sobre_plan', $alertas[0]['tipo']);
+        $this->assertSame('Presupuesto sobre lo planeado +63%', $alertas[0]['titulo']);
+        $this->assertStringContainsString('$130/día contra $80/día planeados', $alertas[0]['detalle']);
+    }
 }
