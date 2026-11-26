@@ -1,4 +1,5 @@
 <script setup>
+import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
 import { ref, computed, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -518,6 +519,7 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                         <p class="eyebrow mono">{{ pais }}</p>
                         <h1 class="title">Control de gasto</h1>
                         <p class="subtitle">Qué cambió el último día con datos: alertas por campaña, comparación contra días anteriores, histórico y avance de metas.</p>
+                        <AvisoCostosApi />
                     </div>
                 </header>
 

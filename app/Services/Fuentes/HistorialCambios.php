@@ -124,6 +124,7 @@ class HistorialCambios
             'control.campania_restaurada' => "Restauró {$camp()} en Control de gasto.",
             'control.equipo_meta' => 'Marcó a "'.($d['nombre'] ?? '').'" como del equipo en Meta.',
             'control.equipo_meta_quitado' => 'Quitó a "'.($d['nombre'] ?? '').'" del equipo en Meta.',
+            'costos.actualizados' => 'Actualizó los costos de Meta y TikTok desde la API ('.($d['cuentas'] ?? 0).' cuentas'.(! empty($d['errores']) ? ', '.$d['errores'].' con error' : '').').',
             'fuentes.importadas' => 'Importó AF data del '.self::fecha($d['desde'] ?? null).' al '.self::fecha($d['hasta'] ?? null).' ('.number_format((int) ($d['filas'] ?? 0)).' filas).',
             'medios.data_medios_importada' => 'Importó data.medios del '.self::fecha($d['desde'] ?? null).' al '.self::fecha($d['hasta'] ?? null).' ('.number_format((int) ($d['filas'] ?? 0)).' filas).',
             'medios.gasto_manual' => 'Capturó gasto de '.($d['medio'] ?? 'un medio').' del '.self::fecha($d['fecha'] ?? null).': $'.number_format((float) ($d['gasto'] ?? 0), 2).'.',

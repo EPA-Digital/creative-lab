@@ -1,4 +1,5 @@
 <script setup>
+import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
@@ -199,6 +200,7 @@ const esActual = (per) => {
                             Installs, New Customer, Orders y OR por canal, {{ anio }} contra {{ anterior }}.
                             El año en curso sale de AF data por media source<template v-if="hasta"> (hasta el {{ fechaLarga(hasta) }})</template>.
                         </p>
+                        <AvisoCostosApi />
                     </div>
                 </header>
 

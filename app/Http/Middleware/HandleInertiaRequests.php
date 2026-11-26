@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Cuenta;
+use App\Services\Fuentes\SincronizadorCostosApi;
 use App\Services\Ingesta\ReglasNomenclatura;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -60,6 +61,14 @@ class HandleInertiaRequests extends Middleware
             'paisesConCanales' => array_keys(config('canales', [])),
             'paisesConWeekly' => config('weekly.paises', []),
             'misCuentas' => fn () => $this->contextoCuentas($request)['todas'],
+            // Costos desde la API (2026-11-26): última y próxima actualización (AvisoCostosApi.vue).
+            'costosApi' => function () use ($request) {
+                try {
+                    return $request->user()?->esEpa() ? SincronizadorCostosApi::estado() : null;
+                } catch (\Throwable) {
+                    return null; // fuera de una cuenta (login, ajustes generales)
+                }
+            },
         ];
     }
 

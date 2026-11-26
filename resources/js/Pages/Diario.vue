@@ -1,4 +1,5 @@
 <script setup>
+import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
 import { ref, computed, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
@@ -111,6 +112,7 @@ const despuesDeHasta = (fecha) => !!props.hasta && fecha > props.hasta;
                             Por día, la inversión, impresiones y clics de data.medios con los installs, NC y purchase de AF data
                             {{ esMedio ? 'por medio' : 'por campaña' }}<template v-if="hasta"> (datos hasta el {{ fechaLarga(hasta) }})</template>.
                         </p>
+                        <AvisoCostosApi />
                     </div>
                 </header>
 

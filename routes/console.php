@@ -43,3 +43,12 @@ Schedule::command('optimizaciones:sincronizar')
     ->timezone('America/Mexico_City')
     ->dailyAt('06:00')
     ->withoutOverlapping();
+
+// costos:sincronizar-api -- 2026-11-26, pedido explícito: gasto, impresiones y
+// clicks de Meta y TikTok por anuncio desde la API, cada hora al minuto 10
+// (config/costos_api.php). En producción lo dispara Cloud Scheduler
+// (zx-dashboard-sincronizar-costos-cada-hora) sobre el job del mismo nombre.
+Schedule::command('costos:sincronizar-api')
+    ->timezone('America/Mexico_City')
+    ->hourlyAt(10)
+    ->withoutOverlapping();

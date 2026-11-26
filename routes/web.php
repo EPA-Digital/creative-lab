@@ -9,6 +9,7 @@ use App\Http\Controllers\CuentasController;
 use App\Http\Controllers\DailyController;
 use App\Http\Controllers\DatosMensualesController;
 use App\Http\Controllers\DiarioController;
+use App\Http\Controllers\EnVivoController;
 use App\Http\Controllers\EvaluacionCreativoController;
 use App\Http\Controllers\FuentesController;
 use App\Http\Controllers\FunnelController;
@@ -89,6 +90,9 @@ Route::middleware('auth')->group(function () {
             // Daily (2026-11-18): presupuesto y pacing del mes por campaña; lo morado se edita aquí.
             Route::get('/daily', [DailyController::class, 'index'])->name('daily');
             // Control de gasto (2026-11-18): alertas y variaciones del día por campaña.
+            // En vivo (2026-11-26): campaña → conjunto → anuncio desde la API de Meta y TikTok.
+            Route::get('/en-vivo', [EnVivoController::class, 'index'])->name('en-vivo');
+            Route::post('/en-vivo/actualizar', [EnVivoController::class, 'actualizar'])->middleware('throttle:4,1')->name('en-vivo.actualizar');
             Route::get('/control-gasto', [ControlGastoController::class, 'index'])->name('control-gasto');
             Route::post('/control-gasto/revisar', [ControlGastoController::class, 'revisar'])->name('control-gasto.revisar');
             Route::post('/control-gasto/equipo', [ControlGastoController::class, 'equipo'])->name('control-gasto.equipo');
