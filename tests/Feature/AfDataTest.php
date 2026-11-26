@@ -133,6 +133,31 @@ class AfDataTest extends TestCase
         $this->assertNull($r['filas'][2]['adset']);
     }
 
+    public function test_mexico_usa_las_reglas_de_su_hoja(): void
+    {
+        $app = 'TaDa Delivery de Bebidas MX - mx.com.modelorama.now';
+        $fila = fn (string $agency, string $media, string $campania) => "\"Nov 12, 2026\",{$app},{$agency},{$media},{$campania},1,AS,1,1,0,0,1\n";
+        $csv = "Install Day,App Name,Agency,Media Source,Campaign,Campaign ID,Adset,Adset ID,Installs (sum),Activity - Event Counter - First Order (sum),Activity - Event Counter - Order Submitted (sum),Activity Sessions (sum)\n"
+            .$fila('None', 'Facebook Ads', 'MEX_DTC_TAD_AON_AON_TAD_CNV_EPA_FB-ADVANTAGE-AND-SALES')  // _EPA_
+            .$fila('None', 'Social_facebook', 'MEX_DTC_TAD_AON_ORGANICVKNG_TAD_AWA_VKNG_TADA')        // MEX_DTC_ sin _EPA_
+            .$fila('None', 'dv360_int', 'SOC_GGL_NA_NQNP_MNTNAC_A18PA_A18PA_CPM_AW-AWA')             // nomenclatura vieja
+            .$fila('None', 'Email', 'MX_CO_PROMOPAPA_BICRM__13-06-2023')                             // dice CRM
+            .$fila('None', 'LuisMiguelSMS', 'LuisMiguelSMS')
+            .$fila('None', 'Email', 'RWD_EML_MX_AUTOMATED_L1_RET_ALL_NA_CLUBTADA')                    // Email sin CRM: OTRO
+            .$fila('clearpierperfor', 'wingsapps_int', 'TaDa_CPA_Mexico_Android_RTGT')                // afiliado: OTRO
+            .$fila('None', 'corona_campaign', 'None')                                                 // sin campaña: orgánico
+            .$fila('None', 'MGM', 'MGM_DTC-TADA_MX');
+
+        $r = LimpiadorFuentes::paraPais('mexico')->limpiar($csv);
+
+        $this->assertSame(
+            ['TADA PERFORMANCE', 'TADA PERFORMANCE', 'TADA PERFORMANCE', 'CRM', 'CRM', 'OTRO', 'OTRO', 'ORGANIC', 'MGM'],
+            array_column($r['filas'], 'fuente_final'),
+        );
+        $this->assertSame('Facebook Ads', $r['filas'][0]['canal']);
+        $this->assertSame(['Other', 'Organic'], [$r['filas'][5]['canal'], $r['filas'][7]['canal']]);
+    }
+
     public function test_avisa_si_no_es_el_export_esperado(): void
     {
         $this->expectExceptionMessage('Al archivo le faltan columnas');

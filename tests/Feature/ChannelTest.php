@@ -86,11 +86,12 @@ class ChannelTest extends TestCase
             });
     }
 
-    public function test_mexico_entra_sin_af_data_y_cliente_no(): void
+    public function test_mexico_entra_y_cliente_no(): void
     {
+        // México ya tiene reglas de AF data (2026-11-18).
         $this->actingAs($this->usuario('junior', 'MX', 'México'))->get('/tada/pais/mexico/channel')
             ->assertOk()
-            ->assertInertia(fn ($p) => $p->component('Channel')->where('tieneAfData', false));
+            ->assertInertia(fn ($p) => $p->component('Channel')->where('tieneAfData', true));
         $this->actingAs($this->usuario('cliente'))->get('/tada/pais/ecuador/channel')->assertForbidden();
     }
 }

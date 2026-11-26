@@ -90,9 +90,10 @@ class FunnelTest extends TestCase
             ->assertInertia(fn ($p) => $p->component('Funnel')->has('dias', 0));
     }
 
-    public function test_cliente_no_entra_y_mexico_no_tiene_funnel(): void
+    public function test_cliente_no_entra_y_mexico_ya_tiene_funnel(): void
     {
         $this->actingAs($this->usuario('cliente'))->get('/tada/pais/ecuador/funnel')->assertForbidden();
-        $this->actingAs($this->usuario('junior', 'MX', 'México'))->get('/tada/pais/mexico/funnel')->assertNotFound();
+        // México se habilitó el 2026-11-18 (ya tiene reglas de AF data).
+        $this->actingAs($this->usuario('junior', 'MX', 'México'))->get('/tada/pais/mexico/funnel')->assertOk();
     }
 }
