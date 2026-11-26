@@ -1,4 +1,5 @@
 <script setup>
+import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
@@ -176,6 +177,7 @@ const fechaLarga = (f) => `${+f.slice(8, 10)} de ${MESES[+f.slice(5, 7) - 1].toL
                             Android contra iOS en installs, new customers, recompras y registros, del negocio completo o solo Paid ({{ fuentePaid }}).
                             Sale de AF data<template v-if="hasta"> (hasta el {{ fechaLarga(hasta) }})</template>; la inversión, de data.medios.
                         </p>
+                        <AvisoCostosApi />
                     </div>
                 </header>
 

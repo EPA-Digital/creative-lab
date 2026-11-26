@@ -1,4 +1,5 @@
 <script setup>
+import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
 import { ref, computed, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -298,6 +299,7 @@ const fechaLarga = (f) => `${+f.slice(8, 10)} de ${MESES[+f.slice(5, 7) - 1].toL
                             Cómo vamos en Paid cada semana y cada mes, y por funnel con el indicador de cada etapa y qué tanto lo explica el gasto (R²).
                             <template v-if="props.corte">Datos al {{ fechaLarga(props.corte) }} (último día con data.medios y AF data).</template>
                         </p>
+                        <AvisoCostosApi />
                     </div>
                     <button type="button" class="modal-copy-btn" @click="abrirEdicion">Tipos de campaña</button>
                 </header>

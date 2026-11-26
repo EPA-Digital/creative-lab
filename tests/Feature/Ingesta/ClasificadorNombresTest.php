@@ -173,3 +173,9 @@ it('quita extensión y sufijo aleatorio del arte cuando el ad se llama como el a
         // Sin extensión no se recorta nada.
         ->and(ClasificadorNombres::extraerArte('VID-AON-20MAR-CUPON24-RETO-CERVECERO'))->toBe('VID-AON-20MAR-CUPON24-RETO-CERVECERO');
 });
+
+it('toma el arte antes de la extensión cuando el ad sigue con el nombre del anuncio (Ecuador)', function () {
+    $ad = 'VID-27OCT-02NOV-CABALLERO-EMBRUJAMOS-ALGUNAS-PROMOS.mp4_VID_MUL_10_AON_LLA_17_INSTALL-AND-VOLUME-AUTOMATIC-PLACEMENTS-VID-27OCT-02NOV-CABALLERO-EMBRUJAMOS-ALGUNAS-PROMOS';
+    expect(ClasificadorNombres::extraerArte($ad))->toBe('VID-27OCT-02NOV-CABALLERO-EMBRUJAMOS-ALGUNAS-PROMOS')
+        ->and(ClasificadorNombres::limpiarArchivo(mb_strtoupper($ad)))->toBe('VID-27OCT-02NOV-CABALLERO-EMBRUJAMOS-ALGUNAS-PROMOS');
+});

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Pais;
 use App\Services\Auditoria;
+use App\Services\Fuentes\AlertasCuenta;
 use App\Services\Fuentes\ControlGasto;
 use App\Support\CuentaActual;
 use Illuminate\Http\JsonResponse;
@@ -81,6 +82,40 @@ class ControlGastoController extends Controller
         abort_unless($fila, 404);
         DB::table('control_excluidas')->where('id', $fila->id)->update(['restaurada_por' => $request->user()->id, 'restaurada_en' => now()]);
         Auditoria::registrar('control.campania_restaurada', $request->user(), detalle: ['pais' => $pais, 'campania' => $fila->campania]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Marca un nombre de Meta como del equipo (opcionalmente ligado a un
+     * usuario del dashboard). Vale para toda la cuenta.
+     */
+    public function equipo(Request $request, string $pais): JsonResponse
+    {
+        $this->paisDesdeSlug($pais);
+        $datos = $request->validate([
+            'nombre' => ['required', 'string', 'max:200'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+        $normalizado = AlertasCuenta::normalizarNombre($datos['nombre']);
+        abort_if($normalizado === '', 422, 'El nombre está vacío.');
+        DB::table('equipo_meta')->updateOrInsert(
+            ['cuenta_id' => CuentaActual::id(), 'nombre_normalizado' => $normalizado],
+            ['nombre' => trim($datos['nombre']), 'user_id' => $datos['user_id'] ?? null, 'creado_por' => $request->user()->id, 'creado_en' => now()],
+        );
+        Auditoria::registrar('control.equipo_meta', $request->user(), detalle: ['pais' => $pais, ...$datos]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Quita un nombre del equipo en Meta (sus campañas vuelven a alertar). */
+    public function quitarEquipo(Request $request, string $pais, int $nombre): JsonResponse
+    {
+        $this->paisDesdeSlug($pais);
+        $fila = DB::table('equipo_meta')->where('id', $nombre)->where('cuenta_id', CuentaActual::id())->first();
+        abort_unless($fila, 404);
+        DB::table('equipo_meta')->where('id', $fila->id)->delete();
+        Auditoria::registrar('control.equipo_meta_quitado', $request->user(), detalle: ['pais' => $pais, 'nombre' => $fila->nombre]);
 
         return response()->json(['ok' => true]);
     }

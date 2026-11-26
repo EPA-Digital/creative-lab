@@ -147,11 +147,27 @@ class MediosDataController extends Controller
 
         $cuentaId = CuentaActual::id();
         $ahora = now();
-        DB::transaction(function () use ($resultado, $paisModelo, $cuentaId, $ahora) {
+        DB::transaction(function () use (&$resultado, $paisModelo, $cuentaId, $ahora) {
+            // Solo se reemplaza lo del CSV: lo que trae la API (costos:sincronizar-api) se queda.
             DB::table('medios_diario')
-                ->where('cuenta_id', $cuentaId)->where('pais_id', $paisModelo->id)
+                ->where('cuenta_id', $cuentaId)->where('pais_id', $paisModelo->id)->where('origen', 'csv')
                 ->whereBetween('fecha', [$resultado['desde'], $resultado['hasta']])
                 ->delete();
+            // Y las campañas que ya vienen de la API ese día no se duplican con el CSV.
+            $deApi = [];
+            foreach (DB::table('medios_diario')->where('cuenta_id', $cuentaId)->where('pais_id', $paisModelo->id)->where('origen', 'api')
+                ->whereBetween('fecha', [$resultado['desde'], $resultado['hasta']])->get(['fecha', 'medio', 'campania', 'campania_id']) as $a) {
+                $dia = substr((string) $a->fecha, 0, 10).'|'.$a->medio.'|';
+                $deApi[$dia.mb_strtolower(trim((string) $a->campania))] = true;
+                if ($a->campania_id) {
+                    $deApi[$dia.'id:'.$a->campania_id] = true;
+                }
+            }
+            $resultado['filas'] = array_values(array_filter($resultado['filas'], function ($f) use ($deApi) {
+                $dia = $f['fecha'].'|'.$f['medio'].'|';
+
+                return ! isset($deApi[$dia.mb_strtolower(trim((string) $f['campania']))]) && ! (! empty($f['campania_id']) && isset($deApi[$dia.'id:'.$f['campania_id']]));
+            }));
             foreach (array_chunk($resultado['filas'], 500) as $tanda) {
                 DB::table('medios_diario')->insert(array_map(fn ($f) => [
                     ...$f, 'cuenta_id' => $cuentaId, 'pais_id' => $paisModelo->id, 'creado_en' => $ahora,

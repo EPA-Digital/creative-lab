@@ -161,6 +161,13 @@ class ControlGasto
 
         return [
             'alertasCuenta' => $alertasCuenta,
+            // Nombres de Meta que el equipo marcó como suyos (se pueden quitar).
+            'equipoMeta' => DB::table('equipo_meta')->leftJoin('users', 'users.id', '=', 'equipo_meta.user_id')
+                ->where('equipo_meta.cuenta_id', CuentaActual::id())->orderBy('equipo_meta.nombre')
+                ->get(['equipo_meta.id', 'equipo_meta.nombre', 'users.name as usuario'])
+                ->map(fn ($f) => ['id' => (int) $f->id, 'nombre' => $f->nombre, 'usuario' => $f->usuario])->all(),
+            'usuariosEquipo' => DB::table('users')->where('rol', '!=', 'cliente')->orderBy('name')->get(['id', 'name'])
+                ->map(fn ($u) => ['id' => (int) $u->id, 'nombre' => $u->name])->all(),
             'fechas' => $fechas,
             'corte' => $corte->toDateString(),
             'sugerido' => $sugerido->toDateString(),

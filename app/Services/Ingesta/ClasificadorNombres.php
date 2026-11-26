@@ -283,13 +283,17 @@ class ClasificadorNombres
      * "VID-AON-05MAY-...-LAL_Abnixwh9.mov"): quita la extensión de video y
      * el sufijo aleatorio "_xxxxxxxx" que TikTok le agrega al archivo. Solo
      * cuando hay extensión, para no recortar artes normales.
+     *
+     * También cuando la extensión queda a la mitad (2026-11-26, Ecuador):
+     * "VID-27OCT-...-PROMOS.MP4_VID_MUL_10_AON_LLA_17_INSTALL-..." -- el arte
+     * es lo que va antes de ".MP4_", lo demás es el nombre del anuncio.
      */
     public static function limpiarArchivo(string $arte): string
     {
-        if (! preg_match('/\.(MP4|MOV)$/i', $arte)) {
+        if (! preg_match('/^(.+?)\.(MP4|MOV)(?:_|$)/i', $arte, $m)) {
             return $arte;
         }
-        $sin = preg_replace('/\.(MP4|MOV)$/i', '', $arte);
+        $sin = $m[1];
 
         return preg_replace('/_[A-Z0-9]{6,10}$/i', '', $sin) ?: $sin;
     }

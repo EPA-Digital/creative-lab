@@ -1,4 +1,5 @@
 <script setup>
+import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
 import { ref, computed, reactive } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -177,6 +178,7 @@ function descargarCsv() {
                             capturan aquí por fecha. Fuentes toma la inversión de esta vista.
                             <template v-if="desdeDataMedios"> Este mes sale de data.medios importada (todos los medios, con clics e impresiones).</template>
                         </p>
+                        <AvisoCostosApi />
                     </div>
                     <div class="header-acciones">
                         <label class="btn-primary subir" :class="{ deshabilitado: subiendo }">

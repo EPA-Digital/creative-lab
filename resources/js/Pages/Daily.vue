@@ -1,4 +1,5 @@
 <script setup>
+import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
 import { ref, computed, reactive, watch } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -299,6 +300,7 @@ const anchoBarra = (v) => `${Math.min(100, Math.max(0, (v ?? 0) * 100))}%`;
                             Presupuesto y pacing del mes por campaña. Lo que en la hoja era morado se edita aquí: pasa el mouse y toca el
                             <span class="manual-muestra">lápiz</span>. Costo y resultados salen de data.medios y AF data.
                         </p>
+                        <AvisoCostosApi />
                     </div>
                     <div class="header-derecha">
                         <span v-if="guardando" class="guardando mono">Guardando…</span>

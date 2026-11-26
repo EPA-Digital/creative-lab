@@ -6,6 +6,7 @@ use App\Models\Cuenta;
 use App\Models\FuenteAppsflyer;
 use App\Models\Pais;
 use App\Models\User;
+use App\Services\Fuentes\AlertasCuenta;
 use App\Services\Fuentes\ControlGasto;
 use App\Support\CuentaActual;
 use Carbon\CarbonImmutable;
@@ -179,5 +180,38 @@ class ControlGastoTest extends TestCase
         $this->assertSame('sobre_plan', $alertas[0]['tipo']);
         $this->assertSame('Presupuesto sobre lo planeado +63%', $alertas[0]['titulo']);
         $this->assertStringContainsString('$130/día contra $80/día planeados', $alertas[0]['detalle']);
+    }
+
+    public function test_marcar_nombre_de_meta_como_del_equipo(): void
+    {
+        $usuario = $this->usuario();
+        $andres = User::factory()->create(['name' => 'Andrés Delgado', 'email' => 'adelgado@otro.com', 'rol' => 'junior']);
+        $paisId = $this->datos();
+        $opti = DB::table('optimizaciones')->insertGetId([
+            'cuenta_id' => CuentaActual::id(), 'pais_id' => $paisId, 'fecha' => '2026-11-12', 'medio' => 'meta', 'campanias' => json_encode(['ECU_NUEVA']),
+            'tipo' => 'creacion_campania', 'descripcion' => 'Se creó campaña', 'responsable' => 'Andres Delgado M', 'origen' => 'meta',
+        ]);
+        $armar = fn () => collect(app(ControlGasto::class)->armar($paisId, 'ecuador', null, CarbonImmutable::parse('2026-11-18'))['alertasCuenta'])->keyBy('clave');
+
+        // Sale como externo y sugiere al usuario parecido.
+        $alerta = $armar()["cuenta:opt:{$opti}"];
+        $this->assertSame('externo', $alerta['tipo']);
+        $this->assertSame($andres->id, $alerta['sugeridos'][0]['id']);
+
+        $this->actingAs($usuario)->postJson('/tada/pais/ecuador/control-gasto/equipo', ['nombre' => 'Andres Delgado M', 'user_id' => $andres->id])->assertOk();
+        $this->assertArrayNotHasKey("cuenta:opt:{$opti}", $armar()->all());
+
+        $id = DB::table('equipo_meta')->value('id');
+        $this->actingAs($usuario)->deleteJson("/tada/pais/ecuador/control-gasto/equipo/{$id}")->assertOk();
+        $this->assertArrayHasKey("cuenta:opt:{$opti}", $armar()->all());
+    }
+
+    public function test_equipo_tolera_una_letra_y_el_correo(): void
+    {
+        $equipo = ['andres delgado', 'maria lopez'];
+        $this->assertTrue(AlertasCuenta::esDelEquipo('Andrés Delgadoo', $equipo));
+        $this->assertTrue(AlertasCuenta::esDelEquipo('María López Ruiz', $equipo));
+        $this->assertFalse(AlertasCuenta::esDelEquipo('Andrea Delgado', ['andres gomez']));
+        $this->assertFalse(AlertasCuenta::esDelEquipo('Juan Cliente', $equipo));
     }
 }

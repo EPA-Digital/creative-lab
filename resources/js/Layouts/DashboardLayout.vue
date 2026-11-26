@@ -38,7 +38,7 @@ const puedeVerUsuarios = computed(() => usuario.value && ['gerente', 'director',
 
 // Ruta de cada vista dentro de /{cuenta}/pais/{pais}; cambiar de país
 // conserva la vista en la que está.
-const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', so: '/so', weekly: '/weekly', daily: '/daily', 'control-gasto': '/control-gasto', historial: '/historial', optimizaciones: '/optimizaciones', 'diario-medio': '/diario-medio', 'diario-campania': '/diario-campania', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
+const RUTA_VISTA = { resumen: '/analisis', creativos: '/analisis', inteligencia: '/inteligencia', fuentes: '/fuentes', funnel: '/funnel', channel: '/channel', so: '/so', weekly: '/weekly', daily: '/daily', 'control-gasto': '/control-gasto', 'en-vivo': '/en-vivo', historial: '/historial', optimizaciones: '/optimizaciones', 'diario-medio': '/diario-medio', 'diario-campania': '/diario-campania', 'af-data': '/af-data', 'medios-data': '/medios-data', importar: '/importar', ajustes: '/ajustes' };
 
 // Menú en árbol plegable (2026-11-17, pedido explícito): Resumen, Análisis,
 // Datos y Fuentes como ramas; cada vista es una hoja. Un 'cliente' solo ve
@@ -48,7 +48,7 @@ const ARBOL = computed(() => {
         return [{ id: 'analisis', label: 'Análisis', icono: 'grafica', hijos: [{ vista: 'creativos', label: 'Creativos' }] }];
     }
     return [
-        { id: 'resumen', label: 'Resumen', icono: 'house', hijos: [{ vista: 'daily', label: 'Daily', proximamente: !tieneCanales.value }, ...(tieneCanales.value ? [{ vista: 'control-gasto', label: 'Control de gasto' }] : []), ...(tieneWeekly.value ? [{ vista: 'weekly', label: 'Weekly' }] : []), ...(tieneCanales.value ? [{ vista: 'optimizaciones', label: 'Optimizaciones' }] : []), { vista: 'historial', label: 'Historial de cambios' }] },
+        { id: 'resumen', label: 'Resumen', icono: 'house', hijos: [{ vista: 'daily', label: 'Daily', proximamente: !tieneCanales.value }, ...(tieneCanales.value ? [{ vista: 'control-gasto', label: 'Control de gasto' }, { vista: 'en-vivo', label: 'En vivo' }] : []), ...(tieneWeekly.value ? [{ vista: 'weekly', label: 'Weekly' }] : []), ...(tieneCanales.value ? [{ vista: 'optimizaciones', label: 'Optimizaciones' }] : []), { vista: 'historial', label: 'Historial de cambios' }] },
         {
             id: 'analisis',
             label: 'Análisis',
@@ -124,7 +124,7 @@ const vistaParaPais = computed(() => (RUTA_VISTA[props.vistaActiva] ? props.vist
 const vistaDestino = (paisId) => {
     const v = vistaParaPais.value;
     if (v === 'weekly') return (usePage().props.paisesConWeekly ?? []).includes(paisId) ? v : 'daily';
-    if (['channel', 'so', 'medios-data', 'diario-medio', 'diario-campania', 'daily', 'control-gasto', 'optimizaciones'].includes(v)) return (usePage().props.paisesConCanales ?? []).includes(paisId) ? v : 'creativos';
+    if (['channel', 'so', 'medios-data', 'diario-medio', 'diario-campania', 'daily', 'control-gasto', 'en-vivo', 'optimizaciones'].includes(v)) return (usePage().props.paisesConCanales ?? []).includes(paisId) ? v : 'creativos';
     return VISTAS_FUENTES.includes(v) && !(usePage().props.paisesConFuentes ?? []).includes(paisId) ? 'creativos' : v;
 };
 
