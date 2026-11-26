@@ -15,11 +15,12 @@ use Throwable;
 class ValidadorCuentaPublicitaria
 {
     /**
-     * Quita el prefijo "act_" de Meta y espacios -- se guarda solo el número.
+     * Quita el prefijo "act_" de Meta, los guiones de Google (123-456-7890)
+     * y espacios -- se guarda solo el número.
      */
     public static function normalizarId(string $cuentaId): string
     {
-        return preg_replace('/^act_/i', '', trim($cuentaId));
+        return str_replace('-', '', preg_replace('/^act_/i', '', trim($cuentaId)));
     }
 
     /**
@@ -42,6 +43,14 @@ class ValidadorCuentaPublicitaria
 
                 return $data['name'];
             }
+            if ($plataforma === 'google') {
+                $fila = GoogleAdsApiClient::fromConfig()->buscar($cuentaId, 'SELECT customer.descriptive_name FROM customer')[0] ?? null;
+                if (! $fila) {
+                    throw new InvalidArgumentException('la API no devolvió la cuenta');
+                }
+
+                return ($fila['customer']['descriptiveName'] ?? null) ?: null;
+            }
 
             TiktokApiClient::fromConfig()->get('/ad/get/', ['advertiser_id' => $cuentaId, 'page_size' => 1]);
 
@@ -53,6 +62,6 @@ class ValidadorCuentaPublicitaria
 
     private static function etiqueta(string $plataforma): string
     {
-        return $plataforma === 'meta' ? 'Meta' : 'TikTok';
+        return ['meta' => 'Meta', 'tiktok' => 'TikTok', 'google' => 'Google Ads'][$plataforma] ?? $plataforma;
     }
 }

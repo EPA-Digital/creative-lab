@@ -44,6 +44,15 @@ return [
         'access_token' => env('TIKTOK_ACCESS_TOKEN'),
     ],
 
+    // Google Ads API (2026-11-26): oauth_json es el JSON del cliente de
+    // escritorio "zx-dashboard-api" tal cual (secreto ZxDashboardGoogleAdsOAuth).
+    'google_ads' => [
+        'oauth_json' => env('GOOGLE_ADS_OAUTH_JSON'),
+        'refresh_token' => env('GOOGLE_ADS_REFRESH_TOKEN'),
+        'developer_token' => env('GOOGLE_ADS_DEVELOPER_TOKEN'),
+        'version' => env('GOOGLE_ADS_API_VERSION', 'v23'),
+    ],
+
     // Para el futuro importar:appsflyer-api (ver plan de 2026-08-11) --
     // buffer_atribucion_dias es cuántos días recientes se excluyen del
     // cálculo automático de "hasta" porque AppsFlyer todavía no terminó de

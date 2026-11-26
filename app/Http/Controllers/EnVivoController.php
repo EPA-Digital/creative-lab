@@ -7,6 +7,7 @@ use App\Models\Pais;
 use App\Services\Auditoria;
 use App\Services\Divisas\Divisas;
 use App\Services\Fuentes\SincronizadorCostosApi;
+use App\Services\Ingesta\GoogleAdsApiClient;
 use App\Services\Ingesta\MetaApiClient;
 use App\Services\Ingesta\TiktokApiClient;
 use App\Support\CuentaActual;
@@ -20,7 +21,7 @@ use Inertia\Response;
 /**
  * En vivo (2026-11-26, pedido explícito): campaña → conjunto / ad group →
  * anuncio con costo, impresiones, clicks, CTR, CPM y CPC tal como los trae
- * la API de Meta y TikTok cada hora (SincronizadorCostosApi), y cuánto se
+ * la API de Meta, TikTok y Google cada hora (SincronizadorCostosApi), y cuánto se
  * movió cada uno desde la actualización anterior. EPA únicamente.
  */
 class EnVivoController extends Controller
@@ -92,6 +93,7 @@ class EnVivoController extends Controller
             SincronizarOptimizaciones::cliente(fn () => MetaApiClient::fromConfig()),
             SincronizarOptimizaciones::cliente(fn () => TiktokApiClient::fromConfig()),
             $divisas,
+            SincronizarOptimizaciones::cliente(fn () => GoogleAdsApiClient::fromConfig()),
         ))->sincronizar($paisModelo->id, $desde, $hasta);
         DB::table('sincronizaciones_costos')->insert([
             'cuenta_id' => CuentaActual::id(), 'iniciado_en' => $inicio, 'terminado_en' => now(),

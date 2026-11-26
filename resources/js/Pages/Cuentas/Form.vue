@@ -1100,6 +1100,7 @@ async function reactivar() {
                                                 <select :id="`dp-${d.k}`" v-model="d.plataforma" class="cu-input">
                                                     <option value="meta">Meta</option>
                                                     <option value="tiktok">TikTok</option>
+                                                    <option value="google">Google Ads</option>
                                                 </select>
                                             </div>
                                             <div class="cu-field">

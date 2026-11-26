@@ -123,12 +123,12 @@ class AjustesController extends Controller
         $data = $request->validate([
             'pais_id' => ['required', 'integer', Rule::in($request->user()->paises()->pluck('paises.id'))],
             'plataforma' => ['required', Rule::in(CuentaPublicitaria::PLATAFORMAS)],
-            'id_externo' => ['required', 'string', 'max:50', 'regex:/^(act_)?\d+$/i'],
+            'id_externo' => ['required', 'string', 'max:50', 'regex:/^(act_)?[\d\-]+$/i'],
             'nombre' => ['nullable', 'string', 'max:150'],
             'tipo' => ['required', Rule::in(CuentaPublicitaria::TIPOS)],
             'cuenta_en_venta_real' => ['required', 'boolean'],
         ], [
-            'id_externo.regex' => 'El ID de cuenta debe ser solo números (en Meta puede llevar "act_" adelante).',
+            'id_externo.regex' => 'El ID de cuenta debe ser solo números (en Meta puede llevar "act_" adelante; en Google, guiones).',
         ]);
 
         $data['id_externo'] = ValidadorCuentaPublicitaria::normalizarId($data['id_externo']);
@@ -153,7 +153,7 @@ class AjustesController extends Controller
 
         $cuenta = CuentaPublicitaria::create([
             ...$data,
-            'nombre' => $data['nombre'] ?: ($nombreRemoto ?? ($data['plataforma'] === 'meta' ? 'Meta' : 'TikTok')." {$data['id_externo']}"),
+            'nombre' => $data['nombre'] ?: ($nombreRemoto ?? (['meta' => 'Meta', 'tiktok' => 'TikTok', 'google' => 'Google Ads'][$data['plataforma']])." {$data['id_externo']}"),
             'activa' => true,
         ]);
 

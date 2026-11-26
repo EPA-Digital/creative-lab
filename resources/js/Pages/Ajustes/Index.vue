@@ -97,7 +97,7 @@ const vigentes = computed(() => {
 // Ver CuentaPublicitaria: cada país puede tener varias cuentas de Meta y
 // TikTok. Solo superadmin agrega/edita (el backend lo exige igual, ver
 // Gate 'gestionar-cuentas-publicitarias'); el resto de EPA solo las ve.
-const PLATAFORMA_LABEL = { meta: 'Meta', tiktok: 'TikTok' };
+const PLATAFORMA_LABEL = { meta: 'Meta', tiktok: 'TikTok', google: 'Google Ads' };
 const TIPO_LABEL = { tada: 'TaDa (EPA)', brd: 'BRD' };
 
 const cuentas = ref(props.cuentasPublicitarias.map((c) => ({ ...c, guardando: false, error: '' })));
@@ -362,6 +362,7 @@ async function guardar() {
                                 <select id="cuentaPlataformaSelect" v-model="nuevaCuenta.plataforma">
                                     <option value="meta">Meta</option>
                                     <option value="tiktok">TikTok</option>
+                                    <option value="google">Google Ads</option>
                                 </select>
                             </div>
                             <div class="import-col">
@@ -370,7 +371,7 @@ async function guardar() {
                                     id="cuentaIdInput"
                                     v-model="nuevaCuenta.id_externo"
                                     type="text"
-                                    :placeholder="nuevaCuenta.plataforma === 'meta' ? 'ej. 913224553013929 o act_913…' : 'ej. 7332930135332749314'"
+                                    :placeholder="{ meta: 'ej. 123456789012345 o act_123…', tiktok: 'ej. 1234567890123456789', google: 'ej. 123-456-7890' }[nuevaCuenta.plataforma]"
                                 />
                             </div>
                             <div class="import-col">

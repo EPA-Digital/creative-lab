@@ -6,6 +6,7 @@ use App\Models\Cuenta;
 use App\Models\CuentaPublicitaria;
 use App\Services\Divisas\Divisas;
 use App\Services\Fuentes\SincronizadorCostosApi;
+use App\Services\Ingesta\GoogleAdsApiClient;
 use App\Services\Ingesta\MetaApiClient;
 use App\Services\Ingesta\TiktokApiClient;
 use App\Support\CuentaActual;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Costos desde la API (2026-11-26, pedido explícito): trae el gasto,
- * impresiones y clicks de Meta y TikTok por anuncio y día. Corre cada hora
+ * impresiones y clicks de Meta, TikTok y Google Ads por anuncio y día. Corre cada hora
  * (Cloud Scheduler en producción) con los últimos días de
  * config/costos_api.php; --desde/--hasta para cargar un periodo a mano.
  * Ver SincronizadorCostosApi.
@@ -23,12 +24,12 @@ use Illuminate\Support\Facades\DB;
 class SincronizarCostosApi extends Command
 {
     protected $signature = 'costos:sincronizar-api
-        {pais? : Slug de config/paises.php -- si se omite, todos los países con cuentas de Meta o TikTok}
+        {pais? : Slug de config/paises.php -- si se omite, todos los países con cuentas de Meta, TikTok o Google}
         {--cuenta= : Slug de la cuenta -- si se omite, todas las activas}
         {--desde= : YYYY-MM-DD (default: hoy menos costos_api.dias)}
         {--hasta= : YYYY-MM-DD (default: hoy)}';
 
-    protected $description = 'Trae de la API de Meta y TikTok el gasto por anuncio y día';
+    protected $description = 'Trae de la API de Meta, TikTok y Google Ads el gasto por anuncio y día';
 
     public function handle(Divisas $divisas): int
     {
@@ -39,6 +40,7 @@ class SincronizarCostosApi extends Command
             SincronizarOptimizaciones::cliente(fn () => MetaApiClient::fromConfig()),
             SincronizarOptimizaciones::cliente(fn () => TiktokApiClient::fromConfig()),
             $divisas,
+            SincronizarOptimizaciones::cliente(fn () => GoogleAdsApiClient::fromConfig()),
         );
         $cuentas = $this->option('cuenta') ? Cuenta::where('slug', $this->option('cuenta'))->get() : Cuenta::where('activa', true)->get();
         $huboError = false;
@@ -76,11 +78,11 @@ class SincronizarCostosApi extends Command
         return $huboError ? self::FAILURE : self::SUCCESS;
     }
 
-    /** @return array<string, int> slug → pais_id, solo países con cuentas activas de Meta o TikTok en la cuenta actual. */
+    /** @return array<string, int> slug → pais_id, solo países con cuentas activas de Meta, TikTok o Google en la cuenta actual. */
     private function paises(): array
     {
         $ids = CuentaPublicitaria::where('cuentas_publicitarias.activa', true)
-            ->whereIn('cuentas_publicitarias.plataforma', ['meta', 'tiktok'])->join('paises', 'paises.id', '=', 'cuentas_publicitarias.pais_id')
+            ->whereIn('cuentas_publicitarias.plataforma', SincronizadorCostosApi::PLATAFORMAS)->join('paises', 'paises.id', '=', 'cuentas_publicitarias.pais_id')
             ->pluck('paises.id', 'paises.codigo')->all();
         $paises = [];
         foreach (config('paises') as $slug => $cfg) {
