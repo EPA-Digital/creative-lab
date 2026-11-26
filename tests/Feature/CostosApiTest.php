@@ -132,6 +132,7 @@ class CostosApiTest extends TestCase
 
     public function test_estado_y_vista_en_vivo(): void
     {
+        config(['services.meta.access_token' => 't', 'services.tiktok.access_token' => 't']);
         $this->cuenta('meta', '111');
         $this->fakeMeta(10);
         $this->artisan('costos:sincronizar-api', ['--desde' => '2026-11-26', '--hasta' => '2026-11-26'])->assertSuccessful();

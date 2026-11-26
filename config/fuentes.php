@@ -159,4 +159,31 @@ return [
             'JAMPP' => 'Jampp (sin EPA)',
         ],
     ],
+
+    // México (2026-11-18): reglas sacadas de su hoja (AF.DATA, columna
+    // Partner) -- reproducen 138,790 de 138,879 filas de ene-nov 2026
+    // (99.94%); las 89 restantes son casos que el equipo marcó a mano.
+    // A diferencia de Ecuador, Email / SMS de México son OTRO (no CRM), salvo
+    // las campañas que dicen CRM y LuisMiguelSMS. Pivot con adset, como Perú.
+    'mexico' => [
+        ...$tada,
+        'reporte' => 'México | DATA WEEKLY (ADSET)',
+        'adset' => true,
+        'reglas' => [
+            ['si' => [['campania', 'contiene', 'CRM']], 'fuente' => 'CRM'],
+            ['si' => [['media', 'igual', 'LuisMiguelSMS']], 'fuente' => 'CRM'],
+            ['si' => [['campania', 'empieza', 'MGM']], 'fuente' => 'MGM'],
+            ['si' => [['campania', 'contiene', '_EPA_']], 'fuente' => 'TADA PERFORMANCE'],
+            ['si' => [['campania', 'empieza', 'TOPVIEW']], 'fuente' => 'TADA PERFORMANCE'],
+            ['si' => [['campania', 'empieza', 'MEX_DTC_']], 'fuente' => 'TADA PERFORMANCE'],
+            ['si' => [['campania', 'empieza', 'SOC_']], 'fuente' => 'TADA PERFORMANCE'],
+            ['si' => [['media', 'igual', 'Organic']], 'fuente' => 'ORGANIC'],
+            ['si' => [['campania', 'igual', 'None']], 'fuente' => 'ORGANIC'],
+        ],
+        'por_defecto' => 'OTRO',
+        'nombres_canal' => [
+            'ORGANIC' => 'Organic',
+            'OTRO' => 'Other',
+        ],
+    ],
 ];
