@@ -91,6 +91,8 @@ Route::middleware('auth')->group(function () {
             // Control de gasto (2026-11-18): alertas y variaciones del día por campaña.
             Route::get('/control-gasto', [ControlGastoController::class, 'index'])->name('control-gasto');
             Route::post('/control-gasto/revisar', [ControlGastoController::class, 'revisar'])->name('control-gasto.revisar');
+            Route::post('/control-gasto/equipo', [ControlGastoController::class, 'equipo'])->name('control-gasto.equipo');
+            Route::delete('/control-gasto/equipo/{nombre}', [ControlGastoController::class, 'quitarEquipo'])->whereNumber('nombre')->name('control-gasto.equipo.quitar');
             // Historial de cambios (2026-11-17): la auditoría del país en frases.
             Route::get('/historial', [HistorialController::class, 'index'])->name('historial');
             // Optimizaciones (2026-11-18): la bitácora de lo que se hace en las plataformas.

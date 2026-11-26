@@ -13,7 +13,10 @@ use Illuminate\Support\Str;
  * - externo: campaña creada en Meta por alguien que no es del equipo. Meta
  *   solo da el nombre de quien la creó (no el correo), así que se compara
  *   contra los usuarios del dashboard con correo @epa.digital y los
- *   responsables de config/optimizaciones.php. TikTok no dice quién crea.
+ *   responsables de config/optimizaciones.php, más los nombres que el
+ *   equipo marcó como suyos (tabla equipo_meta, botón "Es del equipo").
+ *   Cada alerta trae usuarios del dashboard parecidos como sugerencia.
+ *   TikTok no dice quién crea.
  * - base: alguien subió ≥ 50% el presupuesto de una campaña o grupo de un
  *   jalón (eventos "Ajuste de dinero" del sync de Optimizaciones).
  * - sobre_plan: un cambio de presupuesto (de quien sea, también del equipo)
@@ -66,6 +69,7 @@ class AlertasCuenta
                     'clave' => "cuenta:opt:{$e->id}", 'tipo' => 'externo', 'fecha' => $fecha, 'medio' => $e->medio, 'campania' => $campania,
                     'titulo' => 'Campaña creada fuera del equipo',
                     'detalle' => "La creó {$quien}, que no está en el equipo EPA.", 'quien' => $quien,
+                    'sugeridos' => self::sugerir($quien),
                 ];
 
                 continue;
@@ -184,18 +188,32 @@ class AlertasCuenta
         return ['antes' => $antes, 'despues' => $despues, 'pct' => ($despues - $antes) / $antes * 100];
     }
 
-    /** Nombres normalizados del equipo: usuarios @epa.digital + responsables configurados. @return list<string> */
+    /**
+     * Nombres normalizados del equipo: usuarios @epa.digital (nombre y la
+     * parte del correo antes de la @), responsables configurados y los
+     * nombres de Meta que el equipo marcó como suyos en esta cuenta.
+     *
+     * @return list<string>
+     */
     public static function equipo(): array
     {
-        $nombres = DB::table('users')->where('email', 'like', '%@epa.digital')->pluck('name')->all();
+        $usuarios = DB::table('users')->where('email', 'like', '%@epa.digital')->get(['name', 'email']);
+        $nombres = [
+            ...$usuarios->pluck('name')->all(),
+            ...$usuarios->map(fn ($u) => Str::before((string) $u->email, '@'))->all(),
+            ...array_values(config('optimizaciones.responsables', [])),
+            ...config('optimizaciones.equipo_meta', []),
+            ...DB::table('equipo_meta')->where('cuenta_id', CuentaActual::id())->pluck('nombre')->all(),
+        ];
 
-        return array_values(array_unique(array_filter(array_map(
-            fn ($n) => self::normalizar((string) $n),
-            [...$nombres, ...array_values(config('optimizaciones.responsables', [])), ...config('optimizaciones.equipo_meta', [])],
-        ))));
+        return array_values(array_unique(array_filter(array_map(fn ($n) => self::normalizar((string) $n), $nombres))));
     }
 
-    /** Mismo nombre, o uno contiene todas las palabras del otro (al menos nombre y apellido). */
+    /**
+     * Mismo nombre, o uno contiene todas las palabras del otro (al menos
+     * nombre y apellido). Una letra de diferencia en palabras de 5+ letras
+     * cuenta igual (typos: "Andres Delgadoo").
+     */
     public static function esDelEquipo(string $quien, array $equipo): bool
     {
         $q = self::normalizar($quien);
@@ -207,12 +225,69 @@ class AlertasCuenta
             $palabrasN = explode(' ', $n);
             $menor = count($palabrasN) <= count($palabrasQ) ? $palabrasN : $palabrasQ;
             $mayor = $menor === $palabrasN ? $palabrasQ : $palabrasN;
-            if (count($menor) >= 2 && ! array_diff($menor, $mayor)) {
+            if (count($menor) >= 2 && self::coincidentes($menor, $mayor) === count($menor)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Usuarios EPA del dashboard que se parecen al nombre de Meta (para
+     * sugerir con quién ligarlo). Puntaje = palabras en común / palabras
+     * del nombre más corto, o el parecido de las letras si es mayor.
+     *
+     * @return list<array{id: int, nombre: string, email: string, parecido: int}>
+     */
+    public static function sugerir(string $quien, int $max = 3): array
+    {
+        $q = self::normalizar($quien);
+        if ($q === '') {
+            return [];
+        }
+        $palabrasQ = explode(' ', $q);
+        $sugeridos = [];
+        foreach (DB::table('users')->where('rol', '!=', 'cliente')->get(['id', 'name', 'email']) as $u) {
+            $mejor = 0.0;
+            foreach ([(string) $u->name, Str::before((string) $u->email, '@')] as $candidato) {
+                $n = self::normalizar($candidato);
+                if ($n === '') {
+                    continue;
+                }
+                $palabrasN = explode(' ', $n);
+                $porPalabras = self::coincidentes($palabrasQ, $palabrasN) / max(1, min(count($palabrasQ), count($palabrasN)));
+                similar_text($q, $n, $pct);
+                $mejor = max($mejor, $porPalabras, $pct / 100);
+            }
+            if ($mejor >= 0.5) {
+                $sugeridos[] = ['id' => (int) $u->id, 'nombre' => (string) $u->name, 'email' => (string) $u->email, 'parecido' => (int) round($mejor * 100)];
+            }
+        }
+        usort($sugeridos, fn ($a, $b) => $b['parecido'] <=> $a['parecido']);
+
+        return array_slice($sugeridos, 0, $max);
+    }
+
+    /** Cuántas palabras de $a están en $b (exactas, o a una letra si tienen 5+). */
+    private static function coincidentes(array $a, array $b): int
+    {
+        $n = 0;
+        foreach ($a as $p) {
+            foreach ($b as $o) {
+                if ($p === $o || (mb_strlen($p) >= 5 && mb_strlen($o) >= 5 && levenshtein($p, $o) <= 1)) {
+                    $n++;
+                    break;
+                }
+            }
+        }
+
+        return $n;
+    }
+
+    public static function normalizarNombre(string $n): string
+    {
+        return self::normalizar($n);
     }
 
     private static function normalizar(string $n): string

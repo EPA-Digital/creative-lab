@@ -32,6 +32,9 @@ const props = defineProps({
     // Alertas de la cuenta (2026-11-20): campaña creada fuera del equipo,
     // base subida ≥ 50%, gasto arriba de lo planeado (AlertasCuenta.php).
     alertasCuenta: { type: Array, default: () => [] },
+    // Equipo en Meta (2026-11-24): nombres marcados como del equipo y usuarios EPA para ligarlos.
+    equipoMeta: { type: Array, default: () => [] },
+    usuariosEquipo: { type: Array, default: () => [] },
 });
 
 // --- Optimizaciones --------------------------------------------------------------
@@ -245,6 +248,37 @@ async function alternarRevisadaCuenta(a) {
         router.reload({ only: ['revisadas'], preserveScroll: true });
     } catch (err) {
         notificar({ tipo: 'error', titulo: 'No se guardó', texto: mensajeDeError(err) });
+    }
+}
+
+// "Es del equipo": liga el nombre de Meta a un usuario del dashboard (o a ninguno).
+const marcando = ref(null);
+const usuarioElegido = ref('');
+const guardandoEquipo = ref(false);
+function abrirEquipo(a) {
+    marcando.value = a.clave;
+    usuarioElegido.value = a.sugeridos?.[0]?.id ?? '';
+}
+const otrosUsuarios = (a) => props.usuariosEquipo.filter((u) => !(a.sugeridos ?? []).some((s) => s.id === u.id));
+async function guardarEquipo(a) {
+    guardandoEquipo.value = true;
+    try {
+        await axios.post(`${location.pathname}/equipo`, { nombre: a.quien, user_id: usuarioElegido.value || null });
+        marcando.value = null;
+        notificar({ tipo: 'exito', titulo: 'Listo', texto: `${a.quien} ya cuenta como del equipo en Meta.` });
+        router.reload({ only: ['alertasCuenta', 'equipoMeta'], preserveScroll: true });
+    } catch (err) {
+        notificar({ tipo: 'error', titulo: 'No se guardó', texto: mensajeDeError(err) });
+    } finally {
+        guardandoEquipo.value = false;
+    }
+}
+async function quitarEquipo(n) {
+    try {
+        await axios.delete(`${location.pathname}/equipo/${n.id}`);
+        router.reload({ only: ['alertasCuenta', 'equipoMeta'], preserveScroll: true });
+    } catch (err) {
+        notificar({ tipo: 'error', titulo: 'No se quitó', texto: mensajeDeError(err) });
     }
 }
 
@@ -526,7 +560,7 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                     </p>
 
                     <!-- Alertas de la cuenta -->
-                    <section v-if="alertasCuentaVista.length" class="import-panel panel alertas-cuenta">
+                    <section v-if="alertasCuentaVista.length || equipoMeta.length" class="import-panel panel alertas-cuenta">
                         <div class="cabeza">
                             <div>
                                 <h2>Alertas de la cuenta <span class="mono cuenta">{{ alertasCuentaPendientes }} pendientes</span></h2>
@@ -543,13 +577,37 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
                                     </p>
                                     <p class="campania-cuenta mono" :title="a.campania">{{ a.campania }}</p>
                                     <p class="detalle-cuenta">{{ a.detalle }}<template v-if="a.quien && a.tipo !== 'externo'"> · {{ a.quien }}</template></p>
+                                    <p v-if="a.tipo === 'externo' && a.sugeridos?.length && marcando !== a.clave" class="sugerido-cuenta">
+                                        ¿Es {{ a.sugeridos.map((u) => u.nombre).join(' o ') }}?
+                                    </p>
+                                    <div v-if="marcando === a.clave" class="marcar-equipo">
+                                        <select v-model="usuarioElegido" class="select-equipo">
+                                            <optgroup v-if="a.sugeridos?.length" label="Parecidos">
+                                                <option v-for="u in a.sugeridos" :key="u.id" :value="u.id">{{ u.nombre }} · {{ u.parecido }}%</option>
+                                            </optgroup>
+                                            <optgroup label="Usuarios del dashboard">
+                                                <option v-for="u in otrosUsuarios(a)" :key="u.id" :value="u.id">{{ u.nombre }}</option>
+                                            </optgroup>
+                                            <option value="">Sin usuario del dashboard</option>
+                                        </select>
+                                        <button type="button" class="modal-copy-btn" :disabled="guardandoEquipo" @click="guardarEquipo(a)">{{ guardandoEquipo ? 'Guardando…' : 'Guardar' }}</button>
+                                        <button type="button" class="modal-copy-btn" @click="marcando = null">Cancelar</button>
+                                    </div>
                                 </div>
+                                <button v-if="a.tipo === 'externo' && marcando !== a.clave" type="button" class="modal-copy-btn" @click="abrirEquipo(a)">Es del equipo</button>
                                 <button type="button" class="revisar" :class="{ hecho: a.revisadaPor }" @click="alternarRevisadaCuenta(a)">
                                     <span class="caja">{{ a.revisadaPor ? '✓' : '' }}</span>
                                     {{ a.revisadaPor ? `Revisada por ${a.revisadaPor}` : 'Marcar revisada' }}
                                 </button>
                             </li>
                         </ul>
+                        <div v-if="equipoMeta.length" class="equipo-meta">
+                            <span class="label-equipo mono">Equipo en Meta</span>
+                            <span v-for="n in equipoMeta" :key="n.id" class="chip-equipo">
+                                {{ n.nombre }}<template v-if="n.usuario && n.usuario !== n.nombre"> → {{ n.usuario }}</template>
+                                <button type="button" class="quitar-equipo" :title="`Quitar a ${n.nombre} del equipo`" @click="quitarEquipo(n)">×</button>
+                            </span>
+                        </div>
                     </section>
 
                     <!-- Alertas: carrusel -->
@@ -1166,6 +1224,67 @@ const pctEntero = (v) => (v === null || v === undefined ? '—' : `${Math.round(
 .detalle-cuenta {
     font-size: 0.76rem;
     color: var(--text-muted);
+}
+
+.sugerido-cuenta {
+    font-size: 0.74rem;
+    color: var(--amber);
+    margin-top: 2px !important;
+}
+.marcar-equipo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+.select-equipo {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 0.78rem;
+}
+.select-equipo:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+}
+.equipo-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+.label-equipo {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+}
+.chip-equipo {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-2);
+    border-radius: 999px;
+    padding: 3px 6px 3px 10px;
+    font-size: 0.74rem;
+}
+.quitar-equipo {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    padding: 0 2px;
+}
+.quitar-equipo:hover {
+    color: var(--coral);
 }
 
 /* Alertas en carrusel */
