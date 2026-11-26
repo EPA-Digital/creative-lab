@@ -4,6 +4,7 @@ namespace App\Services\Fuentes;
 
 use App\Models\CuentaPublicitaria;
 use App\Services\Divisas\Divisas;
+use App\Services\Ingesta\GoogleAdsApiClient;
 use App\Services\Ingesta\MetaApiClient;
 use App\Services\Ingesta\TiktokApiClient;
 use App\Support\CuentaActual;
@@ -12,8 +13,8 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * Costos desde la API (2026-11-26, pedido explícito): trae de Meta y TikTok
- * el gasto, impresiones y clicks por anuncio y día de cada cuenta
+ * Costos desde la API (2026-11-26, pedido explícito): trae de Meta, TikTok
+ * y Google Ads el gasto, impresiones y clicks por anuncio y día de cada cuenta
  * publicitaria activa del país, y los guarda en:
  *
  * - plataforma_anuncios_diario: el detalle campaña → conjunto → anuncio
@@ -25,17 +26,22 @@ use Throwable;
  *   viene en el CSV (otros medios, otras cuentas) se queda.
  *
  * Clicks: en Meta, clicks al enlace (inline_link_clicks, como Creativos);
- * en TikTok, clicks. Costo en USD con el tipo de cambio del día (Divisas).
+ * en TikTok y Google, clicks. Costo en USD con el tipo de cambio del día (Divisas).
  */
 class SincronizadorCostosApi
 {
     /** TikTok no deja pedir más de 30 días por reporte. */
     private const DIAS_POR_REPORTE_TIKTOK = 30;
 
+    public const PLATAFORMAS = ['meta', 'tiktok', 'google'];
+
+    private const NOMBRES = ['meta' => 'Meta', 'tiktok' => 'TikTok', 'google' => 'Google Ads'];
+
     public function __construct(
         private readonly ?MetaApiClient $meta,
         private readonly ?TiktokApiClient $tiktok,
         private readonly Divisas $divisas,
+        private readonly ?GoogleAdsApiClient $google = null,
     ) {}
 
     /**
@@ -45,17 +51,25 @@ class SincronizadorCostosApi
     {
         $resultado = ['cuentas' => [], 'errores' => []];
         $cuentas = CuentaPublicitaria::where('pais_id', $paisId)
-            ->where('activa', true)->whereIn('plataforma', ['meta', 'tiktok'])->orderBy('id')->get();
+            ->where('activa', true)->whereIn('plataforma', self::PLATAFORMAS)->orderBy('id')->get();
 
         foreach ($cuentas as $cp) {
-            $cliente = $cp->plataforma === 'meta' ? $this->meta : $this->tiktok;
+            $cliente = match ($cp->plataforma) {
+                'meta' => $this->meta,
+                'tiktok' => $this->tiktok,
+                default => $this->google,
+            };
             if (! $cliente) {
-                $resultado['errores'][] = "{$cp->nombre}: no hay token de ".($cp->plataforma === 'meta' ? 'Meta' : 'TikTok').' en este servidor.';
+                $resultado['errores'][] = "{$cp->nombre}: no hay credenciales de ".self::NOMBRES[$cp->plataforma].' en este servidor.';
 
                 continue;
             }
             try {
-                $filas = $cp->plataforma === 'meta' ? $this->traerMeta($cp->id_externo, $desde, $hasta) : $this->traerTiktok($cp->id_externo, $desde, $hasta);
+                $filas = match ($cp->plataforma) {
+                    'meta' => $this->traerMeta($cp->id_externo, $desde, $hasta),
+                    'tiktok' => $this->traerTiktok($cp->id_externo, $desde, $hasta),
+                    default => $this->traerGoogle($cp->id_externo, $desde, $hasta),
+                };
                 $moneda = $cp->moneda ?: $this->moneda($cp, $desde, $hasta);
                 $this->guardar($cp, $filas, $moneda, $desde, $hasta);
                 $resultado['cuentas'][] = [
@@ -159,9 +173,73 @@ class SincronizadorCostosApi
         return $filas;
     }
 
+    /**
+     * Google por anuncio (ad_group_ad). Performance Max y otras campañas sin
+     * anuncios en ad_group_ad no aparecen ahí: lo que el total de la campaña
+     * tenga de más se agrega como un renglón "Sin detalle por anuncio", así
+     * el costo por campaña siempre cuadra con Google.
+     *
+     * @return list<array<string, mixed>> misma forma que traerMeta()
+     */
+    public function traerGoogle(string $customerId, string $desde, string $hasta): array
+    {
+        $rango = "segments.date BETWEEN '{$desde}' AND '{$hasta}'";
+        $filas = [];
+        $porCampania = [];
+        foreach ($this->google->buscar($customerId, 'SELECT segments.date, campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_ad.ad.id, ad_group_ad.ad.name, '
+            ."metrics.cost_micros, metrics.impressions, metrics.clicks FROM ad_group_ad WHERE {$rango}") as $r) {
+            $f = [
+                'fecha' => (string) $r['segments']['date'],
+                'campania_id' => (string) ($r['campaign']['id'] ?? ''),
+                'campania' => (string) ($r['campaign']['name'] ?? ''),
+                'conjunto_id' => isset($r['adGroup']['id']) ? (string) $r['adGroup']['id'] : null,
+                'conjunto' => ($r['adGroup']['name'] ?? null) ?: null,
+                'anuncio_id' => (string) ($r['adGroupAd']['ad']['id'] ?? ''),
+                'anuncio' => ($r['adGroupAd']['ad']['name'] ?? null) ?: null,
+                'costo' => ((int) ($r['metrics']['costMicros'] ?? 0)) / 1_000_000,
+                'impresiones' => (int) ($r['metrics']['impressions'] ?? 0),
+                'clicks' => (int) ($r['metrics']['clicks'] ?? 0),
+            ];
+            if ($f['anuncio_id'] === '' || ($f['costo'] <= 0 && $f['impresiones'] === 0 && $f['clicks'] === 0)) {
+                continue;
+            }
+            $f['anuncio'] ??= 'Anuncio '.$f['anuncio_id'];
+            $filas[] = $f;
+            $k = $f['fecha'].'|'.$f['campania_id'];
+            $porCampania[$k] ??= [0.0, 0, 0];
+            $porCampania[$k][0] += $f['costo'];
+            $porCampania[$k][1] += $f['impresiones'];
+            $porCampania[$k][2] += $f['clicks'];
+        }
+
+        foreach ($this->google->buscar($customerId, "SELECT segments.date, campaign.id, campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks FROM campaign WHERE {$rango}") as $r) {
+            $fecha = (string) $r['segments']['date'];
+            $id = (string) ($r['campaign']['id'] ?? '');
+            [$costo, $impresiones, $clicks] = $porCampania["{$fecha}|{$id}"] ?? [0.0, 0, 0];
+            $resto = [
+                round(((int) ($r['metrics']['costMicros'] ?? 0)) / 1_000_000 - $costo, 6),
+                max(0, (int) ($r['metrics']['impressions'] ?? 0) - $impresiones),
+                max(0, (int) ($r['metrics']['clicks'] ?? 0) - $clicks),
+            ];
+            if ($resto[0] > 0.005 || $resto[1] > 0 || $resto[2] > 0) {
+                $filas[] = [
+                    'fecha' => $fecha, 'campania_id' => $id, 'campania' => (string) ($r['campaign']['name'] ?? ''),
+                    'conjunto_id' => null, 'conjunto' => null,
+                    'anuncio_id' => "campania-{$id}", 'anuncio' => 'Sin detalle por anuncio',
+                    'costo' => max(0, $resto[0]), 'impresiones' => $resto[1], 'clicks' => $resto[2],
+                ];
+            }
+        }
+
+        return $filas;
+    }
+
     private function moneda(CuentaPublicitaria $cp, string $desde, string $hasta): ?string
     {
         try {
+            if ($cp->plataforma === 'google') {
+                return strtoupper((string) ($this->google->buscar($cp->id_externo, 'SELECT customer.currency_code FROM customer')[0]['customer']['currencyCode'] ?? '')) ?: null;
+            }
             if ($cp->plataforma === 'meta') {
                 return strtoupper((string) ($this->meta->get("act_{$cp->id_externo}", ['fields' => 'currency'])['currency'] ?? '')) ?: null;
             }

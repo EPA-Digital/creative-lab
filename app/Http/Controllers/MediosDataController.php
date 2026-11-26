@@ -23,7 +23,7 @@ use RuntimeException;
  */
 class MediosDataController extends Controller
 {
-    private const MEDIO_POR_PLATAFORMA = ['meta' => 'Facebook Ads', 'tiktok' => 'TikTok'];
+    private const MEDIO_POR_PLATAFORMA = ['meta' => 'Facebook Ads', 'tiktok' => 'TikTok', 'google' => 'Google Ads'];
 
     public function index(Request $request, string $pais): Response
     {

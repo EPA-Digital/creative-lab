@@ -1,6 +1,6 @@
 <script setup>
 // En vivo (2026-11-26, pedido explícito): campaña → conjunto / ad group →
-// anuncio con lo que trae la API de Meta y TikTok cada hora. La columna "Δ"
+// anuncio con lo que trae la API de Meta, TikTok y Google cada hora. La columna "Δ"
 // es cuánto se movió desde la actualización anterior. La página se recarga
 // sola cada 5 minutos para tomar la corrida nueva (EnVivoController).
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -30,6 +30,7 @@ const PLATAFORMAS = [
     { key: 'todas', label: 'Todas' },
     { key: 'meta', label: 'Meta' },
     { key: 'tiktok', label: 'TikTok' },
+    { key: 'google', label: 'Google' },
 ];
 const plataforma = ref('todas');
 const busqueda = ref('');
@@ -91,7 +92,7 @@ const ctr = (m) => (m[1] > 0 ? (m[2] / m[1]) * 100 : null);
 const cpm = (m) => (m[1] > 0 ? usd((m[0] / m[1]) * 1000) : '—');
 const cpc = (m) => (m[2] > 0 ? usd(m[0] / m[2]) : '—');
 const delta = (v, fmt) => (v > 0.004 ? `+${fmt(v)}` : v < -0.004 ? `−${fmt(-v)}` : '');
-const NOMBRE_PLATAFORMA = { meta: 'Meta', tiktok: 'TikTok' };
+const NOMBRE_PLATAFORMA = { meta: 'Meta', tiktok: 'TikTok', google: 'Google' };
 
 // --- Actualizar --------------------------------------------------------------------
 async function actualizarAhora() {
@@ -101,7 +102,7 @@ async function actualizarAhora() {
         if (data.errores?.length) {
             notificar({ tipo: 'error', titulo: 'Actualizado con errores', texto: data.errores.join(' ') });
         } else {
-            notificar({ tipo: 'exito', titulo: 'Actualizado', texto: `Se trajeron ${data.cuentas.length} cuenta(s) de Meta y TikTok.` });
+            notificar({ tipo: 'exito', titulo: 'Actualizado', texto: `Se trajeron ${data.cuentas.length} cuenta(s) de Meta, TikTok y Google.` });
         }
         router.reload({ preserveScroll: true });
     } catch (err) {
@@ -125,7 +126,7 @@ onBeforeUnmount(() => clearInterval(recarga));
                         <p class="eyebrow mono">{{ pais }}</p>
                         <h1 class="title">En vivo</h1>
                         <p class="subtitle">
-                            Campaña, conjunto y anuncio como los trae la API de Meta y TikTok. Costo en USD; en Meta los clicks son al enlace.
+                            Campaña, conjunto y anuncio como los trae la API de Meta, TikTok y Google. Costo en USD; en Meta los clicks son al enlace.
                             <template v-if="conDelta">"Δ" es lo que cambió desde la actualización anterior.</template>
                         </p>
                         <AvisoCostosApi />
@@ -464,6 +465,10 @@ onBeforeUnmount(() => clearInterval(recarga));
 .medio.tiktok {
     color: var(--violet);
     background: color-mix(in srgb, var(--violet) 20%, transparent);
+}
+.medio.google {
+    color: var(--mint);
+    background: color-mix(in srgb, var(--mint) 20%, transparent);
 }
 .cuenta {
     font-size: 0.68rem;

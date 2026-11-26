@@ -380,7 +380,7 @@ class CuentasController extends Controller
             'conexiones_nuevas' => ['array'],
             'conexiones_nuevas.*.pais' => ['required', Rule::in($codigos)],
             'conexiones_nuevas.*.plataforma' => ['required', Rule::in(CuentaPublicitaria::PLATAFORMAS)],
-            'conexiones_nuevas.*.id_externo' => ['required', 'string', 'max:50', 'regex:/^(act_)?\d+$/i'],
+            'conexiones_nuevas.*.id_externo' => ['required', 'string', 'max:50', 'regex:/^(act_)?[\d\-]+$/i'],
             'conexiones_nuevas.*.nombre' => ['nullable', 'string', 'max:150'],
             'apps_nuevas' => ['array'],
             'apps_nuevas.*.pais' => ['required', Rule::in($codigos)],
@@ -496,7 +496,7 @@ class CuentasController extends Controller
             $conexiones[$i] = [
                 ...$c,
                 'id_externo' => $idExterno,
-                'nombre' => ($c['nombre'] ?? null) ?: ($nombreRemoto ?? ($c['plataforma'] === 'meta' ? 'Meta' : 'TikTok')." {$idExterno}"),
+                'nombre' => ($c['nombre'] ?? null) ?: ($nombreRemoto ?? (['meta' => 'Meta', 'tiktok' => 'TikTok', 'google' => 'Google Ads'][$c['plataforma']])." {$idExterno}"),
             ];
         }
 

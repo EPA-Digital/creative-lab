@@ -9,6 +9,7 @@ use App\Models\TipoCambio;
 use App\Models\User;
 use App\Services\Divisas\Divisas;
 use App\Services\Fuentes\SincronizadorCostosApi;
+use App\Services\Ingesta\GoogleAdsApiClient;
 use App\Services\Ingesta\MetaApiClient;
 use App\Services\Ingesta\TiktokApiClient;
 use App\Support\CuentaActual;
@@ -107,6 +108,49 @@ class CostosApiTest extends TestCase
         $fila = DB::table('plataforma_anuncios_diario')->sole();
         $this->assertEquals([200, 10, 'MXN', 'Grupo'], [(float) $fila->costo_original, (float) $fila->costo, $fila->moneda, $fila->conjunto]);
         $this->assertEquals(10, (float) DB::table('medios_diario')->value('costo'));
+    }
+
+    public function test_google_trae_anuncios_y_lo_que_falta_de_la_campania(): void
+    {
+        TipoCambio::create(['moneda' => 'MXN', 'vigente_desde' => '2026-01-01', 'por_usd' => 20]);
+        $this->cuenta('google', '100', 'MXN');
+        $consultas = [];
+        Http::fake([
+            'oauth2.googleapis.com/*' => Http::response(['access_token' => 'tok']),
+            'googleads.googleapis.com/*' => function ($request) use (&$consultas) {
+                if ($request->method() === 'GET') {
+                    return Http::response(['resourceNames' => ['customers/900']]);
+                }
+                $q = $request['query'];
+                $consultas[] = [$request->header('login-customer-id')[0] ?? null, $q];
+                if (str_contains($q, 'FROM customer_client')) {
+                    return Http::response(['results' => [['customerClient' => ['id' => '100']]]]);
+                }
+                if (str_contains($q, 'FROM ad_group_ad')) {
+                    return Http::response(['results' => [
+                        ['segments' => ['date' => '2026-11-26'], 'campaign' => ['id' => '11', 'name' => 'MEX_APP'], 'adGroup' => ['id' => '22', 'name' => 'Grupo'],
+                            'adGroupAd' => ['ad' => ['id' => '33']], 'metrics' => ['costMicros' => '120000000', 'impressions' => '1000', 'clicks' => '10']],
+                    ]]);
+                }
+
+                // Campaña completa: 200 MXN; 80 no vienen por anuncio (ej. Performance Max).
+                return Http::response(['results' => [
+                    ['segments' => ['date' => '2026-11-26'], 'campaign' => ['id' => '11', 'name' => 'MEX_APP'], 'metrics' => ['costMicros' => '200000000', 'impressions' => '1500', 'clicks' => '12']],
+                ]]);
+            },
+        ]);
+
+        $r = (new SincronizadorCostosApi(null, null, app(Divisas::class), new GoogleAdsApiClient('fake', 'fake', 'fake', 'fake')))
+            ->sincronizar($this->paisId, '2026-11-26', '2026-11-26');
+
+        $this->assertSame([], $r['errores']);
+        $filas = DB::table('plataforma_anuncios_diario')->orderBy('anuncio_id')->get();
+        $this->assertEquals(['33', 'Anuncio 33', 'Grupo', 6.0], [$filas[0]->anuncio_id, $filas[0]->anuncio, $filas[0]->conjunto, (float) $filas[0]->costo]);
+        $this->assertEquals(['campania-11', 'Sin detalle por anuncio', 4.0, 500, 2], [$filas[1]->anuncio_id, $filas[1]->anuncio, (float) $filas[1]->costo, (int) $filas[1]->impresiones, (int) $filas[1]->clicks]);
+        $medio = DB::table('medios_diario')->sole();
+        $this->assertEquals(['google', 'api', 10.0, 1500], [$medio->medio, $medio->origen, (float) $medio->costo, (int) $medio->impresiones]);
+        // La cuenta cuelga de una MCC: las consultas van con su login-customer-id.
+        $this->assertSame('900', end($consultas)[0]);
     }
 
     public function test_el_csv_no_duplica_campanias_que_ya_vienen_de_la_api(): void

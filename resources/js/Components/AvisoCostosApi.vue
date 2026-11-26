@@ -1,5 +1,5 @@
 <script setup>
-// Costos desde la API (2026-11-26): "Datos de Meta y TikTok (API) actualizados
+// Costos desde la API (2026-11-26): "Datos de Meta, TikTok y Google (API) actualizados
 // al 26 nov 13:09:09 · próxima actualización en 1 h 20 min". El estado viene
 // del prop compartido costosApi (SincronizadorCostosApi::estado()).
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -34,11 +34,11 @@ const atrasado = computed(() => {
     <p v-if="estado" class="aviso-api mono" :class="{ atrasado: atrasado || estado.estado === 'error' }">
         <span class="punto" />
         <template v-if="estado.ultima">
-            Datos de Meta y TikTok (API) actualizados al <strong>{{ fechaHora(estado.ultima) }}</strong>
+            Datos de Meta, TikTok y Google (API) actualizados al <strong>{{ fechaHora(estado.ultima) }}</strong>
             <template v-if="estado.estado === 'parcial'"> (con errores en alguna cuenta)</template>
             <template v-else-if="estado.estado === 'error'"> (falló la última corrida)</template>
         </template>
-        <template v-else>Meta y TikTok todavía no se han actualizado por API</template>
+        <template v-else>Meta, TikTok y Google todavía no se han actualizado por API</template>
         · próxima actualización en <strong>{{ falta(estado.proxima) }}</strong>
     </p>
 </template>

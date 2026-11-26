@@ -28,7 +28,7 @@ class CuentaPublicitaria extends Model
 
     const UPDATED_AT = null;
 
-    public const PLATAFORMAS = ['meta', 'tiktok'];
+    public const PLATAFORMAS = ['meta', 'tiktok', 'google'];
 
     public const TIPOS = ['tada', 'brd'];
 
