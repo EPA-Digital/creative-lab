@@ -25,10 +25,24 @@ function avisar() {
     axios.post('/perfil/actividad').catch(() => {});
 }
 
+// Inactividad (2026-11-27): si pasa el límite sin uso, recarga la página; el
+// servidor (CerrarSesionPorInactividad) ve que se venció, cierra la sesión y
+// manda al login con "Se cerró tu sesión por inactividad". Así no se queda
+// la información a la vista en una pestaña olvidada.
+let limiteMs = null;
+function revisarInactividad() {
+    if (limiteMs && Date.now() - ultimoUso > limiteMs) {
+        limiteMs = null;
+        window.location.reload();
+    }
+}
+
 /** Lo arranca DashboardLayout (solo con sesión); una sola vez por pestaña. */
-export function iniciarPresencia() {
+export function iniciarPresencia(inactividadMin = null) {
+    if (inactividadMin) limiteMs = inactividadMin * 60 * 1000;
     if (iniciado) return;
     iniciado = true;
+    setInterval(revisarInactividad, 30 * 1000);
     for (const evento of ['mousemove', 'keydown', 'scroll', 'pointerdown', 'touchstart']) {
         window.addEventListener(evento, marcarUso, { passive: true, capture: true });
     }

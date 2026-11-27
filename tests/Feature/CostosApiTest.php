@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\EnVivoController;
 use App\Models\Cuenta;
 use App\Models\CuentaPublicitaria;
 use App\Models\Pais;
@@ -151,6 +152,41 @@ class CostosApiTest extends TestCase
         $this->assertEquals(['google', 'api', 10.0, 1500], [$medio->medio, $medio->origen, (float) $medio->costo, (int) $medio->impresiones]);
         // La cuenta cuelga de una MCC: las consultas van con su login-customer-id.
         $this->assertSame('900', end($consultas)[0]);
+    }
+
+    public function test_por_hora_y_datos_de_las_graficas(): void
+    {
+        $this->cuenta('meta', '111');
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'breakdowns=hourly')) {
+                return Http::response(['data' => [
+                    ['date_start' => '2026-11-26', 'campaign_id' => 'c1', 'campaign_name' => 'ECU_CAMP_A', 'hourly_stats_aggregated_by_advertiser_time_zone' => '09:00:00 - 09:59:59', 'spend' => '4', 'impressions' => '400', 'inline_link_clicks' => '8'],
+                    ['date_start' => '2026-11-26', 'campaign_id' => 'c1', 'campaign_name' => 'ECU_CAMP_A', 'hourly_stats_aggregated_by_advertiser_time_zone' => '10:00:00 - 10:59:59', 'spend' => '6', 'impressions' => '600', 'inline_link_clicks' => '12'],
+                    ['date_start' => '2026-11-25', 'campaign_id' => 'c1', 'campaign_name' => 'ECU_CAMP_A', 'hourly_stats_aggregated_by_advertiser_time_zone' => '09:00:00 - 09:59:59', 'spend' => '3', 'impressions' => '300', 'inline_link_clicks' => '3'],
+                ]]);
+            }
+
+            return Http::response(['data' => [
+                ['date_start' => '2026-11-26', 'campaign_id' => 'c1', 'campaign_name' => 'ECU_CAMP_A', 'adset_id' => 's1', 'adset_name' => 'Conjunto 1', 'ad_id' => 'a1', 'ad_name' => 'Anuncio 1', 'spend' => '10', 'impressions' => '1000', 'inline_link_clicks' => '20'],
+            ]]);
+        });
+        DB::table('daily_planes')->insert(['id' => 7, 'cuenta_id' => CuentaActual::id(), 'pais_id' => $this->paisId, 'mes' => '2026-11', 'tipo' => 'paid', 'fecha_inicio' => '2026-11-01', 'fecha_fin' => '2026-11-30']);
+        DB::table('daily_campanias')->insert(['plan_id' => 7, 'campania' => 'ECU_CAMP_A', 'medio' => 'meta', 'daily_plataforma' => 24]);
+
+        $this->sincronizador()->sincronizar($this->paisId, '2026-11-25', '2026-11-26');
+
+        $this->assertSame(3, DB::table('plataforma_campanias_hora')->count());
+        $g = EnVivoController::graficas($this->paisId, 'hoy', '2026-11-26', '2026-11-26');
+        $this->assertSame('horas', $g['modo']);
+        $this->assertSame(10, $g['ultimaHora']);
+        $this->assertEquals([[4.0, 400, 8], [6.0, 600, 12]], [$g['series']['meta'][9], $g['series']['meta'][10]]);
+        $this->assertEquals([3.0, 300, 3], $g['comparacion']['meta'][9]);
+        $this->assertEquals(['meta' => 24.0], $g['plan']);
+        $this->assertEquals(6.0, $g['mini']['meta|c1'][10]);
+
+        $dias = EnVivoController::graficas($this->paisId, '7d', '2026-11-20', '2026-11-26');
+        $this->assertSame('dias', $dias['modo']);
+        $this->assertEquals([10.0, 1000, 20], $dias['series']['meta'][6]);
     }
 
     public function test_el_csv_no_duplica_campanias_que_ya_vienen_de_la_api(): void

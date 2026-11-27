@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CerrarSesionPorInactividad;
 use App\Http\Middleware\EnsureAccesoPais;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\ResolverCuentaActual;
@@ -23,6 +24,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(prepend: [ResolverCuentaActual::class]);
 
         $middleware->web(append: [
+            // Antes de Inertia: así un redirect por inactividad en PUT/PATCH/DELETE sale como 303.
+            CerrarSesionPorInactividad::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             SecurityHeaders::class,

@@ -236,7 +236,7 @@ function alternarPanel() {
 }
 
 onMounted(() => {
-    iniciarPresencia();
+    iniciarPresencia(usePage().props.auth?.inactividad_min);
     document.addEventListener('click', alClicFuera);
     document.addEventListener('keydown', alTeclear);
     aplicarTemaGuardado();

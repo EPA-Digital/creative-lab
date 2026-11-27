@@ -381,7 +381,7 @@ function seguirImportacion(id, { alTerminar, alFallar }, mesDeImportacion) {
 
     pollHandle = setInterval(async () => {
         try {
-            const { data } = await axios.get(`${urlPais(props.pais)}/importar/estado/${id}`);
+            const { data } = await axios.get(`${urlPais(props.pais)}/importar/estado/${id}`, { headers: { 'X-Sin-Actividad': '1' } });
             if (data.estado === 'procesando') {
                 progreso.value.porcentaje = data.progreso ?? 0;
                 progreso.value.etapa = data.etapa ?? null;
