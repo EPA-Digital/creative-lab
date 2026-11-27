@@ -79,7 +79,85 @@ class EnVivoController extends Controller
             'campanias' => $campanias,
             'conDelta' => $corridas >= 2,
             'actualizadoDatos' => $filas->max('actualizado'),
+            'graficas' => self::graficas($paisModelo->id, $rango, $desde, $hasta),
         ]);
+    }
+
+    /**
+     * Datos de las gráficas (2026-11-27). Hoy / Ayer: por hora (zona de cada
+     * cuenta) con el día anterior para comparar y el plan diario del Daily;
+     * 7 días / Mes: por día. Cada punto es [costo, impresiones, clicks] por
+     * plataforma; "mini" es el costo de cada campaña por punto (la mini
+     * gráfica de la tabla).
+     *
+     * @return array<string, mixed>
+     */
+    public static function graficas(int $paisId, string $rango, string $desde, string $hasta): array
+    {
+        $cuentaId = CuentaActual::id();
+        $vacio = fn (int $n) => array_fill(0, $n, [0.0, 0, 0]);
+
+        if (in_array($rango, ['hoy', 'ayer'], true)) {
+            $previo = CarbonImmutable::parse($desde)->subDay()->toDateString();
+            $series = [];
+            $comparacion = [];
+            $ultimaHora = null;
+            $filas = DB::table('plataforma_campanias_hora')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)
+                ->whereIn('fecha', [$previo, $desde])
+                ->groupBy('fecha', 'hora', 'plataforma')
+                ->selectRaw('fecha, hora, plataforma, SUM(costo) costo, SUM(impresiones) impresiones, SUM(clicks) clicks')->get();
+            foreach ($filas as $f) {
+                $esDia = substr((string) $f->fecha, 0, 10) === $desde;
+                $destino = &${$esDia ? 'series' : 'comparacion'};
+                $destino[$f->plataforma] ??= $vacio(24);
+                $destino[$f->plataforma][(int) $f->hora] = [round((float) $f->costo, 2), (int) $f->impresiones, (int) $f->clicks];
+                unset($destino);
+                if ($esDia) {
+                    $ultimaHora = max($ultimaHora ?? 0, (int) $f->hora);
+                }
+            }
+            $mini = [];
+            foreach (DB::table('plataforma_campanias_hora')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)->where('fecha', $desde)
+                ->groupBy('plataforma', 'campania_id', 'hora')->selectRaw('plataforma, campania_id, hora, SUM(costo) costo')->get() as $f) {
+                $k = $f->plataforma.'|'.$f->campania_id;
+                $mini[$k] ??= array_fill(0, 24, 0.0);
+                $mini[$k][(int) $f->hora] = round((float) $f->costo, 2);
+            }
+
+            // Plan diario del Daily del mes (daily_plataforma), por medio.
+            $plan = DB::table('daily_campanias')->join('daily_planes', 'daily_planes.id', '=', 'daily_campanias.plan_id')
+                ->where('daily_planes.cuenta_id', $cuentaId)->where('daily_planes.pais_id', $paisId)
+                ->where('daily_planes.mes', substr($desde, 0, 7))->whereIn('daily_campanias.medio', ['meta', 'tiktok', 'google'])
+                ->groupBy('daily_campanias.medio')->selectRaw('daily_campanias.medio, SUM(daily_campanias.daily_plataforma) d')
+                ->pluck('d', 'medio')->map(fn ($d) => round((float) $d, 2))->filter(fn ($d) => $d > 0)->all();
+
+            return [
+                'modo' => 'horas', 'puntos' => array_map(fn ($h) => sprintf('%02d:00', $h), range(0, 23)),
+                'dia' => $desde, 'previo' => $previo, 'series' => $series, 'comparacion' => $comparacion,
+                'ultimaHora' => $rango === 'hoy' ? $ultimaHora : 23, 'plan' => $plan, 'mini' => $mini,
+            ];
+        }
+
+        $fechas = [];
+        for ($d = CarbonImmutable::parse($desde); $d->lte(CarbonImmutable::parse($hasta)); $d = $d->addDay()) {
+            $fechas[] = $d->toDateString();
+        }
+        $pos = array_flip($fechas);
+        $series = [];
+        foreach (DB::table('plataforma_anuncios_diario')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)->whereBetween('fecha', [$desde, $hasta])
+            ->groupBy('fecha', 'plataforma')->selectRaw('fecha, plataforma, SUM(costo) costo, SUM(impresiones) impresiones, SUM(clicks) clicks')->get() as $f) {
+            $series[$f->plataforma] ??= $vacio(count($fechas));
+            $series[$f->plataforma][$pos[substr((string) $f->fecha, 0, 10)]] = [round((float) $f->costo, 2), (int) $f->impresiones, (int) $f->clicks];
+        }
+        $mini = [];
+        foreach (DB::table('plataforma_anuncios_diario')->where('cuenta_id', $cuentaId)->where('pais_id', $paisId)->whereBetween('fecha', [$desde, $hasta])
+            ->groupBy('plataforma', 'campania_id', 'fecha')->selectRaw('plataforma, campania_id, fecha, SUM(costo) costo')->get() as $f) {
+            $k = $f->plataforma.'|'.$f->campania_id;
+            $mini[$k] ??= array_fill(0, count($fechas), 0.0);
+            $mini[$k][$pos[substr((string) $f->fecha, 0, 10)]] = round((float) $f->costo, 2);
+        }
+
+        return ['modo' => 'dias', 'puntos' => $fechas, 'series' => $series, 'comparacion' => [], 'ultimaHora' => null, 'plan' => [], 'mini' => $mini];
     }
 
     /** "Actualizar ahora": trae hoy y ayer de este país sin esperar al scheduler. */

@@ -8,6 +8,11 @@ import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import DashboardLayout from '@/Layouts/DashboardLayout.vue';
 import AvisoCostosApi from '@/Components/AvisoCostosApi.vue';
+import GraficaAcumulado from '@/Components/EnVivo/GraficaAcumulado.vue';
+import GraficaPorPlataforma from '@/Components/EnVivo/GraficaPorPlataforma.vue';
+import GraficaMetrica from '@/Components/EnVivo/GraficaMetrica.vue';
+import MiniLinea from '@/Components/EnVivo/MiniLinea.vue';
+import { COLOR_PLATAFORMA } from '@/Components/EnVivo/escala';
 import { mensajeDeError, notificar } from '@/avisos';
 
 const props = defineProps({
@@ -18,6 +23,7 @@ const props = defineProps({
     campanias: { type: Array, default: () => [] },
     conDelta: { type: Boolean, default: false },
     actualizadoDatos: { type: String, default: null },
+    graficas: { type: Object, default: null },
 });
 
 const RANGOS = [
@@ -84,6 +90,37 @@ function abrirTodo() {
     abiertas.value = s;
 }
 
+// --- Gráficas (2026-11-27) ---------------------------------------------------------
+const graf = computed(() => props.graficas ?? { modo: 'dias', puntos: [], series: {}, comparacion: {}, plan: {}, mini: {} });
+const porHora = computed(() => graf.value.modo === 'horas');
+const elegidas = computed(() => Object.keys(graf.value.series).filter((p) => plataforma.value === 'todas' || p === plataforma.value));
+const seriesVisibles = computed(() => Object.fromEntries(elegidas.value.map((p) => [p, graf.value.series[p]])));
+const sumar = (fuente, plats) =>
+    graf.value.puntos.map((_, i) => plats.reduce((acc, p) => acc.map((v, k) => v + (fuente[p]?.[i]?.[k] ?? 0)), [0, 0, 0]));
+// Hoy: después de la última hora con datos todavía no hay nada (null, no 0).
+const corte = computed(() => (porHora.value ? graf.value.ultimaHora : null));
+const totalPorPunto = computed(() => sumar(graf.value.series, elegidas.value).map((v, i) => (corte.value != null && i > corte.value ? null : v)));
+const costoPorPunto = computed(() => totalPorPunto.value.map((v) => (v ? v[0] : null)));
+const previoPorPunto = computed(() => {
+    if (!porHora.value) return null;
+    const plats = Object.keys(graf.value.comparacion).filter((p) => plataforma.value === 'todas' || p === plataforma.value);
+    return plats.length ? sumar(graf.value.comparacion, plats).map((v) => v[0]) : null;
+});
+const planDia = computed(() => {
+    if (!porHora.value) return null;
+    const t = Object.entries(graf.value.plan ?? {}).filter(([p]) => plataforma.value === 'todas' || p === plataforma.value).reduce((s, [, v]) => s + v, 0);
+    return t > 0 ? t : null;
+});
+const etiquetas = computed(() => (props.rango === 'ayer' ? ['Ayer', 'Antier'] : ['Hoy', 'Ayer']));
+const hayGraficas = computed(() => graf.value.puntos.length > 0 && elegidas.value.length > 0 && costoPorPunto.value.some((v) => v > 0));
+const cpcSerie = computed(() => totalPorPunto.value.map((v) => (v && v[2] > 0 ? v[0] / v[2] : null)));
+const ctrSerie = computed(() => totalPorPunto.value.map((v) => (v && v[1] > 0 ? (v[2] / v[1]) * 100 : null)));
+const cpmSerie = computed(() => totalPorPunto.value.map((v) => (v && v[1] > 0 ? (v[0] / v[1]) * 1000 : null)));
+const hoverMetrica = ref(null);
+const fmtUsd = (v, corto) => (corto ? '$' + (v >= 10 ? Math.round(v) : v.toFixed(2)) : usd(v));
+const fmtPct = (v, corto) => (corto ? v.toFixed(v >= 10 ? 0 : 1) + '%' : pct(v));
+const mini = (c) => graf.value.mini?.[`${c.plataforma}|${c.id}`] ?? null;
+
 // --- Formatos -------------------------------------------------------------------
 const usd = (v) => '$' + v.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ent = (v) => Math.round(v).toLocaleString('es-MX');
@@ -112,7 +149,7 @@ async function actualizarAhora() {
     }
 }
 let recarga = null;
-onMounted(() => (recarga = setInterval(() => router.reload({ preserveScroll: true, preserveState: true }), 5 * 60000)));
+onMounted(() => (recarga = setInterval(() => router.reload({ preserveScroll: true, preserveState: true, headers: { 'X-Sin-Actividad': '1' } }), 5 * 60000)));
 onBeforeUnmount(() => clearInterval(recarga));
 </script>
 
@@ -165,6 +202,33 @@ onBeforeUnmount(() => clearInterval(recarga));
                     <div class="kpi"><span class="kpi-label">CPC</span><span class="kpi-num">{{ cpc(total.m) }}</span></div>
                 </div>
 
+                <template v-if="hayGraficas">
+                    <div class="graficas-fila">
+                        <section class="import-panel panel-grafica">
+                            <h2>Gasto acumulado</h2>
+                            <p class="hint">
+                                <template v-if="porHora">Cómo va el gasto del día hora por hora contra {{ etiquetas[1].toLowerCase() }} a la misma hora<template v-if="planDia"> y contra el plan diario del Daily</template>. Hora de la cuenta en cada plataforma.</template>
+                                <template v-else>Gasto acumulado del periodo.</template>
+                            </p>
+                            <GraficaAcumulado :puntos="graf.puntos" :actual="costoPorPunto" :previo="previoPorPunto" :plan="planDia" :etiqueta-actual="porHora ? etiquetas[0] : 'Periodo'" :etiqueta-previo="etiquetas[1]" />
+                        </section>
+                        <section class="import-panel panel-grafica">
+                            <h2>{{ porHora ? 'Gasto por hora' : 'Gasto por día' }}</h2>
+                            <p class="hint">Por plataforma. Un hueco en una plataforma es que dejó de gastar (presupuesto agotado, pausa o rechazo).</p>
+                            <GraficaPorPlataforma :puntos="graf.puntos" :series="seriesVisibles" :hasta="corte" />
+                        </section>
+                    </div>
+                    <section class="import-panel panel-grafica">
+                        <h2>Costo de la subasta {{ porHora ? 'por hora' : 'por día' }}</h2>
+                        <p class="hint">Cada métrica en su escala; pasa el mouse para ver la misma {{ porHora ? 'hora' : 'fecha' }} en las tres.</p>
+                        <div class="metricas">
+                            <GraficaMetrica v-model:hover="hoverMetrica" titulo="CPC" :puntos="graf.puntos" :valores="cpcSerie" :formato="fmtUsd" />
+                            <GraficaMetrica v-model:hover="hoverMetrica" titulo="CTR" :puntos="graf.puntos" :valores="ctrSerie" :formato="fmtPct" />
+                            <GraficaMetrica v-model:hover="hoverMetrica" titulo="CPM" :puntos="graf.puntos" :valores="cpmSerie" :formato="fmtUsd" />
+                        </div>
+                    </section>
+                </template>
+
                 <section class="import-panel panel">
                     <p v-if="!campanias.length" class="empty-note">
                         No hay datos de la API para este periodo. Si es la primera vez, toca "Actualizar ahora" o espera a la próxima actualización.
@@ -175,6 +239,7 @@ onBeforeUnmount(() => clearInterval(recarga));
                             <thead>
                                 <tr>
                                     <th class="col-nombre">Campaña / conjunto / anuncio</th>
+                                    <th class="col-mini">{{ porHora ? 'Por hora' : 'Por día' }}</th>
                                     <th>Costo</th>
                                     <th v-if="conDelta" class="col-delta">Δ</th>
                                     <th>Impresiones</th>
@@ -194,6 +259,7 @@ onBeforeUnmount(() => clearInterval(recarga));
                                             <span class="medio mono" :class="c.plataforma">{{ NOMBRE_PLATAFORMA[c.plataforma] }}</span>
                                             <span class="nombre" :title="c.nombre">{{ c.nombre }}</span>
                                         </td>
+                                        <td class="col-mini"><MiniLinea :valores="mini(c)" :puntos="graf.puntos" :hasta="corte" :color="COLOR_PLATAFORMA[c.plataforma]" /></td>
                                         <td class="num">{{ usd(c.m[0]) }}</td>
                                         <td v-if="conDelta" class="num col-delta mono">{{ delta(c.d[0], usd) }}</td>
                                         <td class="num">{{ ent(c.m[1]) }}</td>
@@ -212,6 +278,7 @@ onBeforeUnmount(() => clearInterval(recarga));
                                                     <span class="nombre" :title="g.nombre">{{ g.nombre }}</span>
                                                     <span class="cuenta mono">{{ g.anuncios.length }} anuncio{{ g.anuncios.length === 1 ? '' : 's' }}</span>
                                                 </td>
+                                                <td class="col-mini" />
                                                 <td class="num">{{ usd(g.m[0]) }}</td>
                                                 <td v-if="conDelta" class="num col-delta mono">{{ delta(g.d[0], usd) }}</td>
                                                 <td class="num">{{ ent(g.m[1]) }}</td>
@@ -227,6 +294,7 @@ onBeforeUnmount(() => clearInterval(recarga));
                                                     <td class="col-nombre">
                                                         <span class="nombre" :title="a.nombre">{{ a.nombre }}</span>
                                                     </td>
+                                                    <td class="col-mini" />
                                                     <td class="num">{{ usd(a.m[0]) }}</td>
                                                     <td v-if="conDelta" class="num col-delta mono">{{ delta(a.d[0], usd) }}</td>
                                                     <td class="num">{{ ent(a.m[1]) }}</td>
@@ -373,6 +441,28 @@ onBeforeUnmount(() => clearInterval(recarga));
 .kpi-delta {
     font-size: 0.72rem;
     color: var(--mint);
+}
+
+/* Gráficas */
+.graficas-fila {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 18px;
+}
+.panel-grafica {
+    margin-bottom: 18px;
+}
+.panel-grafica .hint {
+    margin-bottom: 12px;
+}
+.metricas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 22px;
+}
+.col-mini {
+    width: 110px;
+    text-align: left !important;
 }
 
 /* Tabla en árbol */

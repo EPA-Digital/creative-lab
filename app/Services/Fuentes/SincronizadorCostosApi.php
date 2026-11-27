@@ -72,6 +72,13 @@ class SincronizadorCostosApi
                 };
                 $moneda = $cp->moneda ?: $this->moneda($cp, $desde, $hasta);
                 $this->guardar($cp, $filas, $moneda, $desde, $hasta);
+                // Por hora (gráficas de En vivo): solo hoy y ayer; si falla, el diario ya quedó.
+                try {
+                    $desdeHora = max($desde, CarbonImmutable::parse($hasta)->subDay()->toDateString());
+                    $this->guardarHoras($cp, $this->traerHoras($cp, $desdeHora, $hasta), $moneda, $desdeHora, $hasta);
+                } catch (Throwable $e) {
+                    $resultado['errores'][] = "{$cp->nombre} (por hora): {$e->getMessage()}";
+                }
                 $resultado['cuentas'][] = [
                     'cuenta' => $cp->nombre, 'plataforma' => $cp->plataforma,
                     'anuncios' => count(array_unique(array_column($filas, 'anuncio_id'))),
@@ -232,6 +239,89 @@ class SincronizadorCostosApi
         }
 
         return $filas;
+    }
+
+    /**
+     * Gasto por campaña y hora, en la zona horaria de la cuenta.
+     *
+     * @return list<array{fecha: string, hora: int, campania_id: string, campania: string, costo: float, impresiones: int, clicks: int}>
+     */
+    public function traerHoras(CuentaPublicitaria $cp, string $desde, string $hasta): array
+    {
+        $filas = [];
+        $agregar = function (string $fecha, int $hora, string $id, string $nombre, float $costo, int $impresiones, int $clicks) use (&$filas) {
+            if ($fecha !== '' && $id !== '' && $hora >= 0 && $hora <= 23 && ($costo > 0 || $impresiones > 0 || $clicks > 0)) {
+                $filas[] = ['fecha' => $fecha, 'hora' => $hora, 'campania_id' => $id, 'campania' => $nombre, 'costo' => $costo, 'impresiones' => $impresiones, 'clicks' => $clicks];
+            }
+        };
+
+        if ($cp->plataforma === 'meta') {
+            $after = null;
+            do {
+                $params = [
+                    'level' => 'campaign', 'fields' => 'campaign_id,campaign_name,spend,impressions,inline_link_clicks',
+                    'breakdowns' => 'hourly_stats_aggregated_by_advertiser_time_zone',
+                    'time_range' => json_encode(['since' => $desde, 'until' => $hasta]), 'time_increment' => '1', 'limit' => '500',
+                ];
+                if ($after) {
+                    $params['after'] = $after;
+                }
+                $data = $this->meta->get("act_{$cp->id_externo}/insights", $params);
+                foreach ($data['data'] ?? [] as $r) {
+                    $agregar((string) $r['date_start'], (int) substr((string) ($r['hourly_stats_aggregated_by_advertiser_time_zone'] ?? '-1'), 0, 2),
+                        (string) ($r['campaign_id'] ?? ''), (string) ($r['campaign_name'] ?? ''), (float) ($r['spend'] ?? 0), (int) ($r['impressions'] ?? 0), (int) ($r['inline_link_clicks'] ?? 0));
+                }
+                $after = ! empty($data['paging']['next']) ? ($data['paging']['cursors']['after'] ?? null) : null;
+            } while ($after);
+        } elseif ($cp->plataforma === 'tiktok') {
+            // TikTok da el desglose por hora de un día por reporte.
+            for ($d = CarbonImmutable::parse($desde); $d->lte(CarbonImmutable::parse($hasta)); $d = $d->addDay()) {
+                $page = 1;
+                do {
+                    $data = $this->tiktok->get('/report/integrated/get/', [
+                        'advertiser_id' => $cp->id_externo, 'report_type' => 'BASIC', 'data_level' => 'AUCTION_CAMPAIGN',
+                        'dimensions' => ['campaign_id', 'stat_time_hour'], 'metrics' => ['spend', 'impressions', 'clicks', 'campaign_name'],
+                        'start_date' => $d->toDateString(), 'end_date' => $d->toDateString(), 'page' => $page, 'page_size' => 1000,
+                    ]);
+                    foreach ($data['list'] ?? [] as $r) {
+                        $m = $r['metrics'] ?? [];
+                        $t = (string) ($r['dimensions']['stat_time_hour'] ?? '');
+                        $agregar(substr($t, 0, 10), $t !== '' ? (int) substr($t, 11, 2) : -1, (string) ($r['dimensions']['campaign_id'] ?? ''),
+                            (string) ($m['campaign_name'] ?? ''), (float) ($m['spend'] ?? 0), (int) ($m['impressions'] ?? 0), (int) ($m['clicks'] ?? 0));
+                    }
+                    $totalPaginas = (int) ($data['page_info']['total_page'] ?? 1);
+                    $page++;
+                } while ($page <= $totalPaginas);
+            }
+        } else {
+            foreach ($this->google->buscar($cp->id_externo, 'SELECT segments.date, segments.hour, campaign.id, campaign.name, metrics.cost_micros, metrics.impressions, metrics.clicks '
+                ."FROM campaign WHERE segments.date BETWEEN '{$desde}' AND '{$hasta}'") as $r) {
+                $agregar((string) $r['segments']['date'], (int) ($r['segments']['hour'] ?? -1), (string) ($r['campaign']['id'] ?? ''), (string) ($r['campaign']['name'] ?? ''),
+                    ((int) ($r['metrics']['costMicros'] ?? 0)) / 1_000_000, (int) ($r['metrics']['impressions'] ?? 0), (int) ($r['metrics']['clicks'] ?? 0));
+            }
+        }
+
+        return $filas;
+    }
+
+    /** @param  list<array<string, mixed>>  $filas */
+    private function guardarHoras(CuentaPublicitaria $cp, array $filas, ?string $moneda, string $desde, string $hasta): void
+    {
+        $ahora = now();
+        $cuentaId = CuentaActual::id();
+        $nuevas = array_map(fn ($f) => [
+            'cuenta_id' => $cuentaId, 'pais_id' => $cp->pais_id, 'cuenta_publicitaria_id' => $cp->id, 'plataforma' => $cp->plataforma,
+            'fecha' => $f['fecha'], 'hora' => $f['hora'], 'campania_id' => $f['campania_id'], 'campania' => mb_substr($f['campania'], 0, 300),
+            'moneda' => $moneda, 'costo_original' => round($f['costo'], 2), 'costo' => round($this->aUsd($f['costo'], $moneda, $f['fecha']), 2),
+            'impresiones' => $f['impresiones'], 'clicks' => $f['clicks'], 'actualizado_en' => $ahora,
+        ], $filas);
+
+        DB::transaction(function () use ($cp, $nuevas, $desde, $hasta) {
+            DB::table('plataforma_campanias_hora')->where('cuenta_publicitaria_id', $cp->id)->whereBetween('fecha', [$desde, $hasta])->delete();
+            foreach (array_chunk($nuevas, 500) as $tanda) {
+                DB::table('plataforma_campanias_hora')->insert($tanda);
+            }
+        });
     }
 
     private function moneda(CuentaPublicitaria $cp, string $desde, string $hasta): ?string

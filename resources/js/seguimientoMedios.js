@@ -47,7 +47,7 @@ async function revisar() {
     const siguen = [];
     for (const t of tareas) {
         try {
-            const { data } = await axios.get(`${t.base ?? `/pais/${t.pais}`}/medios/tareas/${t.id}`);
+            const { data } = await axios.get(`${t.base ?? `/pais/${t.pais}`}/medios/tareas/${t.id}`, { headers: { 'X-Sin-Actividad': '1' } });
             if (data.estado === 'listo') {
                 const fallidos = data.fallidos ? ` ${n(data.fallidos)} no se pudieron recuperar (el anuncio ya no existe en la plataforma o no tiene imagen).` : '';
                 notificar({

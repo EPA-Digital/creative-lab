@@ -51,6 +51,8 @@ class HandleInertiaRequests extends Middleware
                 // Solo el booleano, nunca totp_* -- lo usa el aviso
                 // "Aún no tienes la verificación en dos pasos" (Aviso2fa.vue).
                 'tiene_2fa' => $request->user()?->tieneTotpConfirmado() ?? false,
+                // Minutos sin uso antes de cerrar la sesión (CerrarSesionPorInactividad).
+                'inactividad_min' => $request->user() ? CerrarSesionPorInactividad::limiteMinutos($request->user()) : null,
             ],
             // Multi-cuenta: la cuenta en la que está (para armar las URLs
             // /{cuenta}/pais/{pais}/... y mostrarla en el nav) y las que

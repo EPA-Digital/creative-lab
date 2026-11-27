@@ -92,6 +92,15 @@ return [
     |
     */
 
+    /*
+    | Cierre de sesión por inactividad (2026-11-27): minutos sin uso antes de
+    | cerrar la sesión. EPA = usuarios del equipo; externos = clientes.
+    */
+    'inactividad' => [
+        'epa' => (int) env('INACTIVIDAD_EPA_MINUTOS', 60),
+        'externos' => (int) env('INACTIVIDAD_EXTERNOS_MINUTOS', 15),
+    ],
+
     'passwords' => [
         'users' => [
             'provider' => 'users',

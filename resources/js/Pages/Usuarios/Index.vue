@@ -38,7 +38,7 @@ let refresco = null;
 async function refrescarPresencia() {
     if (document.visibilityState !== 'visible') return;
     try {
-        presencia.value = (await axios.get('/usuarios/presencia')).data;
+        presencia.value = (await axios.get('/usuarios/presencia', { headers: { 'X-Sin-Actividad': '1' } })).data;
         ahora.value = Date.now();
     } catch {
         // Sin red: se queda con lo último que se supo.
